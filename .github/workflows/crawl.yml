@@ -10,19 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 设置 Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: 运行爬虫脚本
+      - name: 运行爬虫并生成报告
         run: python crawler.py
-
-      - name: 自动提交报告更新
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "自动更新舆情报告 - $(date +'%Y-%m-%d %H:%M')"
-          branch: main
