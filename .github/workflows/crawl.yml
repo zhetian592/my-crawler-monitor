@@ -2,8 +2,8 @@ name: 内容安全舆情监控爬虫
 
 on:
   schedule:
-    - cron: '0 * * * *'      # 每小时运行一次
-  workflow_dispatch:         # 允许手动触发
+    - cron: '0 * * * *'      # 每小时运行
+  workflow_dispatch:         # 手动触发
 
 jobs:
   crawl:
@@ -18,10 +18,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: 运行爬虫
+      - name: 运行爬虫脚本
         run: python crawler.py
 
-      - name: 自动提交报告
+      - name: 自动提交报告更新
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "自动更新舆情报告 - $(date +'%Y-%m-%d %H:%M')"
