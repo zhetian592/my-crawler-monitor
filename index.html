@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛡️ 内容安全舆情监控系统</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; line-height: 1.8; background: #f9f9f9; }
+        h1 { color: #1e3a8a; }
+        pre { 
+            background: #f4f4f4; 
+            padding: 20px; 
+            border-radius: 8px; 
+            white-space: pre-wrap; 
+            font-size: 15px;
+            border: 1px solid #ddd;
+        }
+        .alert { color: #d32f2f; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ 内容安全行业舆情监控系统</h1>
+    <p><strong>最后更新：</strong> <span id="update-time">加载中...</span></p>
+    
+    <div id="report-content">
+        <p>正在加载最新报告...</p>
+    </div>
+
+    <script>
+        // 加载报告
+        fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/report.md')
+            .then(response => {
+                if (!response.ok) throw new Error('报告暂未生成');
+                return response.text();
+            })
+            .then(text => {
+                document.getElementById('report-content').innerHTML = `<pre>${text}</pre>`;
+                document.getElementById('update-time').textContent = new Date().toLocaleString('zh-CN');
+                
+                // 新报告弹窗提醒
+                const shortText = text.substring(0, 150);
+                if (!localStorage.lastReport || localStorage.lastReport !== shortText) {
+                    alert("🚨 新舆情报告已生成！\n过去24小时有涉华内容更新");
+                    if (Notification.permission === "granted") {
+                        new Notification("舆情监控更新", { 
+                            body: "发现新的潜在风险点，请查看报告" 
+                        });
+                    } else if (Notification.permission !== "denied") {
+                        Notification.requestPermission();
+                    }
+                    localStorage.lastReport = shortText;
+                }
+            })
+            .catch(err => {
+                document.getElementById('report-content').innerHTML = `
+                    <p style="color: #666;">暂无报告文件。<br>
+                    请先去 Actions 标签页手动触发一次爬虫任务。</p>`;
+            });
+    </script>
+</body>
+</html>
