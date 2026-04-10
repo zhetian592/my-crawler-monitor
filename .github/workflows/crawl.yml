@@ -1,0 +1,28 @@
+name: 内容安全舆情监控爬虫
+
+on:
+  schedule:
+    - cron: '0 * * * *'      # 每小时运行一次
+  workflow_dispatch:         # 允许手动触发
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 运行爬虫
+        run: python crawler.py
+
+      - name: 自动提交报告
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "自动更新舆情报告 - $(date +'%Y-%m-%d %H:%M')"
+          branch: main
