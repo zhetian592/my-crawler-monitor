@@ -1,18 +1,39 @@
 import os
 import feedparser
-import requests
 from datetime import datetime
 import openai
+import json
 
 # ===================== 配置 =====================
-# RSS / X 用户示例
+# RSS/社交账号信源（可继续补充完整）
 SOURCES = {
     "level1": [
         "https://rsshub.app/voachinese/china",
-        "https://rsshub.app/twitter/user/whyyoutouzhele"
+        "https://rsshub.app/voachinese/6197",
+        "https://rsshub.app/bbc/zhongwen/simp",
+        "https://rsshub.app/rfa/mandarin",
+        "https://rsshub.app/dw/zh/在线报导/s-9058",
+        "https://rsshub.app/rfi/cn",
+        "https://rsshub.app/nytimes/zh",
+        "https://rsshub.app/zaobao/realtime/china",
+        # X 一级账号
+        "https://rsshub.app/twitter/user/whyyoutouzhele",
+        "https://rsshub.app/twitter/user/Chai20230817",
+        "https://rsshub.app/twitter/user/ChingteLai",
+        # ...其余一级 X 账号
     ],
     "level2": [
-        "https://rsshub.app/6park"
+        "https://rsshub.app/stnn",
+        "https://rsshub.app/6park",
+        "https://rsshub.app/boxun",
+        "https://rsshub.app/reddit/r/mohu",
+        # ...其余二级网站与 X 账号
+    ],
+    "level3": [
+        "https://rsshub.app/mingpao",
+        "https://rsshub.app/theinitium",
+        "https://rsshub.app/soundofhope",
+        # ...其余三级网站与 X 账号
     ]
 }
 
@@ -20,8 +41,8 @@ SOURCES = {
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # ===================== 功能 =====================
-def fetch_rss_items(url, limit=10):
-    """抓取 RSS 或 RSSHub 的最新条目"""
+def fetch_rss_items(url, limit=5):
+    """抓取 RSS 条目"""
     try:
         feed = feedparser.parse(url)
         items = []
@@ -38,59 +59,56 @@ def fetch_rss_items(url, limit=10):
         return []
 
 def analyze_with_ai(text):
-    """调用 OpenAI GPT 分析内容"""
+    """调用 GPT 分析文本，生成摘要和风险点"""
     prompt = f"""
-请阅读以下内容，并基于中国政治、外交、社会敏感事件生成分析：
-1. 是否涉及敏感话题（台湾、新疆、人权、科技、外交等）
-2. 生成潜在风险点（不超过30字）
-3. 提炼简短事件摘要（50字左右）
-4. 给出风险等级（高、中、低）
+请阅读以下内容，并分析：
+1. 是否涉及中国敏感话题（台湾、新疆、维吾尔、人权、外交等）
+2. 提炼事件摘要（50字以内）
+3. 生成潜在风险点（不超过30字）
+4. 给出风险等级（高/中/低）
+
 内容：
 {text}
-请以 JSON 格式返回：
+
+请返回 JSON 格式：
 {{
-  "sensitive": true/false,
-  "risk_point": "...",
-  "summary": "...",
-  "risk_level": "高/中/低"
+    "sensitive": true/false,
+    "summary": "...",
+    "risk_point": "...",
+    "risk_level": "高/中/低"
 }}
 """
     try:
-        response = openai.ChatCompletion.create(
+        resp = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role":"user","content":prompt}],
             temperature=0.2
         )
-        content = response['choices'][0]['message']['content']
+        result_text = resp.choices[0].message.content
         # 尝试解析 JSON
-        import json
-        return json.loads(content)
+        result_json = json.loads(result_text)
+        return result_json
     except Exception as e:
         print(f"[AI ERROR] 分析失败: {e}")
-        return {
-            "sensitive": False,
-            "risk_point": "",
-            "summary": "",
-            "risk_level": "低"
-        }
+        return {"sensitive": False, "summary": "", "risk_point": "", "risk_level": "低"}
 
-def generate_report(all_items):
+def generate_report(items):
     """生成 Markdown 报告"""
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     lines = [
-        f"# 舆情智能分析报告",
+        f"# 智能舆情报告",
         f"生成时间：{now} UTC",
         "",
-        "| 摘要 | 原文链接 | 风险点 | 风险等级 | 来源等级 |",
-        "|------|----------|--------|----------|-----------|"
+        "| 摘要 | 链接 | 风险点 | 风险等级 | 来源等级 |",
+        "|------|------|--------|----------|-----------|"
     ]
-    for item in all_items:
+    for item in items:
         lines.append(
-            f"| {item['ai_summary']} | [链接]({item['link']}) | {item['risk_point']} | {item['risk_level']} | {item['level']} |"
+            f"| {item['summary']} | [链接]({item['link']}) | {item['risk_point']} | {item['risk_level']} | {item['level']} |"
         )
     with open("report.md", "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-    print(f"✅ 报告生成完成，共 {len(all_items)} 条")
+    print(f"✅ 报告生成完成，共 {len(items)} 条")
 
 # ===================== 主程序 =====================
 def main():
@@ -99,16 +117,16 @@ def main():
         for url in urls:
             print(f"抓取 {url} ...")
             items = fetch_rss_items(url)
-            for item in items:
-                text = item['title'] + " " + item['summary']
+            for it in items:
+                text = it['title'] + " " + it['summary']
                 ai_result = analyze_with_ai(text)
                 if ai_result.get("sensitive"):
                     all_items.append({
-                        "title": item['title'],
-                        "link": item['link'],
-                        "ai_summary": ai_result.get("summary", ""),
-                        "risk_point": ai_result.get("risk_point", ""),
-                        "risk_level": ai_result.get("risk_level", ""),
+                        "title": it['title'],
+                        "link": it['link'],
+                        "summary": ai_result.get("summary",""),
+                        "risk_point": ai_result.get("risk_point",""),
+                        "risk_level": ai_result.get("risk_level","低"),
                         "level": level
                     })
     generate_report(all_items)
