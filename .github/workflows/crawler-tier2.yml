@@ -10,20 +10,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
       - name: Install dependencies
-        run: pip install requests feedparser beautifulsoup4
+        run: pip install -r requirements.txt
       - name: Run crawler for Tier2
         env:
           TIER: "2"
         run: python crawler.py
       - name: Commit and push results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
           git add data/ report.md
-          git commit -m "Tier2 update $(date -u '+%Y-%m-%d %H:%M:%S')" || exit 0
+          git commit -m "Tier2 update $(date -u '+%Y-%m-%d %H:%M:%S')" || echo "No changes"
           git push
