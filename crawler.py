@@ -1,11 +1,11 @@
 import os
 import feedparser
+import json
 from datetime import datetime
 import openai
-import json
+import time
 
 # ===================== 配置 =====================
-# RSS/社交账号信源（可继续补充完整）
 SOURCES = {
     "level1": [
         "https://rsshub.app/voachinese/china",
@@ -16,24 +16,21 @@ SOURCES = {
         "https://rsshub.app/rfi/cn",
         "https://rsshub.app/nytimes/zh",
         "https://rsshub.app/zaobao/realtime/china",
-        # X 一级账号
+        # X 一级账号示例
         "https://rsshub.app/twitter/user/whyyoutouzhele",
         "https://rsshub.app/twitter/user/Chai20230817",
         "https://rsshub.app/twitter/user/ChingteLai",
-        # ...其余一级 X 账号
     ],
     "level2": [
         "https://rsshub.app/stnn",
         "https://rsshub.app/6park",
         "https://rsshub.app/boxun",
         "https://rsshub.app/reddit/r/mohu",
-        # ...其余二级网站与 X 账号
     ],
     "level3": [
         "https://rsshub.app/mingpao",
         "https://rsshub.app/theinitium",
-        "https://rsshub.app/soundofhope",
-        # ...其余三级网站与 X 账号
+        "https://rsshub.app/soundofhope.org",
     ]
 }
 
@@ -45,6 +42,9 @@ def fetch_rss_items(url, limit=5):
     """抓取 RSS 条目"""
     try:
         feed = feedparser.parse(url)
+        if feed.bozo:
+            print(f"[WARN] {url} RSS 解析异常: {feed.bozo_exception}")
+            return []
         items = []
         for entry in feed.entries[:limit]:
             items.append({
@@ -55,7 +55,7 @@ def fetch_rss_items(url, limit=5):
             })
         return items
     except Exception as e:
-        print(f"[ERROR] 拉取 {url} 失败: {e}")
+        print(f"[ERROR] {url} 抓取失败: {e}")
         return []
 
 def analyze_with_ai(text):
@@ -82,7 +82,8 @@ def analyze_with_ai(text):
         resp = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role":"user","content":prompt}],
-            temperature=0.2
+            temperature=0.2,
+            request_timeout=60
         )
         result_text = resp.choices[0].message.content
         # 尝试解析 JSON
@@ -129,6 +130,8 @@ def main():
                         "risk_level": ai_result.get("risk_level","低"),
                         "level": level
                     })
+                # 避免短时间请求太多被封
+                time.sleep(1)
     generate_report(all_items)
 
 if __name__ == "__main__":
