@@ -1,0 +1,23 @@
+name: Level1 Crawl (每小时 - 一级重要信源)
+
+on:
+  schedule:
+    - cron: '0 * * * *'     # 每小时第0分钟
+  workflow_dispatch:        # 支持手动触发
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 运行一级爬虫
+        run: python crawler.py
+
+      - name: 更新报告
+        run: echo "Level1 crawl completed at $(date)"
