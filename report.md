@@ -1,22 +1,8 @@
-# 内容安全舆情报告
-更新时间：2026-04-13 09:53:58
+# 舆情报告 (Tier 1)
+生成时间：2026-04-13 11:28:39 UTC
 
-## LEVEL1 信源
-
-| 标题 | 摘要 | 链接 | 风险点 |
-|------|------|------|------|
-| https://x.com/whyyoutouzhele |  | [链接](https://x.com/whyyoutouzhele) |  |
-
-## LEVEL2 信源
-
-| 标题 | 摘要 | 链接 | 风险点 |
-|------|------|------|------|
-| æå²ç¯çç½ï½ä¸çåäººæ°é»é¨æ·ç½ |  | [链接](http://www.stnn.cc/) |  |
-| https://x.com/dayangelcp |  | [链接](https://x.com/dayangelcp) |  |
-
-## LEVEL3 信源
-
-| 标题 | 摘要 | 链接 | 风险点 |
-|------|------|------|------|
-| https://x.com/zijuan_chen |  | [链接](https://x.com/zijuan_chen) |  |
-
+| 事件简述 | 原文链接 | 潜在风险点 |
+|---------|----------|------------|
+| AI分析未启用 | [链接](https://nitter.net/whyyoutouzhele/status/2043650404429566205#m) | 可能引起网络舆论关注，建议进一步核实 |
+| AI分析未启用 | [链接](https://nitter.net/whyyoutouzhele/status/2043635304788078701#m) | 可能引起网络舆论关注，建议进一步核实 |
+| AI分析未启用 | [链接](https://nitter.net/whyyoutouzhele/status/2043630272248430783#m) | 可能引起网络舆论关注，建议进一步核实 |
