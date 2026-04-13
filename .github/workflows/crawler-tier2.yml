@@ -17,10 +17,13 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install dependencies
-        run: pip install requests feedparser beautifulsoup4
+        run: |
+          pip install --upgrade pip
+          pip install requests feedparser beautifulsoup4 openai
       - name: Run crawler for Tier2
         env:
           TIER: "2"
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python crawler.py
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v5
