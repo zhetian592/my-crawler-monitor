@@ -8,37 +8,18 @@ from typing import List, Dict
 # ========== 配置：根据 TIER 定义不同的信源 ==========
 # 请替换成你实际要监控的 RSS 地址或 API
 TIER_SOURCES = {
-1": [
-       "1": [
-    # VOA 中文网
-    "https://rsshub.app/voachinese/china",
-    "https://rsshub.app/voachinese/6197",
-    # BBC 中文
-    "https://rsshub.app/bbc/zhongwen/simp",
-    # RFA
-    "https://rsshub.app/rfa/mandarin",
-    # DW（注意：中文路径已修正）
-    "https://rsshub.app/dw/rss/zh/s-9058",
-    # RFI
-    "https://rsshub.app/rfi/cn",
-    # 纽约时报中文网
-    "https://rsshub.app/nytimes/zh",
-    # 联合早报
-    "https://rsshub.app/zaobao/realtime/china",
-    # X 用户（一级）
-    "https://rsshub.app/twitter/user/whyyoutouzhele",
-    "https://rsshub.app/twitter/user/Chai20230817",
-    "https://rsshub.app/twitter/user/ChingteLai",
-    "https://rsshub.app/twitter/user/newszg_official",
-    "https://rsshub.app/twitter/user/YesterdayBigcat",
-    "https://rsshub.app/twitter/user/realcaixia",
-    "https://rsshub.app/twitter/user/wangzhian8848",
-    "https://rsshub.app/twitter/user/june4thmuseum",
-    "https://rsshub.app/twitter/user/wangdan1989",
-    "https://rsshub.app/twitter/user/hrw_chinese",
-    "https://rsshub.app/twitter/user/wuerkaixi",
-    "https://rsshub.app/twitter/user/torontobigface",
-],
+    "1": [
+        "https://rsshub.app/twitter/user/elonmusk",
+        "https://rsshub.app/weibo/user/2803301701",   # 人民日报
+        # 添加你的一级信源...
+    ],
+    "2": [
+        "https://rsshub.app/zhihu/people/activities/xxx",
+        # 添加你的二级信源...
+    ],
+    "3": [
+        "https://rsshub.app/36kr/newsflashes",
+        # 添加你的三级信源...
     ]
 }
 
