@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 高速版（禁用AI，并发抓取）
+# crawler.py - 生成 HTML 报告，链接可直接点击
 import os
 import json
 import feedparser
@@ -8,10 +8,9 @@ from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
-# ========== 信源配置（已全部转换为可用的RSS地址） ==========
+# ========== 信源配置（RSS地址） ==========
 TIER_SOURCES = {
     "1": [
-        # 新闻网站
         "https://rsshub.app/voachinese/china",
         "https://rsshub.app/voachinese/6197",
         "https://rsshub.app/bbc/zhongwen/simp",
@@ -20,7 +19,7 @@ TIER_SOURCES = {
         "https://rsshub.app/rfi/cn",
         "https://rsshub.app/nytimes/zh",
         "https://rsshub.app/zaobao/realtime/china",
-        # X 用户（使用 Nitter RSS）
+        # X 用户（Nitter RSS）
         "https://nitter.net/whyyoutouzhele/rss",
         "https://nitter.net/ChingteLai/rss",
         "https://nitter.net/YesterdayBigcat/rss",
@@ -87,7 +86,6 @@ def clean_html(html_text):
     return soup.get_text().replace("\n", " ").strip()
 
 def generate_risk_point(title, summary):
-    """基于规则的快速风险点生成（无AI）"""
     t = title + " " + summary
     if "台湾" in t:
         return "违反一个中国原则，可能引发外交争议"
@@ -100,11 +98,8 @@ def generate_risk_point(title, summary):
     return "可能引起网络舆论关注"
 
 def fetch_rss_items(url):
-    """抓取单个RSS源，返回条目列表"""
     try:
         feed = feedparser.parse(url)
-        if feed.bozo:
-            print(f"  警告: {url} 解析异常")
         items = []
         for entry in feed.entries[:20]:
             title = clean_html(entry.get("title", ""))
@@ -126,29 +121,81 @@ def fetch_rss_items(url):
         print(f"  抓取失败 {url}: {e}")
         return []
 
-def update_report_md(all_items, tier):
-    """生成报告，只包含涉华内容"""
+def generate_reports(all_items, tier):
+    """同时生成 Markdown 和 HTML 报告，HTML 链接可直接点击"""
     china_items = [i for i in all_items if i.get("china_related")]
+    timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC"
+    
+    # 1. Markdown 报告
     if not china_items:
-        content = f"# 舆情报告 (Tier {tier})\n\n生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n过去24小时无涉华内容。\n"
+        md_content = f"# 舆情报告 (Tier {tier})\n\n生成时间：{timestamp}\n\n过去24小时无涉华内容。\n"
     else:
-        lines = [
+        md_lines = [
             f"# 舆情报告 (Tier {tier})",
-            f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC",
+            f"生成时间：{timestamp}",
             "",
             "| 事件简述 | 原文链接 | 潜在风险点 |",
             "|---------|----------|------------|"
         ]
         for item in china_items:
-            # 事件简述：优先取标题，没有则取摘要前100字
             summary = item["title"] if item["title"] else item["summary"][:100]
             link = item["link"]
             risk = item.get("risk_point", "")
-            lines.append(f"| {summary} | [链接]({link}) | {risk} |")
-        content = "\n".join(lines)
+            md_lines.append(f"| {summary} | [链接]({link}) | {risk} |")
+        md_content = "\n".join(md_lines)
+    
     with open("report.md", "w", encoding="utf-8") as f:
-        f.write(content)
-    print(f"报告已生成，涉华内容 {len(china_items)} 条")
+        f.write(md_content)
+    
+    # 2. HTML 报告（超链接可直接点击，新标签打开）
+    if not china_items:
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>舆情报告</title></head>
+<body>
+<h1>舆情报告 (Tier {tier})</h1>
+<p>生成时间：{timestamp}</p>
+<p>过去24小时无涉华内容。</p>
+</body>
+</html>"""
+    else:
+        rows = ""
+        for item in china_items:
+            summary = item["title"] if item["title"] else item["summary"][:100]
+            link = item["link"]
+            risk = item.get("risk_point", "")
+            rows += f"""<tr>
+                <td>{summary}</td>
+                <td><a href="{link}" target="_blank">查看原文</a></td>
+                <td>{risk}</td>
+            </tr>\n"""
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>舆情报告</title>
+<style>
+    table {{ border-collapse: collapse; width: 100%; }}
+    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+    th {{ background-color: #f2f2f2; }}
+</style>
+</head>
+<body>
+<h1>舆情报告 (Tier {tier})</h1>
+<p>生成时间：{timestamp}</p>
+<table>
+    <thead>
+        <tr><th>事件简述</th><th>原文链接</th><th>潜在风险点</th></tr>
+    </thead>
+    <tbody>
+{rows}
+    </tbody>
+</table>
+</body>
+</html>"""
+    
+    with open("report.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
+    print(f"报告已生成：report.md 和 report.html，涉华内容 {len(china_items)} 条")
 
 def main():
     tier = os.getenv("TIER", "2")
@@ -161,7 +208,6 @@ def main():
     start_time = time.time()
     all_items = []
     
-    # 并发抓取（10个线程）
     with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_url = {executor.submit(fetch_rss_items, url): url for url in sources}
         for future in as_completed(future_to_url):
@@ -175,7 +221,7 @@ def main():
 
     print(f"抓取完成，共获取 {len(all_items)} 条原始内容，耗时 {time.time()-start_time:.1f} 秒")
 
-    # 涉华判断与风险点生成（无AI）
+    # 涉华判断与风险点生成
     for item in all_items:
         full_text = item["title"] + " " + item["summary"]
         item["china_related"] = is_china_related(full_text)
@@ -193,7 +239,7 @@ def main():
     print(f"原始数据已保存到 {data_file}")
 
     # 生成报告
-    update_report_md(all_items, tier)
+    generate_reports(all_items, tier)
 
 if __name__ == "__main__":
     main()
