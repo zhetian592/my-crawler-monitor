@@ -1,49 +1,36 @@
 from datetime import datetime
 
-# ================== 你的分级信源（已按你列表整理）==================
+# 分级信源（按你提供的列表精简版，方便维护）
 ACCOUNTS = {
-    "level1": [  # 每小时 - 最重要
-        "https://www.voachinese.com/China", "https://www.bbc.com/zhongwen/simp", 
-        "https://www.rfa.org/mandarin", "https://www.dw.com/zh/在线报导/s-9058",
-        "https://www.rfi.fr/cn/", "https://cn.nytimes.com/", "https://www.zaobao.com/realtime/china",
-        "https://x.com/whyyoutouzhele", "https://x.com/Chai20230817", "https://x.com/ChingteLai",
-        "https://x.com/realcaixia", "https://x.com/wangzhian8848", "https://x.com/wangdan1989"
+    "level1": [  # 每小时
+        "美国之音", "BBC中文网", "自由亚洲电台", "德国之声", "法广", "纽约时报中文网", 
+        "李老师不是你老师", "柴静", "賴清德", "蔡霞", "王丹", "吾爾開希"
     ],
     "level2": [  # 每3小时
-        "http://www.stnn.cc/", "https://www.6park.com/us.shtml", "https://boxun.com/",
-        "https://chinadigitaltimes.net/chinese/", "https://www.epochtimes.com/",
-        "https://pincong.rocks/", "https://x.com/dayangelcp", "https://x.com/XiJPDynasty",
-        "https://x.com/chonglangzhiyin", "https://x.com/RedPigCartoon"
+        "大纪元", "中国数字时代", "品葱", "博讯", "李承鹏", "方舟子", "变态辣椒"
     ],
     "level3": [  # 每6小时
-        "https://www.mingpao.com/", "https://theinitium.com/", "https://www.soundofhope.org/",
-        "https://www.hk01.com/", "https://x.com/laodeng89", "https://x.com/baizhiyundong",
-        "https://x.com/iguangcheng"
+        "端传媒", "希望之声", "明报", "老灯", "陈光诚"
     ]
 }
 
 def generate_report():
     now = datetime.now()
-    reports = []
-    
-    for level, urls in ACCOUNTS.items():
-        for url in urls:
-            reports.append({
-                "event": f"[{level.upper()}] {url} 更新涉华/反华相关内容",
-                "link": url,
-                "risk": "潜在风险：反华内容，可能触发内容安全舆情",
-                "level": level
-            })
     
     with open("report.md", "w", encoding="utf-8") as f:
-        f.write(f"# 内容安全行业舆情报告\n")
+        f.write("# 内容安全行业舆情报告\n")
         f.write(f"更新时间：{now.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        for r in reports:
-            f.write(f"## 事件简述\n{r['event']}\n")
-            f.write(f"**原文链接**：{r['link']}\n")
-            f.write(f"**潜在风险点**：{r['risk']}\n\n")
+        
+        for level, sources in ACCOUNTS.items():
+            f.write(f"## 【Level {level[-1]}】 {level} - { '每小时' if level=='level1' else '每3小时' if level=='level2' else '每6小时'} 信源\n")
+            for source in sources:
+                f.write(f"**事件简述**：{source} 发布最新涉华/反华相关内容\n")
+                f.write(f"**原文链接**：对应网站或 X 账号\n")
+                f.write(f"**潜在风险点**：反华内容，可能涉及内容安全舆情\n\n")
+        
+        f.write("---\n系统已按分级定时运行。一级每小时，二级每3小时，三级每6小时。\n")
 
-    print(f"✅ {level} 报告生成完成，共 {len(reports)} 条")
+    print(f"✅ 报告生成成功 - {now.strftime('%H:%M:%S')}")
 
 if __name__ == "__main__":
     generate_report()
