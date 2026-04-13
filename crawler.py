@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 生成 HTML 报告，链接可直接点击
+# crawler.py - 两阶段处理：先并发抓取，后 AI 分析
 import os
 import json
 import feedparser
@@ -8,7 +8,14 @@ from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
-# ========== 信源配置（RSS地址） ==========
+# ================= 配置 =================
+# 是否启用 AI 分析（通过环境变量控制，默认 false）
+ENABLE_AI = os.environ.get("ENABLE_AI", "").lower() == "true"
+
+# OpenRouter API Key（仅当启用 AI 时需要）
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+
+# 信源配置（已全部转换为 RSS 地址）
 TIER_SOURCES = {
     "1": [
         "https://rsshub.app/voachinese/china",
@@ -69,13 +76,15 @@ TIER_SOURCES = {
     "3": []
 }
 
-# ========== 涉华关键词 ==========
+# 涉华关键词（用于过滤）
 CHINA_KEYWORDS = [
     "中国", "中共", "北京", "习近平", "台湾", "香港", "新疆", "西藏",
     "南海", "中美", "华为", "字节跳动", "TikTok", "一带一路", "武统"
 ]
 
+# ================= 辅助函数 =================
 def is_china_related(text):
+    """关键词匹配判断是否涉华"""
     text_lower = text.lower()
     return any(kw.lower() in text_lower for kw in CHINA_KEYWORDS)
 
@@ -86,6 +95,7 @@ def clean_html(html_text):
     return soup.get_text().replace("\n", " ").strip()
 
 def generate_risk_point(title, summary):
+    """基于规则的快速风险点（无 AI）"""
     t = title + " " + summary
     if "台湾" in t:
         return "违反一个中国原则，可能引发外交争议"
@@ -98,6 +108,7 @@ def generate_risk_point(title, summary):
     return "可能引起网络舆论关注"
 
 def fetch_rss_items(url):
+    """抓取单个 RSS 源，返回原始条目列表（不做任何过滤）"""
     try:
         feed = feedparser.parse(url)
         items = []
@@ -121,35 +132,75 @@ def fetch_rss_items(url):
         print(f"  抓取失败 {url}: {e}")
         return []
 
-def generate_reports(all_items, tier):
-    """同时生成 Markdown 和 HTML 报告，HTML 链接可直接点击"""
-    china_items = [i for i in all_items if i.get("china_related")]
-    timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC"
+# ================= AI 分析（可选） =================
+def analyze_with_ai(title, summary):
+    """调用 OpenRouter API 进行分析，返回 (analysis_summary, risk_point)"""
+    if not ENABLE_AI or not OPENROUTER_API_KEY:
+        return ("", generate_risk_point(title, summary))
     
-    # 1. Markdown 报告
+    # 延迟导入，避免未安装 openai 时报错
+    from openai import OpenAI
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
+    )
+    prompt = f"""你是一名专业的网络安全和舆情分析师。请分析以下内容，并输出JSON格式结果。
+
+标题：{title}
+摘要：{summary[:500]}
+
+要求：
+1. "analysis_summary": 一句话概括核心观点，不超过50字。
+2. "risk_point": 指出潜在风险点，不超过30字。
+
+输出格式：{{"analysis_summary": "...", "risk_point": "..."}}"""
+    try:
+        completion = client.chat.completions.create(
+            model="meta-llama/llama-3.2-3b-instruct:free",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            response_format={"type": "json_object"}
+        )
+        result = json.loads(completion.choices[0].message.content)
+        return (result.get("analysis_summary", "")[:50], result.get("risk_point", "")[:30])
+    except Exception as e:
+        print(f"AI分析失败: {e}")
+        return ("", generate_risk_point(title, summary))
+
+def batch_ai_analysis(china_items):
+    """对涉华条目列表进行 AI 分析（支持小并发）"""
     if not china_items:
-        md_content = f"# 舆情报告 (Tier {tier})\n\n生成时间：{timestamp}\n\n过去24小时无涉华内容。\n"
-    else:
-        md_lines = [
-            f"# 舆情报告 (Tier {tier})",
-            f"生成时间：{timestamp}",
-            "",
-            "| 事件简述 | 原文链接 | 潜在风险点 |",
-            "|---------|----------|------------|"
-        ]
-        for item in china_items:
-            summary = item["title"] if item["title"] else item["summary"][:100]
-            link = item["link"]
-            risk = item.get("risk_point", "")
-            md_lines.append(f"| {summary} | [链接]({link}) | {risk} |")
-        md_content = "\n".join(md_lines)
+        return
+    print(f"开始 AI 分析，共 {len(china_items)} 条涉华内容")
+    start = time.time()
     
-    with open("report.md", "w", encoding="utf-8") as f:
-        f.write(md_content)
+    # 使用小并发（2-3个）避免 API 限流
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_idx = {}
+        for idx, item in enumerate(china_items):
+            future = executor.submit(analyze_with_ai, item["title"], item["summary"])
+            future_to_idx[future] = idx
+        
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                summary, risk = future.result()
+                china_items[idx]["analysis_summary"] = summary
+                china_items[idx]["risk_point"] = risk
+            except Exception as e:
+                print(f"AI分析第 {idx} 条失败: {e}")
+                china_items[idx]["analysis_summary"] = ""
+                china_items[idx]["risk_point"] = generate_risk_point(
+                    china_items[idx]["title"], china_items[idx]["summary"]
+                )
     
-    # 2. HTML 报告（超链接可直接点击，新标签打开）
+    print(f"AI 分析完成，耗时 {time.time()-start:.1f} 秒")
+
+# ================= 报告生成 =================
+def generate_html_report(china_items, tier, timestamp):
+    """生成 HTML 报告，链接可点击"""
     if not china_items:
-        html_content = f"""<!DOCTYPE html>
+        return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><title>舆情报告</title></head>
 <body>
@@ -158,18 +209,20 @@ def generate_reports(all_items, tier):
 <p>过去24小时无涉华内容。</p>
 </body>
 </html>"""
-    else:
-        rows = ""
-        for item in china_items:
-            summary = item["title"] if item["title"] else item["summary"][:100]
-            link = item["link"]
-            risk = item.get("risk_point", "")
-            rows += f"""<tr>
-                <td>{summary}</td>
-                <td><a href="{link}" target="_blank">查看原文</a></td>
-                <td>{risk}</td>
-            </tr>\n"""
-        html_content = f"""<!DOCTYPE html>
+    
+    rows = ""
+    for item in china_items:
+        summary = item.get("analysis_summary") or item["title"] or item["summary"][:100]
+        link = item["link"]
+        risk = item.get("risk_point", "")
+        rows += f"""<
+<tr>
+            <td>{summary}</td>
+            <td><a href="{link}" target="_blank">查看原文</a></td>
+            <td>{risk}</td>
+        </tr>\n"""
+    
+    return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><title>舆情报告</title>
 <style>
@@ -191,12 +244,26 @@ def generate_reports(all_items, tier):
 </table>
 </body>
 </html>"""
-    
-    with open("report.html", "w", encoding="utf-8") as f:
-        f.write(html_content)
-    
-    print(f"报告已生成：report.md 和 report.html，涉华内容 {len(china_items)} 条")
 
+def generate_markdown_report(china_items, tier, timestamp):
+    """生成 Markdown 报告（备用）"""
+    if not china_items:
+        return f"# 舆情报告 (Tier {tier})\n\n生成时间：{timestamp}\n\n过去24小时无涉华内容。\n"
+    lines = [
+        f"# 舆情报告 (Tier {tier})",
+        f"生成时间：{timestamp}",
+        "",
+        "| 事件简述 | 原文链接 | 潜在风险点 |",
+        "|---------|----------|------------|"
+    ]
+    for item in china_items:
+        summary = item.get("analysis_summary") or item["title"] or item["summary"][:100]
+        link = item["link"]
+        risk = item.get("risk_point", "")
+        lines.append(f"| {summary} | [链接]({link}) | {risk} |")
+    return "\n".join(lines)
+
+# ================= 主流程 =================
 def main():
     tier = os.getenv("TIER", "2")
     sources = TIER_SOURCES.get(tier, [])
@@ -204,7 +271,7 @@ def main():
         print(f"警告: Tier {tier} 没有配置信源")
         return
 
-    print(f"开始并发抓取 Tier {tier}，共 {len(sources)} 个信源")
+    print(f"=== 阶段一：并发抓取 RSS（共 {len(sources)} 个信源）===")
     start_time = time.time()
     all_items = []
     
@@ -218,28 +285,48 @@ def main():
                 print(f"✓ {url} -> {len(items)} 条")
             except Exception as e:
                 print(f"✗ {url} 失败: {e}")
+    
+    fetch_time = time.time() - start_time
+    print(f"抓取完成，共获取 {len(all_items)} 条原始内容，耗时 {fetch_time:.1f} 秒")
 
-    print(f"抓取完成，共获取 {len(all_items)} 条原始内容，耗时 {time.time()-start_time:.1f} 秒")
+    # 保存原始数据（未过滤、未分析）
+    os.makedirs("data", exist_ok=True)
+    timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    raw_file = f"data/raw_tier{tier}_{timestamp_str}.json"
+    with open(raw_file, "w", encoding="utf-8") as f:
+        json.dump(all_items, f, ensure_ascii=False, indent=2)
+    print(f"原始数据已保存到 {raw_file}")
 
-    # 涉华判断与风险点生成
+    # === 阶段二：过滤涉华内容 + AI 分析 ===
+    print("\n=== 阶段二：过滤涉华内容 ===")
+    china_items = []
     for item in all_items:
         full_text = item["title"] + " " + item["summary"]
-        item["china_related"] = is_china_related(full_text)
-        if item["china_related"]:
+        if is_china_related(full_text):
+            china_items.append(item)
+    print(f"涉华内容 {len(china_items)} 条（占比 {len(china_items)/len(all_items)*100:.1f}%）")
+
+    if ENABLE_AI and OPENROUTER_API_KEY:
+        batch_ai_analysis(china_items)
+    else:
+        print("AI 分析未启用（ENABLE_AI=false 或未设置 API Key），使用规则生成风险点")
+        for item in china_items:
+            item["analysis_summary"] = ""
             item["risk_point"] = generate_risk_point(item["title"], item["summary"])
-        else:
-            item["risk_point"] = ""
 
-    # 保存原始数据
-    os.makedirs("data", exist_ok=True)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    data_file = f"data/tier{tier}_{timestamp}.json"
-    with open(data_file, "w", encoding="utf-8") as f:
-        json.dump(all_items, f, ensure_ascii=False, indent=2)
-    print(f"原始数据已保存到 {data_file}")
+    # === 阶段三：生成报告 ===
+    print("\n=== 阶段三：生成报告 ===")
+    now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') + " UTC"
+    html_content = generate_html_report(china_items, tier, now_str)
+    md_content = generate_markdown_report(china_items, tier, now_str)
 
-    # 生成报告
-    generate_reports(all_items, tier)
+    with open("report.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
+    with open("report.md", "w", encoding="utf-8") as f:
+        f.write(md_content)
+    
+    print(f"报告已生成：report.html 和 report.md")
+    print(f"总耗时 {time.time() - start_time:.1f} 秒")
 
 if __name__ == "__main__":
     main()
