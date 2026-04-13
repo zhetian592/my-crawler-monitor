@@ -9,17 +9,113 @@ from typing import List, Dict
 # 请替换成你实际要监控的 RSS 地址或 API
 TIER_SOURCES = {
     "1": [
-        "https://rsshub.app/twitter/user/elonmusk",
-        "https://rsshub.app/weibo/user/2803301701",   # 人民日报
-        # 添加你的一级信源...
+        # VOA 中文网（RSS）
+        "https://rsshub.app/voachinese/china",
+        "https://rsshub.app/voachinese/6197",
+        # BBC 中文网
+        "https://rsshub.app/bbc/zhongwen/simp",
+        # RFA
+        "https://rsshub.app/rfa/mandarin",
+        # DW 在线报导
+        "https://rsshub.app/dw/zh/在线报导/s-9058",
+        # RFI
+        "https://rsshub.app/rfi/cn",
+        # 纽约时报中文网
+        "https://rsshub.app/nytimes/zh",
+        # 联合早报 中国实时
+        "https://rsshub.app/zaobao/realtime/china",
+        # X 用户（一级）
+        "https://rsshub.app/twitter/user/whyyoutouzhele",
+        "https://rsshub.app/twitter/user/Chai20230817",
+        "https://rsshub.app/twitter/user/ChingteLai",
+        "https://rsshub.app/twitter/user/newszg_official",
+        "https://rsshub.app/twitter/user/YesterdayBigcat",
+        "https://rsshub.app/twitter/user/realcaixia",
+        "https://rsshub.app/twitter/user/wangzhian8848",
+        "https://rsshub.app/twitter/user/june4thmuseum",
+        "https://rsshub.app/twitter/user/wangdan1989",
+        "https://rsshub.app/twitter/user/hrw_chinese",
+        "https://rsshub.app/twitter/user/wuerkaixi",
+        "https://rsshub.app/twitter/user/torontobigface",
     ],
     "2": [
-        "https://rsshub.app/zhihu/people/activities/xxx",
-        # 添加你的二级信源...
+        # 网站
+        "https://rsshub.app/stnn",
+        "https://rsshub.app/6park",
+        "https://rsshub.app/boxun",
+        "https://rsshub.app/reddit/r/mohu",
+        "https://rsshub.app/sintaiwan",
+        "https://rsshub.app/chinesedigitaltimes",
+        "https://rsshub.app/ntdtv/b5",
+        "https://rsshub.app/secretchina",
+        "https://rsshub.app/creaders/blog",
+        "https://rsshub.app/epochtimes",
+        "https://rsshub.app/pincong",
+        "https://rsshub.app/lexiangge",
+        "https://rsshub.app/fanzei",
+        "https://rsshub.app/hanfeng1918",
+        "https://rsshub.app/iwantrun",
+        "https://rsshub.app/xizang-zhiye",
+        "https://rsshub.app/uyghurcongress/cn",
+        # X 用户（二级）
+        "https://rsshub.app/twitter/user/dayangelcp",
+        "https://rsshub.app/twitter/user/XiJPDynasty",
+        "https://rsshub.app/twitter/user/chinatransition",
+        "https://rsshub.app/twitter/user/chonglangzhiyin",
+        "https://rsshub.app/twitter/user/pear14525902",
+        "https://rsshub.app/twitter/user/xingzhe2021",
+        "https://rsshub.app/twitter/user/RedPigCartoon",
+        "https://rsshub.app/twitter/user/jhf8964",
+        "https://rsshub.app/twitter/user/Cian_Ci",
+        "https://rsshub.app/twitter/user/fangshimin",
+        "https://rsshub.app/twitter/user/remonwangxt",
+        "https://rsshub.app/twitter/user/badiucao",
+        "https://rsshub.app/twitter/user/xinwendiaocha",
+        "https://rsshub.app/twitter/user/WOMEN4China",
+        "https://rsshub.app/twitter/user/Ruters0615",
+        "https://rsshub.app/twitter/user/CitizensDailyCN",
+        "https://rsshub.app/twitter/user/ZhouFengSuo",
+        "https://rsshub.app/twitter/user/hchina89",
+        "https://rsshub.app/twitter/user/gaoyu200812",
+        "https://rsshub.app/twitter/user/amnestychinese",
+        "https://rsshub.app/twitter/user/lidangzzz",
+        "https://rsshub.app/twitter/user/liangziyueqian1",
+        "https://rsshub.app/twitter/user/YongyuanCui1",
+        "https://rsshub.app/twitter/user/jielijian",
+        "https://rsshub.app/twitter/user/xiaojingcanxue",
+        "https://rsshub.app/twitter/user/CHENWEIMING2017",
+        "https://rsshub.app/twitter/user/xiangjunweiwu",
+        "https://rsshub.app/twitter/user/BoKuangyi",
+        "https://rsshub.app/twitter/user/tibetdotcom",
+        "https://rsshub.app/twitter/user/chinesepen_org",
+        "https://rsshub.app/twitter/user/UHRP_Chinese",
+        "https://rsshub.app/twitter/user/wurenhua",
     ],
     "3": [
-        "https://rsshub.app/36kr/newsflashes",
-        # 添加你的三级信源...
+        # 网站
+        "https://rsshub.app/mingpao",
+        "https://rsshub.app/theinitium",
+        "https://rsshub.app/soundofhope",
+        "https://rsshub.app/chinademocrats",
+        "https://rsshub.app/hk01",
+        "https://rsshub.app/aboluowang",
+        "https://rsshub.app/bannedbook",
+        # 注意：某些 blogspot 和自定义域名可能无法直接转 RSS，需要手动寻找 RSS 或放弃
+        # X 用户（三级）
+        "https://rsshub.app/twitter/user/zijuan_chen",
+        "https://rsshub.app/twitter/user/weiquanwang",
+        "https://rsshub.app/twitter/user/hnczyhhwck",
+        "https://rsshub.app/twitter/user/laodeng89",
+        # 其余你提供的三级网站（部分无法直接 RSSHub 支持，可尝试通用路由）
+        "https://rsshub.app/2newcenturynet",
+        "https://rsshub.app/lingbaxianzhang",
+        "https://rsshub.app/dongtaiwang",
+        "https://rsshub.app/minzhuzhongguo",
+        "https://rsshub.app/chinainperspective",
+        "https://rsshub.app/msguancha",
+        "https://rsshub.app/bjs",
+        "https://rsshub.app/2047",
+        "https://rsshub.app/jinpianwang",
     ]
 }
 
