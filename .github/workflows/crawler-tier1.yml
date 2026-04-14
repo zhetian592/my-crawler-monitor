@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PAT_TOKEN }}   # 保留原有的 push 权限
+          token: ${{ secrets.PAT_TOKEN }}   # 用于 push 的 PAT
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,9 +26,7 @@ jobs:
       - name: Run crawler for Tier1
         env:
           TIER: "1"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # GitHub 默认 token，用于 AI 调用
-          # 如果你之前使用 PAT_TOKEN 作为主要认证，也可以保留：
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}   # 你创建的经典 PAT
         run: python crawler.py
 
       - name: Commit and push changes
@@ -40,4 +38,4 @@ jobs:
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
           commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}   # push 时使用 PAT_TOKEN
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
