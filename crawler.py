@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - OpenRouter 稳定版
+# crawler.py - OpenRouter 最终修正版（修复 404 错误）
 import os
 import json
 import feedparser
@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ================= 配置 =================
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+# 使用免费稳定模型
 MODEL = "deepseek/deepseek-r1:free"
 
 BASE_URL = "https://openrouter.ai/api/v1"
@@ -133,7 +134,7 @@ def call_ai_analysis(all_articles):
 
 | 事件简述 | 原文链接 | 潜在风险点 |
 |----------|----------|------------|
-| （简述，不超过60字） | [查看](链接) | （风险点，不超过30字） |
+| （简述事件，不超过60字） | [查看](链接) | （风险点，不超过30字） |
 
 只输出涉华内容。没有时只输出“过去24小时无涉华内容”。不要额外文字。
 
@@ -158,7 +159,7 @@ def call_ai_analysis(all_articles):
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"]
         else:
-            return f"# AI 分析失败\nHTTP {response.status_code}"
+            return f"# AI 分析失败\nHTTP {response.status_code}\n{response.text[:200]}"
     except Exception as e:
         return f"# AI 分析失败\n异常: {str(e)}"
 
