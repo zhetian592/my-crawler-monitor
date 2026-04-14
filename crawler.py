@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 抓取信源 + GitHub Models AI 分析 + 强制标记反华报告链接
+# crawler.py - 官方 RSS 优先 + 稳定 X 账号抓取 + GitHub Models AI 分析
 import os
 import json
 import feedparser
@@ -19,10 +19,21 @@ if not GH_TOKEN:
 AI_BASE_URL = "https://models.inference.ai.azure.com"
 AI_MODEL = "gpt-4o-mini"
 
+# RSSHub 实例（仅作为后备，优先使用官方 RSS）
 RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.feeded.xyz"]
-NITTER_INSTANCES = ["https://nitter.net", "https://nitter.poast.org", "https://nitter.linuxboot.org"]
 
+# Nitter 实例（用于 X 账号）
+NITTER_INSTANCES = [
+    "https://nitter.net",
+    "https://nitter.poast.org",
+    "https://nitter.42l.fr",
+    "https://nitter.snopyta.org",
+    "https://nitter.private.coffee",
+]
+
+# ================= 信源列表（原始 URL）=================
 RAW_SOURCES = [
+    # 新闻网站（官方 RSS 优先）
     "https://www.voachinese.com/China",
     "https://www.voachinese.com/p/6197.html",
     "https://www.bbc.com/zhongwen/simp",
@@ -31,54 +42,32 @@ RAW_SOURCES = [
     "https://www.rfi.fr/cn/",
     "https://cn.nytimes.com/",
     "https://www.zaobao.com/realtime/china",
-    # X 账号
-    "https://x.com/whyyoutouzhele",
-    "https://x.com/Chai20230817",
-    "https://x.com/realcaixia",
-    "https://x.com/wangzhian8848",
-    "https://x.com/wangdan1989",
-    "https://x.com/wuerkaixi",
-    "https://x.com/newszg_official",
-    "https://x.com/june4thmuseum",
-    "https://x.com/hrw_chinese",
-    "https://x.com/torontobigface",
-    "https://x.com/dayangelcp",
-    "https://x.com/chinatransition",
-    "https://x.com/pear14525902",
-    "https://x.com/RedPigCartoon",
-    "https://x.com/Cian_Ci",
-    "https://x.com/remonwangxt",
-    "https://x.com/xinwendiaocha",
-    "https://x.com/Ruters0615",
-    "https://x.com/ZhouFengSuo",
-    "https://x.com/gaoyu200812",
-    "https://x.com/lidangzzz",
-    "https://x.com/YongyuanCui1",
-    "https://x.com/xiaojingcanxue",
-    "https://x.com/xiangjunweiwu",
-    "https://x.com/tibetdotcom",
-    "https://x.com/UHRP_Chinese",
-    "https://x.com/XiJPDynasty",
-    "https://x.com/chonglangzhiyin",
-    "https://x.com/xingzhe2021",
-    "https://x.com/jhf8964",
-    "https://x.com/fangshimin",
-    "https://x.com/badiucao",
-    "https://x.com/WOMEN4China",
-    "https://x.com/CitizensDailyCN",
-    "https://x.com/hchina89",
-    "https://x.com/amnestychinese",
-    "https://x.com/liangziyueqian1",
-    "https://x.com/jielijian",
-    "https://x.com/CHENWEIMING2017",
-    "https://x.com/BoKuangyi",
-    "https://x.com/chinesepen_org",
-    "https://x.com/wurenhua",
-    # 新增两个信源
     "https://www.ntdtv.com/gb/instant-news.html",
     "https://www.epochtimes.com/gb/instant-news.htm",
+    # X 账号（保留稳定可抓取的）
+    "https://x.com/whyyoutouzhele",
+    "https://x.com/wangzhian8848",
+    "https://x.com/newszg_official",
+    "https://x.com/wangdan1989",
+    "https://x.com/torontobigface",
+    "https://x.com/hrw_chinese",
+    "https://x.com/dayangelcp",
+    "https://x.com/chinatransition",
+    "https://x.com/xinwendiaocha",
+    "https://x.com/xiaojingcanxue",
+    "https://x.com/ZhouFengSuo",
+    "https://x.com/lidangzzz",
+    "https://x.com/fangshimin",
+    "https://x.com/UHRP_Chinese",
+    "https://x.com/jhf8964",
+    "https://x.com/amnestychinese",
+    "https://x.com/liangziyueqian1",
+    "https://x.com/badiucao",
+    "https://x.com/jielijian",
+    "https://x.com/wurenhua",
 ]
 
+# ================= 辅助函数 =================
 def clean_html(text):
     if not text:
         return ""
@@ -105,28 +94,39 @@ def parse_published(published_str):
     return None
 
 def url_to_rss(url):
+    """根据原始 URL 返回 RSS 地址（官方 RSS 优先，否则使用 RSSHub）"""
+    # VOA 中文网（官方 API RSS）
     if "voachinese.com/China" in url:
-        return f"{RSSHUB_INSTANCES[0]}/voachinese/china"
+        return "https://www.voachinese.com/api/zh-hans?format=rss"
     if "voachinese.com/p/6197.html" in url:
-        return f"{RSSHUB_INSTANCES[0]}/voachinese/6197"
+        return "https://www.voachinese.com/api/zh-hans?format=rss"
+    # BBC 中文（官方 RSS）
     if "bbc.com/zhongwen/simp" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
+    # RFA（无官方 RSS，使用 RSSHub）
     if "rfa.org/mandarin" in url:
         return f"{RSSHUB_INSTANCES[0]}/rfa/mandarin"
+    # 德国之声（官方中文 RSS）
     if "dw.com/zh" in url:
-        return f"{RSSHUB_INSTANCES[0]}/dw/rss/zh/s-9058"
+        return "https://rss.dw.com/rdf/rss-chi-all"
+    # RFI 法广（官方分类 RSS）
     if "rfi.fr/cn" in url:
-        return f"{RSSHUB_INSTANCES[0]}/rfi/cn"
+        return "https://www.rfi.fr/cn/general/rss"
+    # 纽约时报中文网（官方 RSS）
     if "cn.nytimes.com" in url:
-        return f"{RSSHUB_INSTANCES[0]}/nytimes/zh"
+        return "https://cn.nytimes.com/rss/news.xml"
+    # 联合早报（无官方 RSS，使用 RSSHub）
     if "zaobao.com/realtime/china" in url:
-        return "https://www.zaobao.com/realtime/china/feed"
-    if "x.com/" in url:
-        return None
+        return f"{RSSHUB_INSTANCES[0]}/zaobao/realtime/china"
+    # 新唐人（无官方 RSS，使用 RSSHub）
     if "ntdtv.com/gb/instant-news.html" in url:
         return f"{RSSHUB_INSTANCES[0]}/ntdtv/instant-news"
+    # 大纪元（官方 RSS 聚合，使用大陆新闻分类）
     if "epochtimes.com/gb/instant-news.htm" in url:
-        return f"{RSSHUB_INSTANCES[0]}/epochtimes/instant-news"
+        return "https://www.epochtimes.com/gb/nsc112.htm?rss=1"
+    # X 账号
+    if "x.com/" in url:
+        return None
     return url
 
 def fetch_single_rss(rss_url, original_url):
@@ -134,6 +134,7 @@ def fetch_single_rss(rss_url, original_url):
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         resp = requests.get(rss_url, headers=headers, timeout=20)
         if resp.status_code != 200:
+            print(f"  ⚠ HTTP {resp.status_code} - {original_url} ({rss_url})")
             return []
         feed = feedparser.parse(resp.content)
         cutoff = datetime.utcnow() - timedelta(hours=24)
@@ -160,25 +161,36 @@ def fetch_single_rss(rss_url, original_url):
                 break
         return items
     except Exception as e:
-        print(f"  抓取异常 {original_url}: {e}")
+        print(f"  ✗ 抓取异常 {original_url} ({rss_url}): {e}")
         return []
 
 def fetch_with_retry(original_url):
+    # X 账号：轮询所有 Nitter 实例
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         for nitter in NITTER_INSTANCES:
             test_url = f"{nitter}/{username}/rss"
+            print(f"  → 尝试 X {username} 使用 {nitter}")
             items = fetch_single_rss(test_url, original_url)
             if items:
-                print(f"  ✓ X {username} 使用 {nitter} 成功")
+                print(f"  ✓ X {username} 成功 via {nitter} (条数: {len(items)})")
                 return items
             else:
-                print(f"  ⚠ X {username} 使用 {nitter} 失败")
+                print(f"  ⚠ X {username} 失败 via {nitter}")
+            time.sleep(0.5)
+        print(f"  ✗ X {username} 所有实例均失败")
         return []
+    # 普通网站
     rss_url = url_to_rss(original_url)
     if not rss_url:
+        print(f"  ✗ 无法生成 RSS 地址: {original_url}")
         return []
-    return fetch_single_rss(rss_url, original_url)
+    items = fetch_single_rss(rss_url, original_url)
+    if items:
+        print(f"  ✓ {original_url} 成功 (条数: {len(items)})")
+    else:
+        print(f"  ✗ {original_url} 失败 (RSS: {rss_url})")
+    return items
 
 def fetch_all_sources():
     print(f"开始抓取 {len(RAW_SOURCES)} 个信源（过去24小时）...")
@@ -375,7 +387,6 @@ def save_reports(report_text, all_articles):
     <div class="meta">生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</div>
     <div id="report">
 """
-    # 将 AI 返回的 Markdown 表格转换为 HTML 表格
     lines = report_text.split("\n")
     in_table = False
     for line in lines:
@@ -383,13 +394,11 @@ def save_reports(report_text, all_articles):
             if not in_table:
                 html_content += '<table>\n<thead>\n'
                 in_table = True
-            # 跳过分隔行
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
             cells = [c.strip() for c in line.split("|")[1:-1]]
             html_content += "<tr>\n"
             for cell in cells:
-                # 转换 Markdown 链接
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
                 if link_match:
                     text, url = link_match.group(1), link_match.group(2)
@@ -401,7 +410,6 @@ def save_reports(report_text, all_articles):
                 html_content += "</thead><tbody></tbody></table>\n"
                 in_table = False
             if line.strip():
-                # 处理标题行
                 if line.startswith("#"):
                     level = len(line) - len(line.lstrip('#'))
                     text = line.lstrip('#').strip()
@@ -418,7 +426,6 @@ def save_reports(report_text, all_articles):
 </div>
 </body>
 </html>"""
-
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
 
@@ -435,7 +442,6 @@ def main():
     start = time.time()
     print("=== 开始抓取信源（过去24小时） ===")
     all_articles = fetch_all_sources()
-    # 强制标记“报告”类文章
     all_articles = mark_report_articles(all_articles)
     print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
     if not all_articles:
