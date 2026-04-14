@@ -1,8 +1,6 @@
-name: Tier1 - Hourly
+name: Tier1 - Manual
 
 on:
-  schedule:
-    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PAT_TOKEN }}   # 用于 push 的 PAT
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -23,16 +21,15 @@ jobs:
           pip install --upgrade pip
           pip install requests feedparser beautifulsoup4 openai
 
-      - name: Run crawler for Tier1
+      - name: Run crawler
         env:
-          TIER: "1"
-          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}   # 你创建的经典 PAT
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         run: python crawler.py
 
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Tier1 update $(date -u '+%Y-%m-%d %H:%M:%S')"
+          commit_message: "Manual update $(date -u '+%Y-%m-%d %H:%M:%S')"
           file_pattern: "data/* report.md report.html"
           commit_user_name: "github-actions[bot]"
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
