@@ -1,2 +1,2 @@
 # AI 分析失败
-异常: 404 page not found
+异常: Error code: 401 - {'error': {'code': 'unauthorized', 'message': 'The `models` permission is required to access this endpoint', 'details': 'The `models` permission is required to access this endpoint'}}
