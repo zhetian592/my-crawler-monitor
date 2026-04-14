@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-# crawler.py - 最终稳定版（已修复 f-string 错误）
+# crawler.py - 最终简化稳定版（修复 HTTP 400）
 import os
 import json
 import feedparser
-import random
 import time
 import requests
 from datetime import datetime, timedelta
@@ -111,23 +110,24 @@ def fetch_all_sources():
     return all_items
 
 def call_grok_analysis(all_articles):
-    """Grok API 分析（带重试）"""
     if not GROK_API_KEY:
         return "# Grok 分析失败\nGROK_API_KEY 未设置"
 
     if not all_articles:
         return "# 无数据\n过去24小时未抓取到任何文章"
 
+    # 简化 prompt，避免 token 超限和 400 错误
     content_list = []
-    for idx, art in enumerate(all_articles, 1):
-        content_list.append(f"{idx}. 标题：{art.get('title', '')}\n   摘要：{art.get('summary', '')[:300]}\n   链接：{art.get('link', '')}\n")
+    for idx, art in enumerate(all_articles[:30], 1):  # 限制最多30条
+        content_list.append(f"{idx}. {art.get('title', '')[:150]} | {art.get('link', '')}")
     combined = "\n".join(content_list)
 
-    prompt = f"""你是一名专业的舆情分析师。
+    prompt = f"""分析以下过去24小时抓取的内容，生成舆情报告。
 
-以下是过去24小时抓取的内容（共 {len(all_articles)} 条）。
+内容：
+{combined}
 
-请严格按以下格式输出报告：
+请用以下 Markdown 表格格式输出，只输出涉华内容：
 
 # 内容安全行业舆情报告
 生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
@@ -135,39 +135,27 @@ def call_grok_analysis(all_articles):
 | 事件简述 | 原文链接 | 潜在风险点 |
 |----------|----------|------------|
 | （简述，不超过60字） | [查看](链接) | （风险点，不超过30字） |
-| ... | ... | ... |
 
-只输出涉华内容。没有涉华内容时只输出“过去24小时无涉华内容”。不要添加额外解释。
+如果没有涉华内容，只输出“过去24小时无涉华内容”。不要添加额外文字。"""
 
-内容：
-{combined}"""
-
-    for attempt in range(3):
-        try:
-            response = requests.post(
-                f"{GROK_BASE_URL}/chat/completions",
-                headers={"Authorization": f"Bearer {GROK_API_KEY}", "Content-Type": "application/json"},
-                json={"model": GROK_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.3, "max_tokens": 4000},
-                timeout=60
-            )
-            if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
-            elif response.status_code == 403:
-                if attempt < 2:
-                    time.sleep(8)
-                    continue
-                return "# Grok 分析失败\nHTTP 403 - API Key 可能无效"
-            else:
-                if attempt < 2:
-                    time.sleep(5)
-                    continue
-                return f"# Grok 分析失败\nHTTP {response.status_code}"
-        except Exception as e:
-            if attempt < 2:
-                time.sleep(8)
-                continue
-            return f"# Grok 分析失败\n异常: {str(e)}"
-    return "# Grok 分析失败\n重试失败"
+    try:
+        response = requests.post(
+            f"{GROK_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {GROK_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": GROK_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+                "max_tokens": 2000   # 降低 token 限制，避免 400
+            },
+            timeout=60
+        )
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"]
+        else:
+            return f"# Grok 分析失败\nHTTP {response.status_code}\n{response.text[:300]}"
+    except Exception as e:
+        return f"# Grok 分析失败\n异常: {str(e)}"
 
 def main():
     start_time = time.time()
