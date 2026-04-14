@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 使用 GitHub Models (GPT-4.1-mini) 进行 AI 分析
+# crawler.py - 使用 GitHub Models (经典 PAT) 进行 AI 分析
 import os
 import json
 import feedparser
@@ -9,21 +9,23 @@ import re
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import openai
 
 # ================= 配置 =================
-# GitHub Models 配置
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("PAT_TOKEN")
-if not GITHUB_TOKEN:
-    print("警告: 未设置 GITHUB_TOKEN 或 PAT_TOKEN，AI 分析将不可用")
+# 从环境变量读取经典 PAT（需要具备 repo 权限）
+GH_TOKEN = os.environ.get("GH_MODELS_TOKEN")
+if not GH_TOKEN:
+    # 兼容旧版
+    GH_TOKEN = os.environ.get("GITHUB_TOKEN")
 
+# GitHub Models API 配置
 AI_BASE_URL = "https://models.inference.ai.azure.com"
-AI_MODEL = "gpt-4.1-mini"   # 也可用 "gpt-4o-mini"
+AI_MODEL = "gpt-4o-mini"   # 或 "gpt-4.1-mini"
 
 # RSSHub 和 Nitter 实例
 RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.feeded.xyz"]
 NITTER_INSTANCES = ["https://nitter.net", "https://nitter.poast.org", "https://nitter.linuxboot.org"]
 
-# 信源列表（完整）
 RAW_SOURCES = [
     "https://www.voachinese.com/China",
     "https://www.voachinese.com/p/6197.html",
@@ -33,7 +35,7 @@ RAW_SOURCES = [
     "https://www.rfi.fr/cn/",
     "https://cn.nytimes.com/",
     "https://www.zaobao.com/realtime/china",
-    # X 账号（全部）
+    # X 账号（全部保留）
     "https://x.com/whyyoutouzhele",
     "https://x.com/Chai20230817",
     "https://x.com/realcaixia",
@@ -188,7 +190,7 @@ def fetch_all_sources():
                 print(f"✓ {url} -> {len(items)} 条")
             except Exception as e:
                 print(f"✗ {url} 异常: {e}")
-    # 去重（按链接）
+    # 去重
     seen = set()
     unique = []
     for item in all_items:
@@ -199,15 +201,15 @@ def fetch_all_sources():
     return unique
 
 def call_ai_analysis(all_articles):
-    """使用 GitHub Models (GPT-4.1-mini) 一次性分析所有文章，生成报告"""
-    if not GITHUB_TOKEN:
-        return "# AI 分析失败\nGITHUB_TOKEN 或 PAT_TOKEN 未设置，请检查 Secrets。"
+    if not GH_TOKEN:
+        return "# AI 分析失败\nGH_MODELS_TOKEN 未设置，请检查 Secrets。"
 
     if not all_articles:
         return "# 无数据\n未抓取到任何文章。"
 
-    # 限制文章数量，避免 token 超限（GPT-4.1-mini 上下文 1M，但为速度限制 100 条）
-    articles_for_ai = all_articles[:100]
+    # 限制发送给 AI 的文章数量（避免 token 超限）
+    max_articles = 80
+    articles_for_ai = all_articles[:max_articles]
     content_list = []
     for idx, art in enumerate(articles_for_ai, 1):
         content_list.append(
@@ -240,18 +242,16 @@ def call_ai_analysis(all_articles):
 
 {combined}"""
 
-    # 调用 GitHub Models API
     try:
-        import openai
         client = openai.OpenAI(
             base_url=AI_BASE_URL,
-            api_key=GITHUB_TOKEN,
+            api_key=GH_TOKEN,
         )
         response = client.chat.completions.create(
             model=AI_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=4000,
+            max_tokens=3000,
         )
         return response.choices[0].message.content
     except Exception as e:
@@ -259,7 +259,6 @@ def call_ai_analysis(all_articles):
         return f"# AI 分析失败\n异常: {str(e)}"
 
 def save_reports(report_text, all_articles):
-    """保存 Markdown 和 HTML 报告"""
     # 保存 Markdown
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(report_text)
@@ -287,14 +286,13 @@ def save_reports(report_text, all_articles):
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_content += '<table>\n<thead>'
+                html_content += '<tr>\n<thead>'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
             cells = [c.strip() for c in line.split("|")[1:-1]]
             html_content += "<tr>\n"
             for cell in cells:
-                # 转换 Markdown 链接
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
                 if link_match:
                     text, url = link_match.group(1), link_match.group(2)
@@ -327,21 +325,21 @@ def save_reports(report_text, all_articles):
     print(f"原始数据保存: data/raw_{timestamp}.json")
 
 def main():
-    start_time = time.time()
+    start = time.time()
     print("=== 开始抓取信源（过去24小时） ===")
     all_articles = fetch_all_sources()
-    print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start_time:.1f} 秒")
+    print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
     if not all_articles:
         print("⚠️ 未抓到任何文章")
-        with open("report.md", "w", encoding="utf-8") as f:
+        with open("report.md", "w") as f:
             f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
-        with open("report.html", "w", encoding="utf-8") as f:
-            f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
+        with open("report.html", "w") as f:
+            f.write("<h1>抓取失败</h1><p>未抓到任何文章。</p>")
         return
     print("=== 调用 AI 分析（GitHub Models） ===")
     report = call_ai_analysis(all_articles)
     save_reports(report, all_articles)
-    print(f"全部完成，总耗时 {time.time()-start_time:.1f} 秒")
+    print(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
 
 if __name__ == "__main__":
     main()
