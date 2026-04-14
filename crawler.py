@@ -11,19 +11,19 @@ from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ================= 配置 =================
-# 使用 GitHub Models 提供的 GPT-4.1-mini
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")  # Actions 中默认存在
+# GitHub Models 配置
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("PAT_TOKEN")
 if not GITHUB_TOKEN:
-    # 本地测试时可以手动设置，但不要提交
-    GITHUB_TOKEN = os.environ.get("PAT_TOKEN")  # 备用
+    print("警告: 未设置 GITHUB_TOKEN 或 PAT_TOKEN，AI 分析将不可用")
 
-AI_MODEL = "gpt-4.1-mini"   # 或者 "gpt-4.1-nano"（更便宜，但能力稍弱）
-AI_BASE_URL = "https://models.github.ai/v1"
+AI_BASE_URL = "https://models.inference.ai.azure.com"
+AI_MODEL = "gpt-4.1-mini"   # 也可用 "gpt-4o-mini"
 
-# RSSHub 和 Nitter 实例（和之前一样）
+# RSSHub 和 Nitter 实例
 RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.feeded.xyz"]
 NITTER_INSTANCES = ["https://nitter.net", "https://nitter.poast.org", "https://nitter.linuxboot.org"]
 
+# 信源列表（完整）
 RAW_SOURCES = [
     "https://www.voachinese.com/China",
     "https://www.voachinese.com/p/6197.html",
@@ -33,6 +33,7 @@ RAW_SOURCES = [
     "https://www.rfi.fr/cn/",
     "https://cn.nytimes.com/",
     "https://www.zaobao.com/realtime/china",
+    # X 账号（全部）
     "https://x.com/whyyoutouzhele",
     "https://x.com/Chai20230817",
     "https://x.com/realcaixia",
@@ -187,7 +188,7 @@ def fetch_all_sources():
                 print(f"✓ {url} -> {len(items)} 条")
             except Exception as e:
                 print(f"✗ {url} 异常: {e}")
-    # 去重
+    # 去重（按链接）
     seen = set()
     unique = []
     for item in all_items:
@@ -198,14 +199,14 @@ def fetch_all_sources():
     return unique
 
 def call_ai_analysis(all_articles):
-    """使用 GitHub Models 一次性分析所有文章，生成报告"""
+    """使用 GitHub Models (GPT-4.1-mini) 一次性分析所有文章，生成报告"""
     if not GITHUB_TOKEN:
-        return "# AI 分析失败\nGITHUB_TOKEN 未设置，请检查 Actions 权限。"
+        return "# AI 分析失败\nGITHUB_TOKEN 或 PAT_TOKEN 未设置，请检查 Secrets。"
 
     if not all_articles:
         return "# 无数据\n未抓取到任何文章。"
 
-    # 限制文章数量，避免 token 超限（GPT-4.1-mini 上下文 1M，足够，但为速度限制 100 条）
+    # 限制文章数量，避免 token 超限（GPT-4.1-mini 上下文 1M，但为速度限制 100 条）
     articles_for_ai = all_articles[:100]
     content_list = []
     for idx, art in enumerate(articles_for_ai, 1):
@@ -250,7 +251,7 @@ def call_ai_analysis(all_articles):
             model=AI_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=3000,
+            max_tokens=4000,
         )
         return response.choices[0].message.content
     except Exception as e:
@@ -281,7 +282,6 @@ def save_reports(report_text, all_articles):
 <p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
 <div id="report">
 """
-    # 简单转换 Markdown 表格为 HTML
     lines = report_text.split("\n")
     in_table = False
     for line in lines:
@@ -289,7 +289,6 @@ def save_reports(report_text, all_articles):
             if not in_table:
                 html_content += '<table>\n<thead>'
                 in_table = True
-            # 跳过分隔行
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
             cells = [c.strip() for c in line.split("|")[1:-1]]
@@ -328,21 +327,21 @@ def save_reports(report_text, all_articles):
     print(f"原始数据保存: data/raw_{timestamp}.json")
 
 def main():
-    start = time.time()
+    start_time = time.time()
     print("=== 开始抓取信源（过去24小时） ===")
     all_articles = fetch_all_sources()
-    print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
+    print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start_time:.1f} 秒")
     if not all_articles:
         print("⚠️ 未抓到任何文章")
-        with open("report.md", "w") as f:
+        with open("report.md", "w", encoding="utf-8") as f:
             f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
-        with open("report.html", "w") as f:
-            f.write("<h1>抓取失败</h1><p>未抓到任何文章。</p>")
+        with open("report.html", "w", encoding="utf-8") as f:
+            f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
         return
     print("=== 调用 AI 分析（GitHub Models） ===")
     report = call_ai_analysis(all_articles)
     save_reports(report, all_articles)
-    print(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
+    print(f"全部完成，总耗时 {time.time()-start_time:.1f} 秒")
 
 if __name__ == "__main__":
     main()
