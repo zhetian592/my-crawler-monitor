@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# crawler.py - 最终稳定版（先用规则生成风险点，避免 Grok 403）
+# crawler.py - 最终完整稳定版（Grok 分析已恢复）
 import os
 import json
 import feedparser
 import random
 import time
 import requests
+import re
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,7 +16,7 @@ GROK_API_KEY = os.environ.get("GROK_API_KEY")
 GROK_MODEL = "grok-3-mini"
 GROK_BASE_URL = "https://api.x.ai/v1"
 
-# 只用最稳定的实例（避免 DNS 解析失败）
+# 最稳定实例
 RSSHUB_INSTANCES = ["https://rsshub.app"]
 NITTER_INSTANCES = ["https://nitter.net"]
 
@@ -45,6 +46,25 @@ def clean_html(text):
         return ""
     soup = BeautifulSoup(text, "html.parser")
     return soup.get_text().strip()[:500]
+
+def parse_published(published_str):
+    if not published_str:
+        return None
+    formats = [
+        "%a, %d %b %Y %H:%M:%S %Z",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%d %H:%M:%S",
+    ]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(published_str, fmt)
+            if dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
+            return dt
+        except:
+            continue
+    return None
 
 def url_to_rss(url):
     rsshub = RSSHUB_INSTANCES[0]
@@ -81,6 +101,10 @@ def fetch_single_rss(rss_url, original_url):
         cutoff = datetime.utcnow() - timedelta(hours=24)
         items = []
         for entry in feed.entries:
+            published = entry.get("published", entry.get("updated", ""))
+            pub_dt = parse_published(published)
+            if pub_dt and pub_dt < cutoff:
+                continue
             title = clean_html(entry.get("title", ""))
             summary = clean_html(entry.get("summary", ""))
             if not summary:
@@ -114,43 +138,133 @@ def fetch_all_sources():
     return all_items
 
 def call_grok_analysis(all_articles):
-    """临时使用规则生成风险点（避免 Grok 403 问题）"""
+    """Grok API 分析（带重试）"""
+    if not GROK_API_KEY:
+        return "# Grok 分析失败\nGROK_API_KEY 未设置，请检查 Secrets。"
+
     if not all_articles:
         return "# 无数据\n过去24小时未抓取到任何文章"
 
-    lines = ["# 内容安全行业舆情报告", 
-             f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n",
-             "| 事件简述 | 原文链接 | 潜在风险点 |",
-             "|----------|----------|------------|"]
+    content_list = []
+    for idx, art in enumerate(all_articles, 1):
+        content_list.append(
+            f"{idx}. 标题：{art.get('title', '')}\n"
+            f"   摘要：{art.get('summary', '')[:300]}\n"
+            f"   链接：{art.get('link', '')}\n"
+        )
+    combined = "\n".join(content_list)
 
-    for art in all_articles:
-        summary = art.get("title", "")[:120]
-        link = art.get("link", "")
-        risk = "可能引起网络舆论关注"
-        lines.append(f"| {summary} | [查看]({link}) | {risk} |")
+    prompt = f"""你是一名专业的网络安全和舆情分析师。
 
-    return "\n".join(lines)
+以下是过去24小时从多个信源抓取到的所有内容（共 {len(all_articles)} 条）。
+
+请严格按照以下格式生成**内容安全行业舆情报告**：
+
+# 内容安全行业舆情报告
+生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+
+| 事件简述 | 原文链接 | 潜在风险点 |
+|----------|----------|------------|
+| （简述事件，不超过60字） | [查看](链接) | （风险点，不超过30字） |
+| ... | ... | ... |
+
+要求：
+- 只输出涉华内容。
+- 如果没有涉华内容，只输出“过去24小时无涉华内容”。
+- 不要添加任何额外解释。
+
+以下是抓取到的全部内容：
+
+{combined}"""
+
+    for attempt in range(3):
+        try:
+            response = requests.post(
+                f"{GROK_BASE_URL}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GROK_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": GROK_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,
+                    "max_tokens": 4000
+                },
+                timeout=60
+            )
+
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            elif response.status_code == 403:
+                print(f"Grok 403 错误 (尝试 {attempt+1}/3)")
+                if attempt < 2:
+                    time.sleep(8)
+                    continue
+                else:
+                    return "# Grok 分析失败\nHTTP 403 - API Key 可能无效，请重新生成"
+            else:
+                print(f"Grok 返回 {response.status_code}")
+                if attempt < 2:
+                    time.sleep(5)
+                    continue
+                else:
+                    return f"# Grok 分析失败\nHTTP {response.status_code}"
+
+        except Exception as e:
+            print(f"Grok 调用异常 (尝试 {attempt+1}/3): {e}")
+            if attempt < 2:
+                time.sleep(8)
+                continue
+            else:
+                return f"# Grok 分析失败\n异常: {str(e)}"
+
+    return "# Grok 分析失败\n重试后仍失败"
+
+def save_reports(markdown_report, all_articles):
+    with open("report.md", "w", encoding="utf-8") as f:
+        f.write(markdown_report)
+
+    # 简单 HTML 版本
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>内容安全舆情报告</title>
+<style>
+    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+    table {{ border-collapse: collapse; width: 100%; }}
+    th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+    th {{ background-color: #f2f2f2; }}
+    a {{ color: #0366d6; }}
+</style>
+</head>
+<body>
+<h1>内容安全行业舆情报告</h1>
+<p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+<div id="report">{markdown_report.replace('\n', '<br>')}</div>
+</body>
+</html>"""
+    with open("report.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+    print("报告已保存: report.md 和 report.html")
 
 def main():
     start_time = time.time()
-    print("=== 开始抓取信源（过去24小时） ===")
+    print("=== 开始抓取信源 ===")
     all_articles = fetch_all_sources()
     print(f"抓取完成，共 {len(all_articles)} 条文章")
 
     if not all_articles:
-        print("⚠️ 未抓到任何文章，请检查上方日志")
+        print("⚠️ 未抓到任何文章")
         with open("report.md", "w", encoding="utf-8") as f:
-            f.write("# 抓取失败\n\n未抓到任何文章，请检查 Actions 日志。")
+            f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
         return
 
-    print("=== 生成报告（规则版） ===")
+    print("=== 调用 Grok AI 分析 ===")
     report = call_grok_analysis(all_articles)
 
-    with open("report.md", "w", encoding="utf-8") as f:
-        f.write(report)
-
-    print("报告生成完成 → report.md")
-    print(f"总耗时 {time.time()-start_time:.1f} 秒")
+    save_reports(report, all_articles)
+    print(f"全部完成，总耗时 {time.time()-start_time:.1f} 秒")
 
 if __name__ == "__main__":
     main()
