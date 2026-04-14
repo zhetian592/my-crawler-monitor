@@ -23,13 +23,13 @@ jobs:
       - name: Run crawler for Tier1
         env:
           TIER: "1"
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
         run: python crawler.py
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Tier1 update $(date -u '+%Y-%m-%d %H:%M:%S')"
-          file_pattern: "data/* report.md"
+          file_pattern: "data/* report.md report.html"
           commit_user_name: "github-actions[bot]"
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
           commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
