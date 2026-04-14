@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 纯本地增强版（无外部 API，生成清晰 HTML 表格）
+# crawler.py - 使用 GitHub Models (GPT-4.1-mini) 进行 AI 分析
 import os
 import json
 import feedparser
@@ -11,6 +11,16 @@ from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ================= 配置 =================
+# 使用 GitHub Models 提供的 GPT-4.1-mini
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")  # Actions 中默认存在
+if not GITHUB_TOKEN:
+    # 本地测试时可以手动设置，但不要提交
+    GITHUB_TOKEN = os.environ.get("PAT_TOKEN")  # 备用
+
+AI_MODEL = "gpt-4.1-mini"   # 或者 "gpt-4.1-nano"（更便宜，但能力稍弱）
+AI_BASE_URL = "https://models.github.ai/v1"
+
+# RSSHub 和 Nitter 实例（和之前一样）
 RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.feeded.xyz"]
 NITTER_INSTANCES = ["https://nitter.net", "https://nitter.poast.org", "https://nitter.linuxboot.org"]
 
@@ -110,8 +120,7 @@ def url_to_rss(url):
     if "zaobao.com/realtime/china" in url:
         return "https://www.zaobao.com/realtime/china/feed"
     if "x.com/" in url:
-        username = url.split("/")[-1]
-        return f"{NITTER_INSTANCES[0]}/{username}/rss"
+        return None
     return url
 
 def fetch_single_rss(rss_url, original_url):
@@ -188,128 +197,152 @@ def fetch_all_sources():
     print(f"去重后共 {len(unique)} 条（原始 {len(all_items)} 条）")
     return unique
 
-def generate_risk_point(title, summary):
-    """最大化补全版风险点匹配（已全面覆盖所有关键词）"""
-    text = (title + " " + summary).lower()
+def call_ai_analysis(all_articles):
+    """使用 GitHub Models 一次性分析所有文章，生成报告"""
+    if not GITHUB_TOKEN:
+        return "# AI 分析失败\nGITHUB_TOKEN 未设置，请检查 Actions 权限。"
 
-    # 高风险优先
-    if any(kw in text for kw in ["台湾", "台独", "武统", "赖清德", "蔡英文", "两岸关系"]):
-        return "违反一个中国原则，可能引发外交争议"
-    if any(kw in text for kw in ["新疆", "西藏", "维吾尔", "东突", "藏独", "港独", "南海争议"]):
-        return "涉及敏感地区或分裂议题，易被西方舆论炒作"
-    if any(kw in text for kw in ["六四", "天安门事件", "白纸运动", "文革", "文化大革命", "反右", "红卫兵", "六四纪念"]):
-        return "历史政治运动或敏感事件，舆情风险极高"
-    if any(kw in text for kw in ["华为", "中兴", "字节跳动", "TikTok", "芯片", "制裁", "贸易战"]):
-        return "科技供应链或国际制裁风险"
-    if any(kw in text for kw in ["习近平", "李克强", "王沪宁", "中共中央", "中央军委", "全国人大"]):
-        return "涉及最高领导人或核心机构，可能引发政治舆情"
+    if not all_articles:
+        return "# 无数据\n未抓取到任何文章。"
 
-    # 中高风险（你特别强调的）
-    if any(kw in text for kw in ["落马", "反腐", "腐败", "贪腐", "党纪处分", "特权阶层", "个人崇拜"]):
-        return "涉及官员落马或反腐议题，可能引发社会不满"
-    if any(kw in text for kw in ["聚众闹事", "群体事件", "维权", "抗议", "公民抗议", "劳工运动", "环保维权", "烂尾楼", "断供", "房地产暴雷"]):
-        return "涉及群体性事件或社会维权，易引发社会稳定风险"
+    # 限制文章数量，避免 token 超限（GPT-4.1-mini 上下文 1M，足够，但为速度限制 100 条）
+    articles_for_ai = all_articles[:100]
+    content_list = []
+    for idx, art in enumerate(articles_for_ai, 1):
+        content_list.append(
+            f"{idx}. 标题：{art.get('title', '')[:150]}\n"
+            f"   摘要：{art.get('summary', '')[:300]}\n"
+            f"   链接：{art.get('link', '')}\n"
+        )
+    combined = "\n".join(content_list)
 
-    # 中低风险
-    if any(kw in text for kw in ["言论自由", "人权", "异议人士", "异见者", "审查", "网络封锁", "舆论管控", "媒体打压"]):
-        return "涉及言论、人权或审查议题，易引发国际关注"
-    if any(kw in text for kw in ["海外势力", "民运组织", "NGO", "境外媒体", "虚假新闻", "舆论引导"]):
-        return "涉及境外势力或舆论引导，可能引发政治敏感"
-    if any(kw in text for kw in ["失业", "青年失业", "房价", "医疗", "教育", "双减", "性别对立", "女权", "宗教迫害"]):
-        return "涉及民生或社会不满，可能引发舆情"
+    prompt = f"""你是一名专业的网络安全和舆情分析师。
 
-    # 默认兜底
-    return "可能引起网络舆论关注"
+以下是从多个信源（VOA、BBC、RFA、DW、RFI、纽约时报、联合早报及 X 平台）抓取到的过去24小时内的部分内容（共 {len(articles_for_ai)} 条，实际抓取 {len(all_articles)} 条）。
 
-def save_reports(all_articles):
-    # 生成 HTML 表格（清晰、可点击）
+请仔细阅读这些内容，然后完成以下任务：
+
+1. 筛选出其中**涉华**的内容（涉及中国、中共、习近平、台湾、香港、新疆、西藏、南海、中美关系等）。
+2. 基于筛选出的涉华内容，生成一份**内容安全行业舆情报告**，使用 Markdown 表格格式：
+
+| 事件简述 | 原文链接 | 潜在风险点 |
+|----------|----------|------------|
+| （简述，不超过60字） | [查看](原文URL) | （风险点，不超过30字） |
+
+要求：
+- 每一条涉华内容单独占一行。
+- “原文链接”列请使用 `[查看](URL)` 格式。
+- 如果没有任何涉华内容，只输出一行“过去24小时无涉华内容”。
+- 不要添加任何额外解释、开头语或结尾语。
+
+以下是抓取到的全部内容：
+
+{combined}"""
+
+    # 调用 GitHub Models API
+    try:
+        import openai
+        client = openai.OpenAI(
+            base_url=AI_BASE_URL,
+            api_key=GITHUB_TOKEN,
+        )
+        response = client.chat.completions.create(
+            model=AI_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=3000,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"AI 调用失败: {e}")
+        return f"# AI 分析失败\n异常: {str(e)}"
+
+def save_reports(report_text, all_articles):
+    """保存 Markdown 和 HTML 报告"""
+    # 保存 Markdown
+    with open("report.md", "w", encoding="utf-8") as f:
+        f.write(report_text)
+
+    # 生成 HTML 报告（将 Markdown 表格转换为 HTML）
     html_content = f"""<!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <title>内容安全舆情报告</title>
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 20px; line-height: 1.5; }}
-        h1 {{ font-size: 1.8em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }}
-        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; font-size: 14px; }}
-        th, td {{ border: 1px solid #dfe2e5; padding: 8px 12px; text-align: left; vertical-align: top; }}
-        th {{ background-color: #f6f8fa; font-weight: 600; }}
-        td:nth-child(1) {{ min-width: 200px; max-width: 350px; white-space: normal; word-break: break-word; }}
-        td:nth-child(2) {{ min-width: 80px; }}
-        td:nth-child(3) {{ min-width: 150px; }}
-        a {{ color: #0366d6; text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
-        .footer {{ margin-top: 30px; font-size: 12px; color: #6a737d; border-top: 1px solid #eaecef; padding-top: 10px; }}
-    </style>
+<head><meta charset="UTF-8"><title>内容安全舆情报告</title>
+<style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 20px; }}
+    h1 {{ font-size: 1.8em; border-bottom: 1px solid #eaecef; }}
+    table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+    th, td {{ border: 1px solid #dfe2e5; padding: 8px 12px; text-align: left; vertical-align: top; }}
+    th {{ background-color: #f6f8fa; }}
+    a {{ color: #0366d6; text-decoration: none; }}
+</style>
 </head>
 <body>
 <h1>内容安全行业舆情报告</h1>
 <p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
-<p>抓取信源：VOA、BBC、RFA、DW、RFI、纽约时报、联合早报、X平台</p>
-<table>
-    <thead>
-        <tr><th>事件简述</th><th>原文链接</th><th>潜在风险点</th></tr>
-    </thead>
-    <tbody>
+<div id="report">
 """
-    for art in all_articles:
-        summary = (art.get("title", "") or art.get("summary", ""))[:120].replace("\n", " ").strip()
-        link = art.get("link", "#")
-        risk = generate_risk_point(art.get("title", ""), art.get("summary", ""))
-        html_content += f"""
-        <tr>
-            <td>{summary}</td>
-            <td><a href="{link}" target="_blank">查看原文</a></td>
-            <td>{risk}</td>
-        </tr>
-"""
+    # 简单转换 Markdown 表格为 HTML
+    lines = report_text.split("\n")
+    in_table = False
+    for line in lines:
+        if line.startswith("|") and "|" in line:
+            if not in_table:
+                html_content += '<table>\n<thead>'
+                in_table = True
+            # 跳过分隔行
+            if re.match(r'^\|[\s\-:]+\|$', line):
+                continue
+            cells = [c.strip() for c in line.split("|")[1:-1]]
+            html_content += "<tr>\n"
+            for cell in cells:
+                # 转换 Markdown 链接
+                link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
+                if link_match:
+                    text, url = link_match.group(1), link_match.group(2)
+                    cell = f'<a href="{url}" target="_blank">{text}</a>'
+                html_content += f"<td>{cell}</td>\n"
+            html_content += "</tr>\n"
+        else:
+            if in_table:
+                html_content += "</thead><tbody></tbody></table>\n"
+                in_table = False
+            if line.strip():
+                html_content += f"<p>{line}</p>\n"
+    if in_table:
+        html_content += "</tbody></table>\n"
     html_content += f"""
-    </tbody>
-</table>
-<div class="footer">
-    <p>注：本报告基于过去24小时抓取的 {len(all_articles)} 条内容生成，风险点由规则引擎自动判定。</p>
 </div>
+<p>注：本报告由 AI 基于过去24小时抓取的 {len(all_articles)} 条内容生成。</p>
 </body>
 </html>"""
-
-    # Markdown 版本
-    md_content = "# 内容安全行业舆情报告\n\n"
-    md_content += f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
-    md_content += "| 事件简述 | 原文链接 | 潜在风险点 |\n"
-    md_content += "|----------|----------|------------|\n"
-    for art in all_articles:
-        summary = (art.get("title", "") or art.get("summary", ""))[:100].replace("\n", " ")
-        link = art.get("link", "#")
-        risk = generate_risk_point(art.get("title", ""), art.get("summary", ""))
-        md_content += f"| {summary} | [查看]({link}) | {risk} |\n"
-
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
-    with open("report.md", "w", encoding="utf-8") as f:
-        f.write(md_content)
 
+    # 保存原始数据
     os.makedirs("data", exist_ok=True)
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     with open(f"data/raw_{timestamp}.json", "w", encoding="utf-8") as f:
         json.dump(all_articles, f, ensure_ascii=False, indent=2)
 
-    print("报告已生成: report.html (推荐) 和 report.md")
+    print("报告已保存: report.md, report.html")
     print(f"原始数据保存: data/raw_{timestamp}.json")
 
 def main():
-    start_time = time.time()
+    start = time.time()
     print("=== 开始抓取信源（过去24小时） ===")
     all_articles = fetch_all_sources()
-    print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start_time:.1f} 秒")
+    print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
     if not all_articles:
-        print("⚠️ 未抓到任何文章，请检查网络或 RSS 源。")
-        with open("report.md", "w", encoding="utf-8") as f:
+        print("⚠️ 未抓到任何文章")
+        with open("report.md", "w") as f:
             f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
-        with open("report.html", "w", encoding="utf-8") as f:
-            f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查 GitHub Actions 日志。</p>")
+        with open("report.html", "w") as f:
+            f.write("<h1>抓取失败</h1><p>未抓到任何文章。</p>")
         return
-    save_reports(all_articles)
-    print(f"全部完成，总耗时 {time.time()-start_time:.1f} 秒")
+    print("=== 调用 AI 分析（GitHub Models） ===")
+    report = call_ai_analysis(all_articles)
+    save_reports(report, all_articles)
+    print(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
 
 if __name__ == "__main__":
     main()
