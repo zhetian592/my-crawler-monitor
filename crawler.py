@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-# crawler.py - OpenRouter 稳定版（推荐现在使用）
+# crawler.py - OpenRouter 稳定版
 import os
 import json
 import feedparser
-import random
 import time
 import requests
 from datetime import datetime, timedelta
@@ -12,12 +11,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ================= 配置 =================
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
-# 使用免费且稳定的模型（中文舆情表现优秀）
-MODEL = "deepseek/deepseek-r1:free"   # 免费 DeepSeek 推理模型
+MODEL = "deepseek/deepseek-r1:free"
 
 BASE_URL = "https://openrouter.ai/api/v1"
 
-# 最稳定实例
 RSSHUB_INSTANCES = ["https://rsshub.app"]
 NITTER_INSTANCES = ["https://nitter.net"]
 
@@ -114,7 +111,6 @@ def fetch_all_sources():
     return all_items
 
 def call_ai_analysis(all_articles):
-    """使用 OpenRouter + DeepSeek 分析"""
     if not OPENROUTER_API_KEY:
         return "# AI 分析失败\nOPENROUTER_API_KEY 未设置，请检查 Secrets。"
 
@@ -122,28 +118,24 @@ def call_ai_analysis(all_articles):
         return "# 无数据\n过去24小时未抓取到任何文章"
 
     content_list = []
-    for idx, art in enumerate(all_articles[:25], 1):   # 限制数量，避免超限
+    for idx, art in enumerate(all_articles[:25], 1):
         content_list.append(f"{idx}. 标题：{art.get('title', '')[:150]}\n   链接：{art.get('link', '')}\n")
     combined = "\n".join(content_list)
 
-    prompt = f"""你是一名专业的网络舆情分析师。
+    prompt = f"""你是一名专业的舆情分析师。
 
-以下是过去24小时抓取的内容（共 {len(all_articles)} 条）。
+以下是过去24小时抓取的内容。
 
-请严格按照以下 Markdown 表格格式生成报告：
+请严格按照以下格式生成报告：
 
 # 内容安全行业舆情报告
 生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 
 | 事件简述 | 原文链接 | 潜在风险点 |
 |----------|----------|------------|
-| （简述事件，不超过60字） | [查看](链接) | （风险点，不超过30字） |
-| ... | ... | ... |
+| （简述，不超过60字） | [查看](链接) | （风险点，不超过30字） |
 
-要求：
-- 只输出涉华内容。
-- 如果没有涉华内容，只输出“过去24小时无涉华内容”。
-- 不要添加任何额外解释。
+只输出涉华内容。没有时只输出“过去24小时无涉华内容”。不要额外文字。
 
 内容：
 {combined}"""
@@ -177,9 +169,9 @@ def main():
     print(f"抓取完成，共 {len(all_articles)} 条文章")
 
     if not all_articles:
-        print("⚠️ 未抓到任何文章，请检查日志")
+        print("⚠️ 未抓到任何文章")
         with open("report.md", "w", encoding="utf-8") as f:
-            f.write("# 抓取失败\n\n未抓到任何文章，请检查 Actions 日志。")
+            f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
         return
 
     print("=== 调用 AI 分析 ===")
