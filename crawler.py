@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-# crawler.py - 最终简化稳定版（修复 HTTP 400）
+# crawler.py - OpenRouter 稳定版（推荐现在使用）
 import os
 import json
 import feedparser
+import random
 import time
 import requests
 from datetime import datetime, timedelta
@@ -10,10 +11,13 @@ from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ================= 配置 =================
-GROK_API_KEY = os.environ.get("GROK_API_KEY")
-GROK_MODEL = "grok-3-mini"
-GROK_BASE_URL = "https://api.x.ai/v1"
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+# 使用免费且稳定的模型（中文舆情表现优秀）
+MODEL = "deepseek/deepseek-r1:free"   # 免费 DeepSeek 推理模型
 
+BASE_URL = "https://openrouter.ai/api/v1"
+
+# 最稳定实例
 RSSHUB_INSTANCES = ["https://rsshub.app"]
 NITTER_INSTANCES = ["https://nitter.net"]
 
@@ -109,53 +113,62 @@ def fetch_all_sources():
                 print(f"✗ {url} 异常: {e}")
     return all_items
 
-def call_grok_analysis(all_articles):
-    if not GROK_API_KEY:
-        return "# Grok 分析失败\nGROK_API_KEY 未设置"
+def call_ai_analysis(all_articles):
+    """使用 OpenRouter + DeepSeek 分析"""
+    if not OPENROUTER_API_KEY:
+        return "# AI 分析失败\nOPENROUTER_API_KEY 未设置，请检查 Secrets。"
 
     if not all_articles:
         return "# 无数据\n过去24小时未抓取到任何文章"
 
-    # 简化 prompt，避免 token 超限和 400 错误
     content_list = []
-    for idx, art in enumerate(all_articles[:30], 1):  # 限制最多30条
-        content_list.append(f"{idx}. {art.get('title', '')[:150]} | {art.get('link', '')}")
+    for idx, art in enumerate(all_articles[:25], 1):   # 限制数量，避免超限
+        content_list.append(f"{idx}. 标题：{art.get('title', '')[:150]}\n   链接：{art.get('link', '')}\n")
     combined = "\n".join(content_list)
 
-    prompt = f"""分析以下过去24小时抓取的内容，生成舆情报告。
+    prompt = f"""你是一名专业的网络舆情分析师。
 
-内容：
-{combined}
+以下是过去24小时抓取的内容（共 {len(all_articles)} 条）。
 
-请用以下 Markdown 表格格式输出，只输出涉华内容：
+请严格按照以下 Markdown 表格格式生成报告：
 
 # 内容安全行业舆情报告
 生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
 
 | 事件简述 | 原文链接 | 潜在风险点 |
 |----------|----------|------------|
-| （简述，不超过60字） | [查看](链接) | （风险点，不超过30字） |
+| （简述事件，不超过60字） | [查看](链接) | （风险点，不超过30字） |
+| ... | ... | ... |
 
-如果没有涉华内容，只输出“过去24小时无涉华内容”。不要添加额外文字。"""
+要求：
+- 只输出涉华内容。
+- 如果没有涉华内容，只输出“过去24小时无涉华内容”。
+- 不要添加任何额外解释。
+
+内容：
+{combined}"""
 
     try:
         response = requests.post(
-            f"{GROK_BASE_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {GROK_API_KEY}", "Content-Type": "application/json"},
+            f"{BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            },
             json={
-                "model": GROK_MODEL,
+                "model": MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
-                "max_tokens": 2000   # 降低 token 限制，避免 400
+                "max_tokens": 2000
             },
             timeout=60
         )
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"]
         else:
-            return f"# Grok 分析失败\nHTTP {response.status_code}\n{response.text[:300]}"
+            return f"# AI 分析失败\nHTTP {response.status_code}"
     except Exception as e:
-        return f"# Grok 分析失败\n异常: {str(e)}"
+        return f"# AI 分析失败\n异常: {str(e)}"
 
 def main():
     start_time = time.time()
@@ -164,13 +177,13 @@ def main():
     print(f"抓取完成，共 {len(all_articles)} 条文章")
 
     if not all_articles:
-        print("⚠️ 未抓到任何文章")
+        print("⚠️ 未抓到任何文章，请检查日志")
         with open("report.md", "w", encoding="utf-8") as f:
-            f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
+            f.write("# 抓取失败\n\n未抓到任何文章，请检查 Actions 日志。")
         return
 
-    print("=== 调用 Grok AI 分析 ===")
-    report = call_grok_analysis(all_articles)
+    print("=== 调用 AI 分析 ===")
+    report = call_ai_analysis(all_articles)
 
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(report)
