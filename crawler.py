@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 使用 GitHub Models 进行 AI 分析，优化 HTML 表格排版
+# crawler.py - 优化排版 + AI 内容更丰富
 import os
 import json
 import feedparser
@@ -31,6 +31,7 @@ RAW_SOURCES = [
     "https://www.rfi.fr/cn/",
     "https://cn.nytimes.com/",
     "https://www.zaobao.com/realtime/china",
+    # X 账号（全部保留）
     "https://x.com/whyyoutouzhele",
     "https://x.com/Chai20230817",
     "https://x.com/realcaixia",
@@ -218,16 +219,19 @@ def call_ai_analysis(all_articles):
 请仔细阅读这些内容，然后完成以下任务：
 
 1. 筛选出其中**涉华**的内容（涉及中国、中共、习近平、台湾、香港、新疆、西藏、南海、中美关系等）。
-2. 基于筛选出的涉华内容，生成一份**内容安全行业舆情报告**，使用 Markdown 表格格式：
+2. 基于筛选出的涉华内容，生成一份**内容安全行业舆情报告**，**必须使用 Markdown 表格格式**，表格必须包含表头分隔行（`|---|---|---|`），示例如下：
 
 | 事件简述 | 原文链接 | 潜在风险点 |
 |----------|----------|------------|
-| （简述，不超过60字） | [查看](原文URL) | （风险点，不超过30字） |
+| 事件1简述（不超过80字） | [查看](URL1) | 风险点1（不超过30字，可略详细） |
+| 事件2简述（不超过80字） | [查看](URL2) | 风险点2（不超过30字，可略详细） |
 
 要求：
 - 每一条涉华内容单独占一行。
+- “原文链接”列必须使用 `[查看](原文URL)` 格式。
+- “潜在风险点”列应在 30 字内尽量描述清楚可能的影响（如外交、社会、经济等）。
 - 如果没有任何涉华内容，只输出一行“过去24小时无涉华内容”。
-- 不要添加任何额外解释。
+- 不要添加任何额外解释、开头语或结尾语。
 
 以下是抓取到的全部内容：
 
@@ -242,7 +246,7 @@ def call_ai_analysis(all_articles):
             model=AI_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=3000,
+            max_tokens=4000,
         )
         return response.choices[0].message.content
     except Exception as e:
@@ -262,9 +266,7 @@ def save_reports(report_text, all_articles):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>内容安全行业舆情报告</title>
     <style>
-        * {{
-            box-sizing: border-box;
-        }}
+        * {{ box-sizing: border-box; }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             margin: 0;
@@ -359,7 +361,7 @@ def save_reports(report_text, all_articles):
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_content += '</table>\n<thead>\n'
+                html_content += '<table>\n<thead>\n'
                 in_table = True
             # 跳过分隔行
             if re.match(r'^\|[\s\-:]+\|$', line):
@@ -406,7 +408,7 @@ def save_reports(report_text, all_articles):
     with open(f"data/raw_{timestamp}.json", "w", encoding="utf-8") as f:
         json.dump(all_articles, f, ensure_ascii=False, indent=2)
 
-    print("报告已保存: report.html (优化排版) 和 report.md")
+    print("报告已保存: report.html (优化排版+丰富内容) 和 report.md")
     print(f"原始数据保存: data/raw_{timestamp}.json")
 
 def main():
