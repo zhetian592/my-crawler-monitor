@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 优化版：报告类X信源优先 + 增强去重 + AI分批合并 + Nitter自动恢复
-# 新增功能：涉习相关负面内容无需去重（保留全部）
+# crawler.py - 最终优化版：新闻 + X 账号 + 报告类 X 官方账号（优先展示），含PDF链接提取 + 报告去重
 import os
 import json
 import feedparser
@@ -13,7 +12,6 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import openai
-from difflib import SequenceMatcher
 
 # ================= 配置 =================
 GH_TOKEN = os.environ.get("GH_MODELS_TOKEN")
@@ -26,15 +24,14 @@ AI_MODEL = "gpt-4o-mini"
 # RSSHub 实例池（仅保留稳定可用的）
 RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.ktachibana.party"]
 
-# Nitter 实例池（带健康状态 + 最后失败时间）
+# Nitter 实例池（带健康状态）
 NITTER_INSTANCES = {
-    "https://nitter.net": {"healthy": True, "fail_count": 0, "last_fail": None},
-    "https://nitter.poast.org": {"healthy": True, "fail_count": 0, "last_fail": None},
-    "https://nitter.private.coffee": {"healthy": True, "fail_count": 0, "last_fail": None},
-    "https://nitter.42l.fr": {"healthy": True, "fail_count": 0, "last_fail": None},
+    "https://nitter.net": {"healthy": True, "fail_count": 0},
+    "https://nitter.poast.org": {"healthy": True, "fail_count": 0},
+    "https://nitter.private.coffee": {"healthy": True, "fail_count": 0},
+    "https://nitter.42l.fr": {"healthy": True, "fail_count": 0},
 }
 NITTER_FAIL_THRESHOLD = 3
-NITTER_RECOVERY_HOURS = 24
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
@@ -42,7 +39,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# 报告源白名单（保持不变）
+# 报告源白名单
 REPORT_SOURCES_DOMAINS = [
     "uscc.gov", "dni.gov", "selectcommitteeontheccp.house.gov", "cnas.org",
     "gov.uk/government/collections/six-monthly-report-on-hong-kong", "csri.global",
@@ -137,9 +134,18 @@ def content_hash(title, summary):
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 def is_xi_related(title, summary):
-    """判断是否为涉习相关负面内容"""
+    """判断是否为涉习内容"""
     text = (title + " " + summary).lower()
-    return any(kw in text for kw in ["习近平", "习主席", "习总", "习核心", "习大大"])
+    return any(kw in text for kw in ["习近平", "习近", "习大大", "习总书记", "习核心"])
+
+def extract_pdf_link(text):
+    if not text:
+        return None
+    pattern = r'https?://[^\s]+\.pdf'
+    match = re.search(pattern, text, re.IGNORECASE)
+    if match:
+        return match.group(0)
+    return None
 
 def is_report_source(source_url):
     source_lower = source_url.lower()
@@ -149,17 +155,6 @@ def is_report_source(source_url):
         if f"/{username.lower()}" in source_lower or f"/{username}" in source_lower:
             return True
     return False
-
-def reset_nitter_health():
-    now = datetime.utcnow()
-    for inst, status in NITTER_INSTANCES.items():
-        if not status["healthy"] and status["last_fail"]:
-            if now - status["last_fail"] > timedelta(hours=NITTER_RECOVERY_HOURS):
-                status["healthy"] = True
-                status["fail_count"] = 0
-                print(f"  🔄 Nitter 实例 {inst} 已自动恢复")
-        elif status["healthy"]:
-            status["fail_count"] = 0
 
 def url_to_rss(url):
     rsshub = random.choice(RSSHUB_INSTANCES)
@@ -191,6 +186,7 @@ def url_to_rss(url):
         return "https://wqw2010.blogspot.com/feeds/posts/default"
     if "gov.uk/government/collections/six-monthly-report-on-hong-kong" in url:
         return "https://www.gov.uk/government/collections/six-monthly-report-on-hong-kong/rss"
+
     if "voachinese.com/China" in url:
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "voachinese.com/p/6197.html" in url:
@@ -213,7 +209,7 @@ def url_to_rss(url):
         return None
     return url
 
-def fetch_single_rss(rss_url, original_url, processed_hashes):
+def fetch_single_rss(rss_url, original_url, processed_hashes, processed_xi_hashes):
     try:
         headers = {"User-Agent": random.choice(USER_AGENTS)}
         time.sleep(random.uniform(0.5, 1.8))
@@ -236,13 +232,17 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
             if not summary:
                 summary = title
 
+            pdf_link = extract_pdf_link(summary)
             h = content_hash(title, summary)
-            # 新增逻辑：涉习相关负面内容跳过哈希去重
+
+            # ================= 涉习内容优化：重复只保留一条 =================
             if is_xi_related(title, summary):
-                pass  # 直接保留，不去重
-            elif h in processed_hashes:
-                continue
+                if h in processed_xi_hashes:
+                    continue
+                processed_xi_hashes.add(h)
             else:
+                if h in processed_hashes:
+                    continue
                 processed_hashes.add(h)
 
             items.append({
@@ -253,7 +253,7 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 "fetched_at": datetime.utcnow().isoformat(),
                 "published": published,
                 "is_report": is_report_source(original_url),
-                "is_xi_related": is_xi_related(title, summary)  # 新增标志
+                "pdf_link": pdf_link
             })
             if len(items) >= 12:
                 break
@@ -262,7 +262,7 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
         print(f"  ✗ 抓取异常 {original_url}: {e}")
         return []
 
-def fetch_with_retry(original_url, processed_hashes):
+def fetch_with_retry(original_url, processed_hashes, processed_xi_hashes):
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         healthy_instances = [inst for inst, status in NITTER_INSTANCES.items() if status["healthy"]]
@@ -272,7 +272,7 @@ def fetch_with_retry(original_url, processed_hashes):
         for nitter in healthy_instances:
             test_url = f"{nitter}/{username}/rss"
             print(f"  → 尝试 X {username} 使用 {nitter}")
-            items = fetch_single_rss(test_url, original_url, processed_hashes)
+            items = fetch_single_rss(test_url, original_url, processed_hashes, processed_xi_hashes)
             if items:
                 print(f"  ✓ X {username} 成功 via {nitter} (条数: {len(items)})")
                 NITTER_INSTANCES[nitter]["fail_count"] = 0
@@ -282,7 +282,6 @@ def fetch_with_retry(original_url, processed_hashes):
                 NITTER_INSTANCES[nitter]["fail_count"] += 1
                 if NITTER_INSTANCES[nitter]["fail_count"] >= NITTER_FAIL_THRESHOLD:
                     NITTER_INSTANCES[nitter]["healthy"] = False
-                    NITTER_INSTANCES[nitter]["last_fail"] = datetime.utcnow()
                     print(f"  ⚠ Nitter 实例 {nitter} 已标记为不健康")
             time.sleep(0.5)
         print(f"  ✗ X {username} 所有健康实例均失败")
@@ -294,7 +293,7 @@ def fetch_with_retry(original_url, processed_hashes):
     if isinstance(rss_candidates, str):
         rss_candidates = [rss_candidates]
     for rss_url in rss_candidates:
-        items = fetch_single_rss(rss_url, original_url, processed_hashes)
+        items = fetch_single_rss(rss_url, original_url, processed_hashes, processed_xi_hashes)
         if items:
             print(f"  ✓ {original_url} 成功 (条数: {len(items)}) via {rss_url}")
             return items
@@ -308,8 +307,9 @@ def fetch_all_sources():
     print(f"开始抓取 {len(RAW_SOURCES)} 个信源（过去24小时）...")
     all_items = []
     processed_hashes = set()
+    processed_xi_hashes = set()
     with ThreadPoolExecutor(max_workers=6) as executor:
-        future_to_url = {executor.submit(fetch_with_retry, url, processed_hashes): url for url in RAW_SOURCES}
+        future_to_url = {executor.submit(fetch_with_retry, url, processed_hashes, processed_xi_hashes): url for url in RAW_SOURCES}
         for future in as_completed(future_to_url):
             url = future_to_url[future]
             try:
@@ -318,69 +318,62 @@ def fetch_all_sources():
                 print(f"✓ {url} -> {len(items)} 条")
             except Exception as e:
                 print(f"✗ {url} 异常: {e}")
-    print(f"去重后共 {len(all_items)} 条（涉习内容已保留全部）")
+    print(f"去重后共 {len(all_items)} 条（普通内容正常去重，涉习重复只保留一条）")
     return all_items
 
-def parse_ai_table_rows(markdown_text):
-    rows = []
-    lines = markdown_text.split('\n')
+def deduplicate_report(report_text):
+    lines = report_text.split("\n")
+    table_lines = []
     in_table = False
+    header_line = None
+    sep_line = None
     for line in lines:
-        if line.startswith('|') and '|' in line:
+        if line.startswith("|") and "|" in line:
             if not in_table:
                 in_table = True
-                continue
-            if re.match(r'^\|[\s\-:]+\|$', line):
-                continue
-            cells = [c.strip() for c in line.split('|')[1:-1]]
-            if len(cells) >= 3:
-                summary = re.sub(r'^【报告】\s*', '', cells[0])
-                link_match = re.search(r'\[.*?\]\((.*?)\)', cells[1])
-                link = link_match.group(1) if link_match else cells[1]
-                risk = cells[2]
-                rows.append({
-                    "summary": summary,
-                    "link": link,
-                    "risk": risk,
-                    "is_report": "【报告】" in cells[0],
-                    "is_xi_related": "习近平" in cells[0] or "习近平" in cells[2]  # 保留涉习标志
-                })
-        elif in_table and line.strip() == '':
-            in_table = False
-    return rows
-
-def merge_and_deduplicate_rows(all_rows):
-    """修改后的去重逻辑：涉习相关内容无需去重"""
-    if not all_rows:
-        return []
-    unique = []
-    for row in all_rows:
-        # 如果是涉习相关，直接保留（无需去重）
-        if row.get("is_xi_related"):
-            unique.append(row)
-            continue
-
-        # 普通内容才进行相似度去重
-        duplicate = False
-        for existing in unique:
-            if existing.get("is_xi_related"):
-                continue  # 涉习条目不参与普通去重判断
-            similarity = SequenceMatcher(None, row["summary"], existing["summary"]).ratio()
-            if similarity > 0.8:
-                duplicate = True
-                if row["is_report"] and not existing["is_report"]:
-                    idx = unique.index(existing)
-                    unique[idx] = row
+                header_line = line
+            elif re.match(r'^\|[\s\-:]+\|$', line):
+                sep_line = line
+            else:
+                table_lines.append(line)
+        else:
+            if in_table:
                 break
-        if not duplicate:
-            unique.append(row)
-    return unique
+    if not header_line or not sep_line:
+        return report_text
+    seen = set()
+    unique_rows = []
+    for row in table_lines:
+        cells = [c.strip() for c in row.split("|")[1:-1]]
+        if not cells:
+            continue
+        event = cells[0]
+        if event not in seen:
+            seen.add(event)
+            unique_rows.append(row)
+    new_table = "\n".join([header_line, sep_line] + unique_rows)
+    report_lines = []
+    in_table = False
+    for line in lines:
+        if line.startswith("|") and "|" in line:
+            if not in_table:
+                in_table = True
+                report_lines.append(new_table)
+            continue
+        else:
+            if in_table:
+                in_table = False
+            report_lines.append(line)
+    return "\n".join(report_lines)
 
-def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
+def call_ai_analysis_batch(all_articles, max_tokens_per_batch=4500):
     if not GH_TOKEN:
         return "# AI 分析失败\nGH_MODELS_TOKEN 未设置"
     if not all_articles:
         return "# 无数据\n未抓取到任何文章"
+
+    def estimate_tokens(text):
+        return len(text) * 1.3
 
     report_articles = [a for a in all_articles if a.get("is_report")]
     other_articles = [a for a in all_articles if not a.get("is_report")]
@@ -389,11 +382,10 @@ def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
     content_blocks = []
     for idx, art in enumerate(sorted_articles, 1):
         tag = "【报告】" if art.get("is_report") else ""
-        block = f"{idx}. {tag}标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
+        pdf_info = f"\nPDF下载链接：{art['pdf_link']}" if art.get("pdf_link") else ""
+        block = f"{idx}. {tag}标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}{pdf_info}\n"
         content_blocks.append(block)
 
-    def estimate_tokens(text):
-        return len(text) * 1.5
     batches = []
     current_batch = []
     current_tokens = 0
@@ -402,7 +394,8 @@ def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
 **重要说明**：
 - 对于标记为 `【报告】` 的条目，请优先将其排在报告的最前面，并在最终输出的“事件简述”列中也保留 `【报告】` 标记。
 - 只输出**负面涉华**内容，不要输出正面或中性内容。
-- 使用 Markdown 表格格式，表格头：| 事件简述 | 原文链接 | 潜在风险点 |
+- 使用 Markdown 表格格式，表格头为：| 事件简述 | 原文链接 | 潜在风险点 | 报告下载链接 |
+- 如果某个条目在输入中提供了“PDF下载链接”，请将该链接填入“报告下载链接”列；如果没有，则留空。
 - 每一条负面内容单独占一行。
 - 原文链接列使用 `[查看](URL)` 格式。
 - 如果没有任何负面涉华内容，只输出一行“过去24小时无涉华负面内容”。
@@ -423,8 +416,8 @@ def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
         batches.append(current_batch)
 
     print(f"共 {len(all_articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
+    combined_report = ""
     client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
-    all_rows = []
 
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
@@ -434,28 +427,62 @@ def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
                 model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                max_tokens=2000,
+                max_tokens=3500,
             )
             batch_report = response.choices[0].message.content
-            rows = parse_ai_table_rows(batch_report)
-            all_rows.extend(rows)
-            print(f"  批次 {batch_idx} 解析出 {len(rows)} 条负面内容")
+            combined_report += f"\n## 批次 {batch_idx}\n\n{batch_report}\n"
         except Exception as e:
             print(f"AI 分析批次 {batch_idx} 失败: {e}")
+            combined_report += f"\n## 批次 {batch_idx} 分析失败\n\n异常: {str(e)}\n"
+    return combined_report
 
-    if not all_rows:
-        return "过去24小时无涉华负面内容"
+def deduplicate_report(report_text):
+    lines = report_text.split("\n")
+    table_lines = []
+    in_table = False
+    header_line = None
+    sep_line = None
+    for line in lines:
+        if line.startswith("|") and "|" in line:
+            if not in_table:
+                in_table = True
+                header_line = line
+            elif re.match(r'^\|[\s\-:]+\|$', line):
+                sep_line = line
+            else:
+                table_lines.append(line)
+        else:
+            if in_table:
+                break
+    if not header_line or not sep_line:
+        return report_text
+    seen = set()
+    unique_rows = []
+    for row in table_lines:
+        cells = [c.strip() for c in row.split("|")[1:-1]]
+        if not cells:
+            continue
+        event = cells[0]
+        if event not in seen:
+            seen.add(event)
+            unique_rows.append(row)
+    new_table = "\n".join([header_line, sep_line] + unique_rows)
+    report_lines = []
+    in_table = False
+    for line in lines:
+        if line.startswith("|") and "|" in line:
+            if not in_table:
+                in_table = True
+                report_lines.append(new_table)
+            continue
+        else:
+            if in_table:
+                in_table = False
+            report_lines.append(line)
+    return "\n".join(report_lines)
 
-    deduped_rows = merge_and_deduplicate_rows(all_rows)
-
-    final_lines = ["| 事件简述 | 原文链接 | 潜在风险点 |", "|----------|----------|------------|"]
-    for row in deduped_rows:
-        prefix = "【报告】 " if row["is_report"] else ""
-        final_lines.append(f"| {prefix}{row['summary']} | [查看]({row['link']}) | {row['risk']} |")
-    return "\n".join(final_lines)
-
-# ================= 以下函数保持不变（save_reports / main 等）=================
 def generate_html_report(report_text, all_articles):
+    report_text = deduplicate_report(report_text)
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -467,7 +494,6 @@ def generate_html_report(report_text, all_articles):
         table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
         th, td {{ border: 1px solid #dfe2e5; padding: 8px 12px; text-align: left; vertical-align: top; }}
         th {{ background-color: #f6f8fa; }}
-        td:nth-child(2) {{ text-align: center; }}
         a {{ color: #0366d6; text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
         .footer {{ margin-top: 30px; font-size: 12px; color: #6a737d; }}
@@ -561,7 +587,6 @@ def generate_index_page():
 def main():
     start = time.time()
     print("=== 开始抓取信源（过去24小时） ===")
-    reset_nitter_health()
     all_articles = fetch_all_sources()
     print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
     if not all_articles:
@@ -571,7 +596,7 @@ def main():
         with open("report.html", "w") as f:
             f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
         return
-    print("=== 调用 AI 分析（分批处理，报告优先，合并去重） ===")
+    print("=== 调用 AI 分析（分批处理，报告优先） ===")
     report = call_ai_analysis_batch(all_articles)
     save_reports_with_history(report, all_articles)
     print(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
