@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 报告信源优先展示，三列表格（无PDF列）
+# crawler.py - 最终版：自动分批 + 元数据 + 报告优先
 import os
 import json
 import feedparser
@@ -37,16 +37,13 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# 报告源白名单：仅包含 X 官方账号（12 个）
 REPORT_X_USERNAMES = [
     "USCC_GOV", "ODNIgov", "ChinaSelect", "CNASdc", "CSR_Institute",
     "hrw", "hrw_chinese", "amnesty", "FreedomHouse", "ASPI_org",
     "JamestownFdn", "CECCgov"
 ]
 
-# ================= 信源列表 =================
 RAW_SOURCES = [
-    # 新闻网站
     "https://www.voachinese.com/China",
     "https://www.voachinese.com/p/6197.html",
     "https://www.bbc.com/zhongwen/simp",
@@ -56,8 +53,6 @@ RAW_SOURCES = [
     "https://cn.nytimes.com/",
     "https://www.ntdtv.com/gb/instant-news.html",
     "https://www.epochtimes.com/gb/instant-news.htm",
-
-    # 原有 X 账号（普通）
     "https://x.com/whyyoutouzhele",
     "https://x.com/wangzhian8848",
     "https://x.com/newszg_official",
@@ -79,8 +74,6 @@ RAW_SOURCES = [
     "https://x.com/zaobaosg",
     "https://x.com/dajiyuan",
     "https://x.com/NTDChinese",
-
-    # 报告类 X 官方账号（12 个）
     "https://x.com/USCC_GOV",
     "https://x.com/ODNIgov",
     "https://x.com/ChinaSelect",
@@ -94,7 +87,6 @@ RAW_SOURCES = [
     "https://x.com/CECCgov",
 ]
 
-# ================= 辅助函数 =================
 def clean_html(text):
     if not text:
         return ""
@@ -103,7 +95,7 @@ def clean_html(text):
 
 def parse_published_strict(published_str):
     if not published_str:
-        return datetime.utcnow()
+        return None
     formats = [
         "%a, %d %b %Y %H:%M:%S %Z",
         "%Y-%m-%dT%H:%M:%S%z",
@@ -119,7 +111,7 @@ def parse_published_strict(published_str):
             return dt
         except:
             continue
-    return datetime.utcnow()
+    return None
 
 def content_hash(title, summary):
     text = (title + " " + summary)[:500]
@@ -154,7 +146,6 @@ def url_to_rss(url):
         return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
     if "x.com/" in url:
         return None
-    # 保留官网路由（很少用）
     if "uscc.gov" in url:
         return f"{rsshub}/uscc/reports"
     return url
@@ -171,10 +162,12 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
         cutoff = datetime.utcnow() - timedelta(hours=24)
         items = []
         for entry in feed.entries:
-            published = entry.get("published", entry.get("updated", ""))
-            pub_dt = parse_published_strict(published)
-            if pub_dt < cutoff:
+            published_str = entry.get("published", entry.get("updated", ""))
+            pub_dt = parse_published_strict(published_str)
+            if pub_dt is not None and pub_dt < cutoff:
                 continue
+            if pub_dt is None:
+                print(f"  ⚠ 时间字段缺失或无法解析，保留条目: {entry.get('title', '')[:50]}")
             title = clean_html(entry.get("title", ""))
             summary = clean_html(entry.get("summary", ""))
             if not summary:
@@ -186,13 +179,23 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
             if h in processed_hashes:
                 continue
             processed_hashes.add(h)
+            source_name = original_url
+            if "x.com/" in original_url:
+                parts = original_url.split("/")
+                if len(parts) > 3:
+                    source_name = "@" + parts[3]
+            else:
+                domain_match = re.search(r'https?://([^/]+)', original_url)
+                if domain_match:
+                    source_name = domain_match.group(1)
             items.append({
                 "title": title,
                 "link": entry.get("link", ""),
                 "summary": summary,
                 "source": original_url,
+                "source_name": source_name,
+                "published_str": published_str if published_str else "未知时间",
                 "fetched_at": datetime.utcnow().isoformat(),
-                "published": published,
                 "is_report": is_report
             })
             if len(items) >= 12:
@@ -274,58 +277,94 @@ def deduplicate_table_rows(rows):
     return unique
 
 def call_ai_for_category(articles, category_name):
-    """为某一类文章调用 AI 生成三列表格"""
+    """自动分批调用 AI，合并结果，返回最终表格"""
     if not articles:
         return f"## {category_name}\n\n无相关内容。\n"
     
-    content_blocks = []
-    for idx, art in enumerate(articles, 1):
-        block = f"{idx}. 标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
-        content_blocks.append(block)
-    combined = "\n".join(content_blocks)
+    # 估算 token 数（粗略，1 token ≈ 1.5 字符）
+    def estimate_tokens(text):
+        return int(len(text) / 1.5)
     
-    table_header = "| 事件简述 | 原文链接 | 潜在风险点 |"
-    table_sep = "|----------|----------|------------|"
+    # 构建每个条目的文本块
+    blocks = []
+    for art in articles:
+        meta = f"发布时间：{art.get('published_str', '未知')} | 来源：{art.get('source_name', '未知')}"
+        block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
+        blocks.append(block)
     
-    prompt = f"""你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**。
+    # 分批
+    batches = []
+    current_batch = []
+    current_tokens = 0
+    # 固定提示词部分（估算）
+    prompt_prefix = """你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**。
 
 **重要说明**：
 - 只输出**负面涉华**内容，不要输出正面或中性内容。
-- 使用 Markdown 表格格式，表格头为：{table_header}
+- 使用 Markdown 表格格式，表格头为：| 事件简述 | 原文链接 | 潜在风险点 |
 - 每一条负面内容单独占一行。
 - 原文链接列使用 `[查看](URL)` 格式。
 - 如果没有任何负面涉华内容，只输出一行“无”。
 - 不要添加任何额外解释。
 
-以下是抓取到的部分内容（共 {len(articles)} 条）：\n\n{combined}"""
+每条内容前已附带“发布时间”和“来源”，请利用这些信息判断时效性和可信度。
+
+以下是抓取到的部分内容：\n\n"""
+    prompt_tokens = estimate_tokens(prompt_prefix)
+    # 预留 1000 tokens 给输出，最大请求 8000，所以内容最大约 7000
+    max_content_tokens = 6000
+    for block in blocks:
+        block_tokens = estimate_tokens(block)
+        if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+        current_batch.append(block)
+        current_tokens += block_tokens
+    if current_batch:
+        batches.append(current_batch)
     
-    try:
-        client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
-        response = client.chat.completions.create(
-            model=AI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=2000,
-        )
-        report = response.choices[0].message.content
-        lines = report.split("\n")
-        table_rows = []
-        in_table = False
-        for line in lines:
-            if line.startswith("|") and "|" in line:
-                if not in_table:
-                    in_table = True
-                if re.match(r'^\|[\s\-:]+\|$', line):
-                    continue
-                table_rows.append(line)
-        if not table_rows:
-            return f"## {category_name}\n\n无相关内容。\n"
-        unique_rows = deduplicate_table_rows(table_rows)
-        final_table = "\n".join([table_header, table_sep] + unique_rows)
-        return f"## {category_name}\n\n{final_table}\n"
-    except Exception as e:
-        print(f"AI 分析 {category_name} 失败: {e}")
-        return f"## {category_name}\n\n分析失败：{str(e)}\n"
+    print(f"  → {category_name}: {len(articles)} 条内容，分为 {len(batches)} 批")
+    
+    all_table_rows = []
+    table_header = "| 事件简述 | 原文链接 | 潜在风险点 |"
+    table_sep = "|----------|----------|------------|"
+    
+    client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
+    for batch_idx, batch in enumerate(batches, 1):
+        combined = "\n".join(batch)
+        prompt = prompt_prefix + combined
+        try:
+            response = client.chat.completions.create(
+                model=AI_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=2000,
+            )
+            report = response.choices[0].message.content
+            # 提取表格行
+            lines = report.split("\n")
+            in_table = False
+            for line in lines:
+                if line.startswith("|") and "|" in line:
+                    if not in_table:
+                        in_table = True
+                    if re.match(r'^\|[\s\-:]+\|$', line):
+                        continue
+                    # 避免将表头再次加入（表头可能在第一批之后又被加入）
+                    if line.startswith(table_header):
+                        continue
+                    all_table_rows.append(line)
+        except Exception as e:
+            print(f"  ✗ AI 分析批次 {batch_idx} 失败: {e}")
+            continue
+    
+    if not all_table_rows:
+        return f"## {category_name}\n\n无相关内容。\n"
+    
+    unique_rows = deduplicate_table_rows(all_table_rows)
+    final_table = "\n".join([table_header, table_sep] + unique_rows)
+    return f"## {category_name}\n\n{final_table}\n"
 
 def generate_html_report(report_text, all_articles):
     html_content = f"""<!DOCTYPE html>
@@ -358,7 +397,7 @@ def generate_html_report(report_text, all_articles):
             html_content += f"<h2>{line[3:]}</h2>\n"
         elif line.startswith("|") and "|" in line:
             if not in_table:
-                html_content += '</table>\n<thead>\n'
+                html_content += '<table>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
