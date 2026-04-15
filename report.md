@@ -1,12 +1,23 @@
 | 事件简述 | 原文链接 | 潜在风险点 |
 |----------|----------|------------|
-| 美国封锁霍尔木兹海峡，称中国为“不可靠伙伴”，施压中国对伊朗施加影响。 | [查看](https://www.dw.com/zh/美國封鎖霍爾木茲海峽-逼中國坐上談判桌？/a-76785198?maca=chi-rss-chi-all-1127-rdf) | 外交风险 + 中美关系紧张 |
-| 中国3月出口同比增长仅为2.5%，专家认为与伊朗战争及其对全球需求的冲击有关。 | [查看](https://www.dw.com/zh/伊战影响：中国3月出口同比增幅锐减/a-76779614?maca=chi-rss-chi-all-1127-rdf) | 经济风险 + 出口下滑影响经济 |
-| 习近平就伊朗战争表态，隐晦批评美国，显示中美关系再遇挑战。 | [查看](https://cn.nytimes.com/world/20260415/xi-iran-war-china/?utm_source=RSS) | 外交风险 + 中美关系紧张 |
-| 中国人权律师余文生刑满获释，国际组织呼吁中国当局确保其自由。 | [查看](https://www.dw.com/zh/人权律师余文生刑满获释-25家国际组织发表联署声明/a-76777630?maca=chi-rss-chi-all-1127-rdf) | 社会维稳 + 人权问题引发国际关注 |
-| 山东律师于凯因反映问题被刑事拘留，显示法律维权环境恶化。 | [查看](https://rfa.org/mandarin/zhengzhi/renquan/2026/03/30/china-human-rights-lawyer-709-criminal-detention-crime-of-disrupting-public-order/) | 社会维稳 + 法律维权环境恶化 |
-| 中国清明档电影集中上映，官方强化叙事推介结构，显示对意识形态的控制。 | [查看](https://rfa.org/mandarin/wenhua/2026/04/03/china-movie-mainstream-theme-ideology-revolution-qingming-festival/) | 政治敏感 + 意识形态控制 |
-| 广州市第一中学跳楼事件，校方不承认责任，反映教育系统问题。 | [查看](https://nitter.net/whyyoutouzhele/status/2044323047386100076#m) | 社会稳定 + 教育系统问题 |
-| 北京天安门广场安检升级，因游客携带汽油，反映社会治安问题。 | [查看](https://nitter.net/whyyoutouzhele/status/2044314782073843865#m) | 社会稳定 + 治安问题 |
-| 中国居民部门新增人民币贷款大幅下降，经济形势严峻。 | [查看](https://nitter.net/whyyoutouzhele/status/2044309752742568085#m) | 经济风险 + 贷款下降影响经济 |
-| 中国加强跨境数据监管，显示对网络管理的严格控制。 | [查看](https://rfa.org/mandarin/shehui/2026/04/09/china-internet-vpn-block-greatfirewall/) | 政治敏感 + 网络管理控制 |
+| 美国财长批评中国为“不可靠伙伴”，施压北京对伊朗施加影响力。 | [查看](https://www.dw.com/zh/美國封鎖霍爾木茲海峽-逼中國坐上談判桌？/a-76785198?maca=chi-rss-chi-all-1127-rdf) | 外交风险：中美关系紧张加剧。 |
+| 中国3月出口增幅锐减，专家认为与伊朗战争及全球需求不确定性有关。 | [查看](https://www.dw.com/zh/伊战影响：中国3月出口同比增幅锐减/a-76779614?maca=chi-rss-chi-all-1127-rdf) | 经济风险：出口下滑影响经济增长。 |
+| 25家国际组织呼吁中国当局确保人权律师余文生的自由。 | [查看](https://www.dw.com/zh/人权律师余文生刑满获释-25家国际组织发表联署声明/a-76777630?maca=chi-rss-chi-all-1127-rdf) | 社会稳定：人权问题引发国际关注。 |
+| 中国对稀土出口管制影响欧洲企业，欧盟商会警告依赖风险。 | [查看](https://www.dw.com/zh/没人知道，如果没有中国，欧洲还能不能生产牙膏/a-76775272?maca=chi-rss-chi-all-1127-rdf) | 经济风险：对外依赖加大，可能影响经济稳定。 |
+| 美国对伊朗的军事打击可能影响中国的经济利益。 | [查看](https://www.voachinese.com/a/8115674.html) | 外交风险：中美关系因伊朗问题再度紧张。 |
+| 中国在霍尔木兹海峡的船只通航权受到美国封锁影响。 | [查看](https://www.bbc.com/zhongwen/articles/cp8444l85yro/trad?at_medium=RSS&at_campaign=rss) | 外交风险：中美在中东的利益冲突加剧。 |
+| 中国加强对跨境数据监管，可能影响外企运营。 | [查看](https://rfa.org/mandarin/shehui/2026/04/09/china-internet-vpn-block-greatfirewall/) | 经济风险：外企面临更大合规压力。 |
+| 中国监控系统扩展引发对隐私的担忧。 | [查看](https://rfa.org/mandarin/shehui/2026/04/08/china-cctv-surveillance-internet-stability-maintenance/) | 社会稳定：监控引发民众不满和抗议。 |
+| 中国人权律师谢阳被判刑，引发国际关注。 | [查看](https://rfa.org/mandarin/zhengzhi/renquan/2026/03/26/china-human-rights-lawyers-sentencing/) | 社会稳定：人权问题引发国际舆论压力。 |
+| 中国多地养老保险断缴率上升，反映社会保障问题。 | [查看](https://rfa.org/mandarin/shehui/2026/03/31/china-economy-social-security-pension-insurance/) | 社会稳定：养老保障问题可能引发社会不满。 |
+| 香港国安法法官判决法轮功学员煽动罪，言论自由受到限制。 | [查看](https://www.rfi.fr/cn/%E6%B8%AF%E6%BE%B3%E5%8F%B0/20260415-%E6%B3%95%E8%BD%AE%E5%8A%9F%E5%AD%A6%E5%91%98%E5%8F%91%E5%B8%83%E7%85%A7%E5%8A%A8%E5%B8%96%E6%96%87%E5%88%A4%E5%9B%9A%E4%B8%80%E5%B9%B4-%E6%B3%95%E5%AE%98%E6%8C%87%E4%BB%A5%E8%A8%80%E8%AE%BA%E8%87%AA%E7%94%B1%E5%8C%85%E8%A3%85%E6%94%BF%E6%B2%BB%E7%AB%8B%E5%9C%BA%E5%B1%9E%E6%8C%91%E6%88%98%E6%94%BF%E6%9D%83) | 社会稳定：言论自由受限引发国际关注。 |
+| 中国加强网络管理，可能影响言论自由和信息流通。 | [查看](https://rfa.org/mandarin/shehui/2026/04/09/china-internet-vpn-block-greatfirewall/) | 社会稳定：网络管控引发民众不满。 |
+| 中国人权律师余文生获释，国际组织呼吁改善人权状况。 | [查看](https://www.dw.com/zh/人权律师余文生刑满获释-25家国际组织发表联署声明/a-76777630?maca=chi-rss-chi-all-1127-rdf) | 社会稳定：人权问题引发国际舆论压力。 |
+| 中国的平衡外交在伊朗与美国之间面临挑战。 | [查看](https://www.rfi.fr/cn/%E4%B8%93%E6%A0%8F%E6%A3%80%E7%B4%A2/%E6%B3%95%E5%9B%BD%E4%B8%96%E7%95%8C%E6%8A%A5/20260414-%E4%B8%AD%E5%9B%BD%E7%9A%84%E5%B9%B3%E8%A1%A1%E6%9C%AF-%E6%97%A2%E8%A6%81%E9%A1%BE%E5%8F%8A%E4%BC%8A%E6%9C%97%E8%BF%99%E4%B8%80%E4%BC%99%E4%BC%B4%EF%BC%8C%E5%8F%88%E8%A6%81%E9%A1%BE%E5%8F%8A%E7%89%B9%E6%9C%97%E6%99%AE%E8%BF%99%E4%B8%80%E5%AF%B9%E6%89%8B) | 外交风险：中美关系因伊朗问题再度紧张。 |
+| 中国加强对香港的管控，外部势力干预风险加大。 | [查看](https://www.rfi.fr/cn/%E6%B8%AF%E6%BE%B3%E5%8F%B0/20260415-%E4%B8%AD%E5%9B%BD%E6%9C%AA%E6%94%BE%E6%9D%BE%E9%A6%99%E6%B8%AF%E5%9B%BD%E5%AE%89-%E5%A4%8F%E5%AE%9D%E9%BE%99%E5%86%8D%E4%BF%83%E4%B9%83%E5%A4%96%E5%8A%9B%E5%B9%B2%E9%A2%84-%E5%8F%88%E6%89%B9%E6%9C%89%E4%BA%BA%E5%80%9F%E5%A4%A7%E7%81%AB%E4%BB%A5%E7%81%BE%E4%B9%B1%E6%B8%AF) | 社会稳定：外部势力干预风险加大。 |
+| 中国在霍尔木兹海峡的船只通航权受到美国封锁影响。 | [查看](https://www.bbc.com/zhongwen/articles/cp8444l85yro/trad?at_medium=RSS&at_campaign=rss) | 外交风险：中美在中东的利益冲突加剧。 |
+| 中国人权律师谢阳被判刑，引发国际关注。 | [查看](https://rfa.org/mandarin/zhengzhi/renquan/2026/03/26/china-human-rights-lawyers-sentencing/) | 社会稳定：人权问题引发国际舆论压力。 |
+| 中国多地养老保险断缴率上升，反映社会保障问题。 | [查看](https://rfa.org/mandarin/shehui/2026/03/31/china-economy-social-security-pension-insurance/) | 社会稳定：养老保障问题可能引发社会不满。 |
+| 中国加强网络管理，可能影响言论自由和信息流通。 | [查看](https://rfa.org/mandarin/shehui/2026/04/09/china-internet-vpn-block-greatfirewall/) | 社会稳定：网络管控引发民众不满。 |
+| 中国的平衡外交在伊朗与美国之间面临挑战。 | [查看](https://www.rfi.fr/cn/%E4%B8%93%E6%A0%8F%E6%A3%80%E7%B4%A2/%E6%B3%95%E5%9B%BD%E4%B8%96%E7%95%8C%E6%8A%A5/20260414-%E4%B8%AD%E5%9B%BD%E7%9A%84%E5%B9%B3%E8%A1%A1%E6%9C%AF-%E6%97%A2%E8%A6%81%E9%A1%BE%E5%8F%8A%E4%BC%8A%E6%9C%97%E8%BF%99%E4%B8%80%E4%BC%99%E4%BC%B4%EF%BC%8C%E5%8F%88%E8%A6%81%E9%A1%BE%E5%8F%8A%E7%89%B9%E6%9C%97%E6%99%AE%E8%BF%99%E4%B8%80%E5%AF%B9%E6%89%8B) | 外交风险：中美关系因伊朗问题再度紧张。 |
+| 中国加强对香港的管控，外部势力干预风险加大。 | [查看](https://www.rfi.fr/cn/%E6%B8%AF%E6%BE%B3%E5%8F%B0/20260415-%E4%B8%AD%E5%9B%BD%E6%9C%AA%E6%94%BE%E6%9D%BE%E9%A6%99%E6%B8%AF%E5%9B%BD%E5%AE%89-%E5%A4%8F%E5%AE%9D%E9%BE%99%E5%86%8D%E4%BF%83%E4%B9%83%E5%A4%96%E5%8A%9B%E5%B9%B2%E9%A2%84-%E5%8F%88%E6%89%B9%E6%9C%89%E4%BA%BA%E5%80%9F%E5%A4%A7%E7%81%AB%E4%BB%A5%E7%81%BE%E4%B9%B1%E6%B8%AF) | 社会稳定：外部势力干预风险加大。 |
