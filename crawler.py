@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 稳定版：官方 RSS 优先 + X 账号抓取 + AI 筛选涉华负面内容
+# crawler.py - 优化版：官方 RSS 优先 + 多实例重试 + AI 筛选涉华负面内容
 import os
 import json
 import feedparser
@@ -20,19 +20,28 @@ if not GH_TOKEN:
 AI_BASE_URL = "https://models.inference.ai.azure.com"
 AI_MODEL = "gpt-4o-mini"
 
-RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.feeded.xyz"]
+# RSSHub 实例池（随机选择，降低限流风险）
+RSSHUB_INSTANCES = [
+    "https://rsshub.app",
+    "https://rsshub.bili.xyz",
+    "https://rsshub.ktachibana.party",
+    "https://rsshub.feeded.xyz",
+]
+
+# Nitter 实例（用于 X 账号）
 NITTER_INSTANCES = [
     "https://nitter.net",
     "https://nitter.poast.org",
-    "https://nitter.42l.fr",
-    "https://nitter.snopyta.org",
     "https://nitter.private.coffee",
+    "https://nitter.42l.fr",
 ]
 
+# 随机 User-Agent 池
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
 ]
 
 # ================= 信源列表 =================
@@ -47,6 +56,7 @@ RAW_SOURCES = [
     "https://www.zaobao.com/realtime/china",
     "https://www.ntdtv.com/gb/instant-news.html",
     "https://www.epochtimes.com/gb/instant-news.htm",
+    # X 账号（稳定可抓取的）
     "https://x.com/whyyoutouzhele",
     "https://x.com/wangzhian8848",
     "https://x.com/newszg_official",
@@ -54,7 +64,6 @@ RAW_SOURCES = [
     "https://x.com/torontobigface",
     "https://x.com/hrw_chinese",
     "https://x.com/dayangelcp",
-    "https://x.com/chinatransition",
     "https://x.com/xinwendiaocha",
     "https://x.com/xiaojingcanxue",
     "https://x.com/ZhouFengSuo",
@@ -65,7 +74,6 @@ RAW_SOURCES = [
     "https://x.com/amnestychinese",
     "https://x.com/liangziyueqian1",
     "https://x.com/badiucao",
-    "https://x.com/jielijian",
     "https://x.com/wurenhua",
 ]
 
@@ -96,26 +104,53 @@ def parse_published(published_str):
     return None
 
 def url_to_rss(url):
+    """优化版：优先官方 RSS + 多 RSSHub 实例 + 备用路由"""
+    rsshub = random.choice(RSSHUB_INSTANCES)
+
+    # 联合早报 Zaobao
+    if "zaobao.com/realtime/china" in url:
+        return [
+            f"{rsshub}/zaobao/realtime/china",
+            "https://www.zaobao.com/realtime/china/rss",
+        ]
+
+    # RFA
+    if "rfa.org/mandarin" in url:
+        return [
+            f"{rsshub}/rfa/mandarin",
+            "https://www.rfa.org/mandarin/rss",
+            "https://www.rfa.org/mandarin/rss/china.xml",
+        ]
+
+    # 新唐人 NTDTV
+    if "ntdtv.com" in url:
+        return [
+            f"{rsshub}/ntdtv/instant-news",
+            "https://www.ntdtv.com/gb/rss.xml",
+            "https://www.ntdtv.com/gb/feed",
+        ]
+
+    # 大纪元 EpochTimes
+    if "epochtimes.com" in url:
+        return [
+            f"{rsshub}/epochtimes/gb",
+            "https://www.epochtimes.com/gb/nsc112.htm?rss=1",
+            "https://www.epochtimes.com/gb/feed",
+        ]
+
+    # 其他源
     if "voachinese.com/China" in url:
-        return ["https://rsshub.app/voachinese/china", "http://feeds.feedburner.com/voacn"]
+        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "voachinese.com/p/6197.html" in url:
-        return ["https://rsshub.app/voachinese/6197", "http://feeds.feedburner.com/voacn"]
+        return [f"{rsshub}/voachinese/6197", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
-    if "rfa.org/mandarin" in url:
-        return [f"{inst}/rfa/mandarin" for inst in RSSHUB_INSTANCES]
     if "dw.com/zh" in url:
         return "https://rss.dw.com/rdf/rss-chi-all"
     if "rfi.fr/cn" in url:
         return "https://www.rfi.fr/cn/general/rss"
     if "cn.nytimes.com" in url:
         return "https://cn.nytimes.com/rss/news.xml"
-    if "zaobao.com/realtime/china" in url:
-        return f"{RSSHUB_INSTANCES[0]}/zaobao/realtime/china"
-    if "ntdtv.com/gb/instant-news.html" in url:
-        return f"{RSSHUB_INSTANCES[0]}/ntdtv/instant-news"
-    if "epochtimes.com/gb/instant-news.htm" in url:
-        return "https://www.epochtimes.com/gb/nsc112.htm?rss=1"
     if "x.com/" in url:
         return None
     return url
@@ -123,7 +158,8 @@ def url_to_rss(url):
 def fetch_single_rss(rss_url, original_url):
     try:
         headers = {"User-Agent": random.choice(USER_AGENTS)}
-        resp = requests.get(rss_url, headers=headers, timeout=20)
+        time.sleep(random.uniform(0.5, 1.8))   # 随机延时，模拟人类
+        resp = requests.get(rss_url, headers=headers, timeout=25)
         if resp.status_code != 200:
             print(f"  ⚠ HTTP {resp.status_code} - {original_url}")
             return []
@@ -190,7 +226,7 @@ def fetch_with_retry(original_url):
 def fetch_all_sources():
     print(f"开始抓取 {len(RAW_SOURCES)} 个信源（过去24小时）...")
     all_items = []
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=6) as executor:  # 降低并发避免被封
         future_to_url = {executor.submit(fetch_with_retry, url): url for url in RAW_SOURCES}
         for future in as_completed(future_to_url):
             url = future_to_url[future]
@@ -282,11 +318,9 @@ def call_ai_analysis(all_articles):
         return f"# AI 分析失败\n异常: {str(e)}"
 
 def save_reports(report_text, all_articles):
-    # 保存 Markdown
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(report_text)
 
-    # 生成 HTML 报告（链接可点击）
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -314,7 +348,7 @@ def save_reports(report_text, all_articles):
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_content += '<tr>\n<thead>\n'
+                html_content += '<table>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -350,7 +384,6 @@ def save_reports(report_text, all_articles):
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    # 保存原始数据（便于排查）
     os.makedirs("data", exist_ok=True)
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     with open(f"data/raw_{timestamp}.json", "w", encoding="utf-8") as f:
@@ -360,32 +393,22 @@ def save_reports(report_text, all_articles):
     print(f"原始数据保存: data/raw_{timestamp}.json")
 
 def main():
-    try:
-        start = time.time()
-        print("=== 开始抓取信源（过去24小时） ===")
-        all_articles = fetch_all_sources()
-        all_articles = mark_report_articles(all_articles)
-        print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
-        if not all_articles:
-            print("⚠️ 未抓到任何文章")
-            with open("report.md", "w") as f:
-                f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
-            with open("report.html", "w") as f:
-                f.write("<h1>抓取失败</h1><p>未抓到任何文章。</p>")
-            return
-        print("=== 调用 AI 分析（GitHub Models） ===")
-        report = call_ai_analysis(all_articles)
-        save_reports(report, all_articles)
-        print(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
-    except Exception as e:
-        import traceback
-        error_msg = f"# 运行失败\n\n异常类型: {type(e).__name__}\n异常内容: {str(e)}\n\n堆栈信息:\n{traceback.format_exc()}"
-        print(error_msg)
-        with open("report.md", "w", encoding="utf-8") as f:
-            f.write(error_msg)
-        with open("report.html", "w", encoding="utf-8") as f:
-            f.write(f"<h1>运行失败</h1><pre>{error_msg}</pre>")
-        raise
+    start = time.time()
+    print("=== 开始抓取信源（过去24小时） ===")
+    all_articles = fetch_all_sources()
+    all_articles = mark_report_articles(all_articles)
+    print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
+    if not all_articles:
+        print("⚠️ 未抓到任何文章")
+        with open("report.md", "w") as f:
+            f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
+        with open("report.html", "w") as f:
+            f.write("<h1>抓取失败</h1><p>未抓到任何文章。</p>")
+        return
+    print("=== 调用 AI 分析（GitHub Models） ===")
+    report = call_ai_analysis(all_articles)
+    save_reports(report, all_articles)
+    print(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
 
 if __name__ == "__main__":
     main()
