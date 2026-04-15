@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 最终版：自动分批 + 元数据 + 报告优先
+# crawler.py - 最终版：报告优先 + 自动分批 + 元数据（VOA已替换为X账号）
 import os
 import json
 import feedparser
@@ -43,9 +43,9 @@ REPORT_X_USERNAMES = [
     "JamestownFdn", "CECCgov"
 ]
 
+# ================= 信源列表 =================
 RAW_SOURCES = [
-    "https://www.voachinese.com/China",
-    "https://www.voachinese.com/p/6197.html",
+    # 新闻网站（不含VOA RSS）
     "https://www.bbc.com/zhongwen/simp",
     "https://www.rfa.org/mandarin",
     "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
@@ -53,6 +53,8 @@ RAW_SOURCES = [
     "https://cn.nytimes.com/",
     "https://www.ntdtv.com/gb/instant-news.html",
     "https://www.epochtimes.com/gb/instant-news.htm",
+
+    # 普通 X 账号（包括新增的 VOAChinese）
     "https://x.com/whyyoutouzhele",
     "https://x.com/wangzhian8848",
     "https://x.com/newszg_official",
@@ -74,6 +76,9 @@ RAW_SOURCES = [
     "https://x.com/zaobaosg",
     "https://x.com/dajiyuan",
     "https://x.com/NTDChinese",
+    "https://x.com/VOAChinese",          # VOA 官方 X 账号（替代原 RSS）
+
+    # 报告类 X 官方账号
     "https://x.com/USCC_GOV",
     "https://x.com/ODNIgov",
     "https://x.com/ChinaSelect",
@@ -87,6 +92,7 @@ RAW_SOURCES = [
     "https://x.com/CECCgov",
 ]
 
+# ================= 辅助函数 =================
 def clean_html(text):
     if not text:
         return ""
@@ -126,10 +132,8 @@ def is_report_source(source_url):
 
 def url_to_rss(url):
     rsshub = random.choice(RSSHUB_INSTANCES)
-    if "voachinese.com/China" in url:
+    if "voachinese.com" in url:   # 已无VOA RSS，保留以防万一
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
-    if "voachinese.com/p/6197.html" in url:
-        return [f"{rsshub}/voachinese/6197", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
     if "rfa.org/mandarin" in url:
@@ -281,22 +285,18 @@ def call_ai_for_category(articles, category_name):
     if not articles:
         return f"## {category_name}\n\n无相关内容。\n"
     
-    # 估算 token 数（粗略，1 token ≈ 1.5 字符）
     def estimate_tokens(text):
         return int(len(text) / 1.5)
     
-    # 构建每个条目的文本块
     blocks = []
     for art in articles:
         meta = f"发布时间：{art.get('published_str', '未知')} | 来源：{art.get('source_name', '未知')}"
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks.append(block)
     
-    # 分批
     batches = []
     current_batch = []
     current_tokens = 0
-    # 固定提示词部分（估算）
     prompt_prefix = """你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**。
 
 **重要说明**：
@@ -311,7 +311,6 @@ def call_ai_for_category(articles, category_name):
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
-    # 预留 1000 tokens 给输出，最大请求 8000，所以内容最大约 7000
     max_content_tokens = 6000
     for block in blocks:
         block_tokens = estimate_tokens(block)
@@ -329,7 +328,6 @@ def call_ai_for_category(articles, category_name):
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 潜在风险点 |"
     table_sep = "|----------|----------|------------|"
-    
     client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
@@ -342,7 +340,6 @@ def call_ai_for_category(articles, category_name):
                 max_tokens=2000,
             )
             report = response.choices[0].message.content
-            # 提取表格行
             lines = report.split("\n")
             in_table = False
             for line in lines:
@@ -351,7 +348,6 @@ def call_ai_for_category(articles, category_name):
                         in_table = True
                     if re.match(r'^\|[\s\-:]+\|$', line):
                         continue
-                    # 避免将表头再次加入（表头可能在第一批之后又被加入）
                     if line.startswith(table_header):
                         continue
                     all_table_rows.append(line)
@@ -409,7 +405,7 @@ def generate_html_report(report_text, all_articles):
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_content += f"<td>{cell}</td>\n"
-            html_content += "</tr>\n"
+            html_content += "<tr>\n"
         else:
             if in_table:
                 html_content += "</thead><tbody></tbody></table>\n"
