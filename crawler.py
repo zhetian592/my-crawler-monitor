@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 优化版：严格时间过滤 + token 分批 + 精确优先级 + 历史归档 + 跨源去重 + Nitter 健康检查
+# crawler.py - 最终优化版：稳定信源 + 报告优先 + 历史归档 + 分批AI
 import os
 import json
 import feedparser
@@ -21,6 +21,7 @@ if not GH_TOKEN:
 AI_BASE_URL = "https://models.inference.ai.azure.com"
 AI_MODEL = "gpt-4o-mini"
 
+# RSSHub 实例池
 RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.ktachibana.party"]
 
 # Nitter 实例池（带健康状态）
@@ -30,7 +31,6 @@ NITTER_INSTANCES = {
     "https://nitter.private.coffee": {"healthy": True, "fail_count": 0},
     "https://nitter.42l.fr": {"healthy": True, "fail_count": 0},
 }
-# 禁用阈值：连续失败 3 次则标记为不健康
 NITTER_FAIL_THRESHOLD = 3
 
 USER_AGENTS = [
@@ -47,12 +47,58 @@ REPORT_SOURCES_WHITELIST = [
     "chinapower.csis.org", "jamestown.org", "cecc.gov", "wqw2010.blogspot.com"
 ]
 
-# ================= 信源列表（与之前相同，此处省略，请保留你最后的 RAW_SOURCES） =================
+# ================= 信源列表（完整版） =================
 RAW_SOURCES = [
-    # ... 这里保持你原有的完整列表（包括新闻、X账号、报告源）...
-    # 由于篇幅限制，请从你之前的代码中复制 RAW_SOURCES 完整内容到这里
+    # 新闻网站
+    "https://www.voachinese.com/China",
+    "https://www.voachinese.com/p/6197.html",
+    "https://www.bbc.com/zhongwen/simp",
+    "https://www.rfa.org/mandarin",
+    "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
+    "https://www.rfi.fr/cn/",
+    "https://cn.nytimes.com/",
+    "https://www.ntdtv.com/gb/instant-news.html",
+    "https://www.epochtimes.com/gb/instant-news.htm",
+
+    # X 账号（原有稳定账号 + 新增三个）
+    "https://x.com/whyyoutouzhele",
+    "https://x.com/wangzhian8848",
+    "https://x.com/newszg_official",
+    "https://x.com/wangdan1989",
+    "https://x.com/torontobigface",
+    "https://x.com/hrw_chinese",
+    "https://x.com/dayangelcp",
+    "https://x.com/xinwendiaocha",
+    "https://x.com/xiaojingcanxue",
+    "https://x.com/ZhouFengSuo",
+    "https://x.com/lidangzzz",
+    "https://x.com/fangshimin",
+    "https://x.com/UHRP_Chinese",
+    "https://x.com/jhf8964",
+    "https://x.com/amnestychinese",
+    "https://x.com/liangziyueqian1",
+    "https://x.com/badiucao",
+    "https://x.com/wurenhua",
+    "https://x.com/zaobaosg",
+    "https://x.com/dajiyuan",
+    "https://x.com/NTDChinese",
+
+    # 报告型信源
+    "https://wqw2010.blogspot.com/feeds/posts/default",
+    "https://www.uscc.gov/research",
+    "https://www.dni.gov/files/ODNI/documents/assessments/",
+    "https://selectcommitteeontheccp.house.gov/",
+    "https://www.cnas.org/publications",
+    "https://www.gov.uk/government/collections/six-monthly-report-on-hong-kong",
+    "https://www.csri.global/research",
+    "https://www.hrw.org/asia/china",
+    "https://www.amnesty.org/en/location/asia-and-the-pacific/east-asia/china/",
+    "https://freedomhouse.org/country/china",
+    "https://www.aspi.org.au/report",
+    "https://chinapower.csis.org/",
+    "https://jamestown.org/programs/chinabrief/",
+    "https://www.cecc.gov/",
 ]
-# 注意：实际使用时请确保 RAW_SOURCES 已包含所有你需要的源
 
 # ================= 辅助函数 =================
 def clean_html(text):
@@ -82,15 +128,72 @@ def parse_published_strict(published_str):
             continue
     return None
 
+def content_hash(title, summary):
+    """生成内容哈希，用于跨源去重"""
+    text = (title + " " + summary)[:500]
+    return hashlib.md5(text.encode('utf-8')).hexdigest()
+
 def is_report_source(source_url):
     """精确判断是否为报告型信源"""
     source_lower = source_url.lower()
     return any(domain in source_lower for domain in REPORT_SOURCES_WHITELIST)
 
-def content_hash(title, summary):
-    """生成内容哈希，用于跨源去重"""
-    text = (title + " " + summary)[:500]
-    return hashlib.md5(text.encode('utf-8')).hexdigest()
+def url_to_rss(url):
+    """返回 RSS 地址（字符串或列表）"""
+    rsshub = random.choice(RSSHUB_INSTANCES)
+
+    # 报告型信源优先尝试 RSSHub 路由
+    if "uscc.gov" in url:
+        return f"{rsshub}/uscc/reports"
+    if "dni.gov" in url:
+        return f"{rsshub}/dni/assessments"
+    if "selectcommitteeontheccp.house.gov" in url:
+        return f"{rsshub}/house/selectcommitteeontheccp"
+    if "cnas.org" in url:
+        return f"{rsshub}/cnas/publications"
+    if "csri.global" in url:
+        return f"{rsshub}/csri/research"
+    if "hrw.org" in url:
+        return f"{rsshub}/hrw/china"
+    if "amnesty.org" in url:
+        return f"{rsshub}/amnesty/china"
+    if "freedomhouse.org" in url:
+        return f"{rsshub}/freedomhouse/china"
+    if "aspi.org.au" in url:
+        return f"{rsshub}/aspi/reports"
+    if "chinapower.csis.org" in url:
+        return f"{rsshub}/csis/chinapower"
+    if "jamestown.org" in url:
+        return f"{rsshub}/jamestown/chinabrief"
+    if "cecc.gov" in url:
+        return f"{rsshub}/cecc/reports"
+    if "wqw2010.blogspot.com" in url:
+        return "https://wqw2010.blogspot.com/feeds/posts/default"
+    if "gov.uk/government/collections/six-monthly-report-on-hong-kong" in url:
+        return "https://www.gov.uk/government/collections/six-monthly-report-on-hong-kong/rss"
+
+    # 新闻网站
+    if "voachinese.com/China" in url:
+        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
+    if "voachinese.com/p/6197.html" in url:
+        return [f"{rsshub}/voachinese/6197", "http://feeds.feedburner.com/voacn"]
+    if "bbc.com/zhongwen/simp" in url:
+        return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
+    if "rfa.org/mandarin" in url:
+        return [f"{rsshub}/rfa/mandarin", "https://www.rfa.org/mandarin/rss"]
+    if "dw.com/zh" in url:
+        return "https://rss.dw.com/rdf/rss-chi-all"
+    if "rfi.fr/cn" in url:
+        return "https://www.rfi.fr/cn/general/rss"
+    if "cn.nytimes.com" in url:
+        return "https://cn.nytimes.com/rss/news.xml"
+    if "ntdtv.com" in url:
+        return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
+    if "epochtimes.com" in url:
+        return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
+    if "x.com/" in url:
+        return None
+    return url
 
 def fetch_single_rss(rss_url, original_url, processed_hashes):
     """抓取 RSS，严格时间过滤 + 内容哈希去重"""
@@ -109,7 +212,6 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
             published = entry.get("published", entry.get("updated", ""))
             pub_dt = parse_published_strict(published)
             if pub_dt is None:
-                # 无法解析时间，则跳过（避免旧内容混入）
                 print(f"  ⚠ 跳过无有效时间的条目: {entry.get('title', '')[:50]}")
                 continue
             if pub_dt < cutoff:
@@ -143,10 +245,8 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
 
 def fetch_with_retry(original_url, processed_hashes):
     """带重试的抓取，支持 X 账号健康检查"""
-    # X 账号处理
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
-        # 获取当前健康的 Nitter 实例列表
         healthy_instances = [inst for inst, status in NITTER_INSTANCES.items() if status["healthy"]]
         if not healthy_instances:
             print(f"  ✗ 无健康的 Nitter 实例，跳过 X 账号 {username}")
@@ -157,7 +257,6 @@ def fetch_with_retry(original_url, processed_hashes):
             items = fetch_single_rss(test_url, original_url, processed_hashes)
             if items:
                 print(f"  ✓ X {username} 成功 via {nitter} (条数: {len(items)})")
-                # 成功，重置该实例的失败计数
                 NITTER_INSTANCES[nitter]["fail_count"] = 0
                 return items
             else:
@@ -170,7 +269,7 @@ def fetch_with_retry(original_url, processed_hashes):
         print(f"  ✗ X {username} 所有健康实例均失败")
         return []
     # 普通网站
-    rss_candidates = url_to_rss(original_url)  # 需要你保留原有的 url_to_rss 函数
+    rss_candidates = url_to_rss(original_url)
     if not rss_candidates:
         print(f"  ✗ 无法生成 RSS 地址: {original_url}")
         return []
@@ -190,7 +289,6 @@ def fetch_with_retry(original_url, processed_hashes):
 def fetch_all_sources():
     print(f"开始抓取 {len(RAW_SOURCES)} 个信源（过去24小时）...")
     all_items = []
-    # 使用全局哈希集合跨源去重
     processed_hashes = set()
     with ThreadPoolExecutor(max_workers=6) as executor:
         future_to_url = {executor.submit(fetch_with_retry, url, processed_hashes): url for url in RAW_SOURCES}
@@ -206,27 +304,21 @@ def fetch_all_sources():
     return all_items
 
 def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
-    """
-    分批调用 AI，避免 token 超限。
-    返回合并后的 Markdown 报告。
-    """
+    """分批调用 AI，避免 token 超限"""
     if not GH_TOKEN:
         return "# AI 分析失败\nGH_MODELS_TOKEN 未设置"
     if not all_articles:
         return "# 无数据\n未抓取到任何文章"
 
-    # 估算 token 数（粗略：1 token ≈ 0.75 汉字，取 1.5 倍安全）
     def estimate_tokens(text):
         return len(text) * 1.5
 
-    # 构建内容列表
     content_blocks = []
     for idx, art in enumerate(all_articles, 1):
         tag = "【报告】" if art.get("is_report") else ""
         block = f"{idx}. {tag}标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         content_blocks.append(block)
 
-    # 分批
     batches = []
     current_batch = []
     current_tokens = 0
@@ -256,7 +348,6 @@ def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
         batches.append(current_batch)
 
     print(f"共 {len(all_articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
-
     combined_report = ""
     client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
 
@@ -275,9 +366,71 @@ def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
         except Exception as e:
             print(f"AI 分析批次 {batch_idx} 失败: {e}")
             combined_report += f"\n## 批次 {batch_idx} 分析失败\n\n异常: {str(e)}\n"
-
-    # 合并后如果有多个批次，可以再调用一次 AI 进行去重合并（可选，这里简单拼接）
     return combined_report
+
+def generate_html_report(report_text, all_articles):
+    """生成 HTML 报告（表格链接可点击）"""
+    html_content = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>内容安全行业舆情报告</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 20px; line-height: 1.5; }}
+        h1 {{ font-size: 1.8rem; border-bottom: 1px solid #eaecef; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+        th, td {{ border: 1px solid #dfe2e5; padding: 8px 12px; text-align: left; vertical-align: top; }}
+        th {{ background-color: #f6f8fa; }}
+        td:nth-child(2) {{ text-align: center; }}
+        a {{ color: #0366d6; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        .footer {{ margin-top: 30px; font-size: 12px; color: #6a737d; }}
+    </style>
+</head>
+<body>
+<h1>📊 内容安全行业舆情报告</h1>
+<p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+<div id="report">
+"""
+    lines = report_text.split("\n")
+    in_table = False
+    for line in lines:
+        if line.startswith("|") and "|" in line:
+            if not in_table:
+                html_content += '<table>\n<thead>\n'
+                in_table = True
+            if re.match(r'^\|[\s\-:]+\|$', line):
+                continue
+            cells = [c.strip() for c in line.split("|")[1:-1]]
+            html_content += "<tr>\n"
+            for cell in cells:
+                link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
+                if link_match:
+                    text, url = link_match.group(1), link_match.group(2)
+                    cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
+                html_content += f"<td>{cell}</td>\n"
+            html_content += "</tr>\n"
+        else:
+            if in_table:
+                html_content += "</thead><tbody></tbody></table>\n"
+                in_table = False
+            if line.strip():
+                if line.startswith("#"):
+                    level = len(line) - len(line.lstrip('#'))
+                    text = line.lstrip('#').strip()
+                    html_content += f"<h{level+1}>{text}</h{level+1}>\n"
+                else:
+                    html_content += f"<p>{line}</p>\n"
+    if in_table:
+        html_content += "</thead><tbody></tbody></table>\n"
+    html_content += f"""
+</div>
+<div class="footer">
+    <p>注：本报告由 AI 基于过去24小时抓取的 {len(all_articles)} 条内容自动生成，仅供参考。</p>
+</div>
+</body>
+</html>"""
+    return html_content
 
 def save_reports_with_history(report_text, all_articles):
     """保存最新报告 + 历史归档 + 索引页"""
@@ -285,7 +438,6 @@ def save_reports_with_history(report_text, all_articles):
     # 最新版本
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(report_text)
-    # 生成 HTML（与之前相同，略）
     html_content = generate_html_report(report_text, all_articles)
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
@@ -326,12 +478,6 @@ def generate_index_page():
     with open(os.path.join(reports_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(index_html)
 
-def generate_html_report(report_text, all_articles):
-    """生成 HTML 报告（与之前相同，略）"""
-    # 这里粘贴你原来 save_reports 中的 HTML 生成逻辑，或者复用之前的函数
-    # 为了简洁，省略具体代码，实际使用时请补全
-    return "<html>...</html>"
-
 def main():
     start = time.time()
     print("=== 开始抓取信源（过去24小时） ===")
@@ -341,6 +487,8 @@ def main():
         print("⚠️ 未抓到任何文章")
         with open("report.md", "w") as f:
             f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
+        with open("report.html", "w") as f:
+            f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
         return
     print("=== 调用 AI 分析（分批处理） ===")
     report = call_ai_analysis_batch(all_articles)
