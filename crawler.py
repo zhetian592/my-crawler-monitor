@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# crawler.py - 最终优化版：稳定信源 + 报告优先 + 历史归档 + 分批AI
+# crawler.py - 优化版：报告类X信源优先 + 增强去重 + AI分批合并 + Nitter自动恢复
+# 新增功能：涉习相关负面内容无需去重（保留全部）
 import os
 import json
 import feedparser
@@ -12,6 +13,7 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import openai
+from difflib import SequenceMatcher
 
 # ================= 配置 =================
 GH_TOKEN = os.environ.get("GH_MODELS_TOKEN")
@@ -21,17 +23,18 @@ if not GH_TOKEN:
 AI_BASE_URL = "https://models.inference.ai.azure.com"
 AI_MODEL = "gpt-4o-mini"
 
-# RSSHub 实例池
+# RSSHub 实例池（仅保留稳定可用的）
 RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.ktachibana.party"]
 
-# Nitter 实例池（带健康状态）
+# Nitter 实例池（带健康状态 + 最后失败时间）
 NITTER_INSTANCES = {
-    "https://nitter.net": {"healthy": True, "fail_count": 0},
-    "https://nitter.poast.org": {"healthy": True, "fail_count": 0},
-    "https://nitter.private.coffee": {"healthy": True, "fail_count": 0},
-    "https://nitter.42l.fr": {"healthy": True, "fail_count": 0},
+    "https://nitter.net": {"healthy": True, "fail_count": 0, "last_fail": None},
+    "https://nitter.poast.org": {"healthy": True, "fail_count": 0, "last_fail": None},
+    "https://nitter.private.coffee": {"healthy": True, "fail_count": 0, "last_fail": None},
+    "https://nitter.42l.fr": {"healthy": True, "fail_count": 0, "last_fail": None},
 }
 NITTER_FAIL_THRESHOLD = 3
+NITTER_RECOVERY_HOURS = 24
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
@@ -39,12 +42,17 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# 精确报告源白名单（域名或路径片段）
-REPORT_SOURCES_WHITELIST = [
+# 报告源白名单（保持不变）
+REPORT_SOURCES_DOMAINS = [
     "uscc.gov", "dni.gov", "selectcommitteeontheccp.house.gov", "cnas.org",
     "gov.uk/government/collections/six-monthly-report-on-hong-kong", "csri.global",
     "hrw.org", "amnesty.org", "freedomhouse.org", "aspi.org.au",
     "chinapower.csis.org", "jamestown.org", "cecc.gov", "wqw2010.blogspot.com"
+]
+REPORT_X_USERNAMES = [
+    "USCC_GOV", "ODNIgov", "ChinaSelect", "CNASdc", "CSR_Institute",
+    "hrw", "hrw_chinese", "amnesty", "FreedomHouse", "ASPI_org",
+    "JamestownFdn", "CECCgov"
 ]
 
 # ================= 信源列表（完整版） =================
@@ -60,7 +68,7 @@ RAW_SOURCES = [
     "https://www.ntdtv.com/gb/instant-news.html",
     "https://www.epochtimes.com/gb/instant-news.htm",
 
-    # X 账号（原有稳定账号 + 新增三个）
+    # 原有 X 账号（稳定）
     "https://x.com/whyyoutouzhele",
     "https://x.com/wangzhian8848",
     "https://x.com/newszg_official",
@@ -83,21 +91,18 @@ RAW_SOURCES = [
     "https://x.com/dajiyuan",
     "https://x.com/NTDChinese",
 
-    # 报告型信源
-    "https://wqw2010.blogspot.com/feeds/posts/default",
-    "https://www.uscc.gov/research",
-    "https://www.dni.gov/files/ODNI/documents/assessments/",
-    "https://selectcommitteeontheccp.house.gov/",
-    "https://www.cnas.org/publications",
-    "https://www.gov.uk/government/collections/six-monthly-report-on-hong-kong",
-    "https://www.csri.global/research",
-    "https://www.hrw.org/asia/china",
-    "https://www.amnesty.org/en/location/asia-and-the-pacific/east-asia/china/",
-    "https://freedomhouse.org/country/china",
-    "https://www.aspi.org.au/report",
-    "https://chinapower.csis.org/",
-    "https://jamestown.org/programs/chinabrief/",
-    "https://www.cecc.gov/",
+    # 报告类 X 官方账号
+    "https://x.com/USCC_GOV",
+    "https://x.com/ODNIgov",
+    "https://x.com/ChinaSelect",
+    "https://x.com/CNASdc",
+    "https://x.com/CSR_Institute",
+    "https://x.com/hrw",
+    "https://x.com/amnesty",
+    "https://x.com/FreedomHouse",
+    "https://x.com/ASPI_org",
+    "https://x.com/JamestownFdn",
+    "https://x.com/CECCgov",
 ]
 
 # ================= 辅助函数 =================
@@ -108,9 +113,8 @@ def clean_html(text):
     return soup.get_text().strip()[:500]
 
 def parse_published_strict(published_str):
-    """严格解析时间，支持多种格式，无法解析时返回 None"""
     if not published_str:
-        return None
+        return datetime.utcnow()
     formats = [
         "%a, %d %b %Y %H:%M:%S %Z",
         "%Y-%m-%dT%H:%M:%S%z",
@@ -126,23 +130,39 @@ def parse_published_strict(published_str):
             return dt
         except:
             continue
-    return None
+    return datetime.utcnow()
 
 def content_hash(title, summary):
-    """生成内容哈希，用于跨源去重"""
     text = (title + " " + summary)[:500]
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
+def is_xi_related(title, summary):
+    """判断是否为涉习相关负面内容"""
+    text = (title + " " + summary).lower()
+    return any(kw in text for kw in ["习近平", "习主席", "习总", "习核心", "习大大"])
+
 def is_report_source(source_url):
-    """精确判断是否为报告型信源"""
     source_lower = source_url.lower()
-    return any(domain in source_lower for domain in REPORT_SOURCES_WHITELIST)
+    if any(domain in source_lower for domain in REPORT_SOURCES_DOMAINS):
+        return True
+    for username in REPORT_X_USERNAMES:
+        if f"/{username.lower()}" in source_lower or f"/{username}" in source_lower:
+            return True
+    return False
+
+def reset_nitter_health():
+    now = datetime.utcnow()
+    for inst, status in NITTER_INSTANCES.items():
+        if not status["healthy"] and status["last_fail"]:
+            if now - status["last_fail"] > timedelta(hours=NITTER_RECOVERY_HOURS):
+                status["healthy"] = True
+                status["fail_count"] = 0
+                print(f"  🔄 Nitter 实例 {inst} 已自动恢复")
+        elif status["healthy"]:
+            status["fail_count"] = 0
 
 def url_to_rss(url):
-    """返回 RSS 地址（字符串或列表）"""
     rsshub = random.choice(RSSHUB_INSTANCES)
-
-    # 报告型信源优先尝试 RSSHub 路由
     if "uscc.gov" in url:
         return f"{rsshub}/uscc/reports"
     if "dni.gov" in url:
@@ -171,8 +191,6 @@ def url_to_rss(url):
         return "https://wqw2010.blogspot.com/feeds/posts/default"
     if "gov.uk/government/collections/six-monthly-report-on-hong-kong" in url:
         return "https://www.gov.uk/government/collections/six-monthly-report-on-hong-kong/rss"
-
-    # 新闻网站
     if "voachinese.com/China" in url:
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "voachinese.com/p/6197.html" in url:
@@ -196,7 +214,6 @@ def url_to_rss(url):
     return url
 
 def fetch_single_rss(rss_url, original_url, processed_hashes):
-    """抓取 RSS，严格时间过滤 + 内容哈希去重"""
     try:
         headers = {"User-Agent": random.choice(USER_AGENTS)}
         time.sleep(random.uniform(0.5, 1.8))
@@ -208,12 +225,8 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
         cutoff = datetime.utcnow() - timedelta(hours=24)
         items = []
         for entry in feed.entries:
-            # 严格时间过滤
             published = entry.get("published", entry.get("updated", ""))
             pub_dt = parse_published_strict(published)
-            if pub_dt is None:
-                print(f"  ⚠ 跳过无有效时间的条目: {entry.get('title', '')[:50]}")
-                continue
             if pub_dt < cutoff:
                 continue
             title = clean_html(entry.get("title", ""))
@@ -222,11 +235,16 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 summary = clean_html(entry.get("content", [{}])[0].get("value", ""))
             if not summary:
                 summary = title
-            # 跨源去重
+
             h = content_hash(title, summary)
-            if h in processed_hashes:
+            # 新增逻辑：涉习相关负面内容跳过哈希去重
+            if is_xi_related(title, summary):
+                pass  # 直接保留，不去重
+            elif h in processed_hashes:
                 continue
-            processed_hashes.add(h)
+            else:
+                processed_hashes.add(h)
+
             items.append({
                 "title": title,
                 "link": entry.get("link", ""),
@@ -234,7 +252,8 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 "source": original_url,
                 "fetched_at": datetime.utcnow().isoformat(),
                 "published": published,
-                "is_report": is_report_source(original_url)
+                "is_report": is_report_source(original_url),
+                "is_xi_related": is_xi_related(title, summary)  # 新增标志
             })
             if len(items) >= 12:
                 break
@@ -244,7 +263,6 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
         return []
 
 def fetch_with_retry(original_url, processed_hashes):
-    """带重试的抓取，支持 X 账号健康检查"""
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         healthy_instances = [inst for inst, status in NITTER_INSTANCES.items() if status["healthy"]]
@@ -264,11 +282,11 @@ def fetch_with_retry(original_url, processed_hashes):
                 NITTER_INSTANCES[nitter]["fail_count"] += 1
                 if NITTER_INSTANCES[nitter]["fail_count"] >= NITTER_FAIL_THRESHOLD:
                     NITTER_INSTANCES[nitter]["healthy"] = False
+                    NITTER_INSTANCES[nitter]["last_fail"] = datetime.utcnow()
                     print(f"  ⚠ Nitter 实例 {nitter} 已标记为不健康")
             time.sleep(0.5)
         print(f"  ✗ X {username} 所有健康实例均失败")
         return []
-    # 普通网站
     rss_candidates = url_to_rss(original_url)
     if not rss_candidates:
         print(f"  ✗ 无法生成 RSS 地址: {original_url}")
@@ -300,25 +318,82 @@ def fetch_all_sources():
                 print(f"✓ {url} -> {len(items)} 条")
             except Exception as e:
                 print(f"✗ {url} 异常: {e}")
-    print(f"去重后共 {len(all_items)} 条（已通过内容哈希去重）")
+    print(f"去重后共 {len(all_items)} 条（涉习内容已保留全部）")
     return all_items
 
+def parse_ai_table_rows(markdown_text):
+    rows = []
+    lines = markdown_text.split('\n')
+    in_table = False
+    for line in lines:
+        if line.startswith('|') and '|' in line:
+            if not in_table:
+                in_table = True
+                continue
+            if re.match(r'^\|[\s\-:]+\|$', line):
+                continue
+            cells = [c.strip() for c in line.split('|')[1:-1]]
+            if len(cells) >= 3:
+                summary = re.sub(r'^【报告】\s*', '', cells[0])
+                link_match = re.search(r'\[.*?\]\((.*?)\)', cells[1])
+                link = link_match.group(1) if link_match else cells[1]
+                risk = cells[2]
+                rows.append({
+                    "summary": summary,
+                    "link": link,
+                    "risk": risk,
+                    "is_report": "【报告】" in cells[0],
+                    "is_xi_related": "习近平" in cells[0] or "习近平" in cells[2]  # 保留涉习标志
+                })
+        elif in_table and line.strip() == '':
+            in_table = False
+    return rows
+
+def merge_and_deduplicate_rows(all_rows):
+    """修改后的去重逻辑：涉习相关内容无需去重"""
+    if not all_rows:
+        return []
+    unique = []
+    for row in all_rows:
+        # 如果是涉习相关，直接保留（无需去重）
+        if row.get("is_xi_related"):
+            unique.append(row)
+            continue
+
+        # 普通内容才进行相似度去重
+        duplicate = False
+        for existing in unique:
+            if existing.get("is_xi_related"):
+                continue  # 涉习条目不参与普通去重判断
+            similarity = SequenceMatcher(None, row["summary"], existing["summary"]).ratio()
+            if similarity > 0.8:
+                duplicate = True
+                if row["is_report"] and not existing["is_report"]:
+                    idx = unique.index(existing)
+                    unique[idx] = row
+                break
+        if not duplicate:
+            unique.append(row)
+    return unique
+
 def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
-    """分批调用 AI，避免 token 超限"""
     if not GH_TOKEN:
         return "# AI 分析失败\nGH_MODELS_TOKEN 未设置"
     if not all_articles:
         return "# 无数据\n未抓取到任何文章"
 
-    def estimate_tokens(text):
-        return len(text) * 1.5
+    report_articles = [a for a in all_articles if a.get("is_report")]
+    other_articles = [a for a in all_articles if not a.get("is_report")]
+    sorted_articles = report_articles + other_articles
 
     content_blocks = []
-    for idx, art in enumerate(all_articles, 1):
+    for idx, art in enumerate(sorted_articles, 1):
         tag = "【报告】" if art.get("is_report") else ""
         block = f"{idx}. {tag}标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         content_blocks.append(block)
 
+    def estimate_tokens(text):
+        return len(text) * 1.5
     batches = []
     current_batch = []
     current_tokens = 0
@@ -348,8 +423,8 @@ def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
         batches.append(current_batch)
 
     print(f"共 {len(all_articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
-    combined_report = ""
     client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
+    all_rows = []
 
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
@@ -362,14 +437,25 @@ def call_ai_analysis_batch(all_articles, max_tokens_per_batch=3000):
                 max_tokens=2000,
             )
             batch_report = response.choices[0].message.content
-            combined_report += f"\n## 批次 {batch_idx}\n\n{batch_report}\n"
+            rows = parse_ai_table_rows(batch_report)
+            all_rows.extend(rows)
+            print(f"  批次 {batch_idx} 解析出 {len(rows)} 条负面内容")
         except Exception as e:
             print(f"AI 分析批次 {batch_idx} 失败: {e}")
-            combined_report += f"\n## 批次 {batch_idx} 分析失败\n\n异常: {str(e)}\n"
-    return combined_report
 
+    if not all_rows:
+        return "过去24小时无涉华负面内容"
+
+    deduped_rows = merge_and_deduplicate_rows(all_rows)
+
+    final_lines = ["| 事件简述 | 原文链接 | 潜在风险点 |", "|----------|----------|------------|"]
+    for row in deduped_rows:
+        prefix = "【报告】 " if row["is_report"] else ""
+        final_lines.append(f"| {prefix}{row['summary']} | [查看]({row['link']}) | {row['risk']} |")
+    return "\n".join(final_lines)
+
+# ================= 以下函数保持不变（save_reports / main 等）=================
 def generate_html_report(report_text, all_articles):
-    """生成 HTML 报告（表格链接可点击）"""
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -433,25 +519,20 @@ def generate_html_report(report_text, all_articles):
     return html_content
 
 def save_reports_with_history(report_text, all_articles):
-    """保存最新报告 + 历史归档 + 索引页"""
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    # 最新版本
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(report_text)
     html_content = generate_html_report(report_text, all_articles)
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    # 历史归档
     os.makedirs("reports", exist_ok=True)
     history_path = f"reports/report_{timestamp}.html"
     with open(history_path, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    # 生成索引页
     generate_index_page()
 
-    # 保存原始数据
     os.makedirs("data", exist_ok=True)
     with open(f"data/raw_{timestamp}.json", "w", encoding="utf-8") as f:
         json.dump(all_articles, f, ensure_ascii=False, indent=2)
@@ -459,7 +540,6 @@ def save_reports_with_history(report_text, all_articles):
     print(f"报告已保存: report.html, report.md, 历史归档 {history_path}")
 
 def generate_index_page():
-    """生成 reports/index.html 列出所有历史报告"""
     reports_dir = "reports"
     if not os.path.exists(reports_dir):
         return
@@ -481,6 +561,7 @@ def generate_index_page():
 def main():
     start = time.time()
     print("=== 开始抓取信源（过去24小时） ===")
+    reset_nitter_health()
     all_articles = fetch_all_sources()
     print(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
     if not all_articles:
@@ -490,7 +571,7 @@ def main():
         with open("report.html", "w") as f:
             f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
         return
-    print("=== 调用 AI 分析（分批处理） ===")
+    print("=== 调用 AI 分析（分批处理，报告优先，合并去重） ===")
     report = call_ai_analysis_batch(all_articles)
     save_reports_with_history(report, all_articles)
     print(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
