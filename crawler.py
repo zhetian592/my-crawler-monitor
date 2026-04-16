@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 统一分析，AI 自动识别报告并优先展示，增加信息来源列，自动清理旧文件
+# crawler.py - 修复表格乱码 + 信息来源中文映射
 import os
 import json
 import feedparser
@@ -37,10 +37,69 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# 保留历史报告的天数（可修改）
 KEEP_DAYS = 7
 
-# ================= 信源列表 =================
+# ================= 信源中文名称映射表 =================
+SOURCE_NAME_MAP = {
+    # X 账号映射
+    "whyyoutouzhele": "李老师不是你老师啊",
+    "wangzhian8848": "王局志安",
+    "newszg_official": "新闻调查",
+    "wangdan1989": "王丹",
+    "torontobigface": "大脸撑在小胸上",
+    "hrw_chinese": "人权观察中文",
+    "dayangelcp": "大天使",
+    "xinwendiaocha": "新闻调查",
+    "xiaojingcanxue": "小警犬",
+    "ZhouFengSuo": "周锋锁",
+    "lidangzzz": "李老师不是你老师啊",
+    "fangshimin": "方世民",
+    "UHRP_Chinese": "UHRP中文",
+    "jhf8964": "静好",
+    "amnestychinese": "国际特赦中文",
+    "liangziyueqian1": "量子跃迁",
+    "badiucao": "巴丢草",
+    "wurenhua": "吴仁华",
+    "zaobaosg": "联合早报",
+    "dajiyuan": "大纪元",
+    "NTDChinese": "新唐人",
+    "VOAChinese": "美国之音中文",
+    "USCC_GOV": "美中经济安全审查委员会",
+    "ODNIgov": "国家情报总监办公室",
+    "ChinaSelect": "众院中国问题特设委员会",
+    "CNASdc": "新美国安全中心",
+    "CSR_Institute": "CSRI",
+    "hrw": "人权观察",
+    "amnesty": "国际特赦组织",
+    "FreedomHouse": "自由之家",
+    "ASPI_org": "澳大利亚战略政策研究所",
+    "JamestownFdn": "詹姆斯敦基金会",
+    "CECCgov": "国会-行政部门中国委员会",
+    # 新闻网站域名映射
+    "bbc.com": "BBC中文",
+    "rfa.org": "自由亚洲电台",
+    "dw.com": "德国之声",
+    "rfi.fr": "法国国际广播电台",
+    "cn.nytimes.com": "纽约时报中文网",
+    "ntdtv.com": "新唐人",
+    "epochtimes.com": "大纪元",
+}
+
+def get_display_source(source_name):
+    """将来源名（如 @whyyoutouzhele 或 bbc.com）转换为中文显示名"""
+    # 如果已经是中文或特殊格式，直接返回
+    if source_name.startswith("@") and len(source_name) > 1:
+        username = source_name[1:]
+        if username in SOURCE_NAME_MAP:
+            return SOURCE_NAME_MAP[username]
+        return source_name
+    # 域名匹配
+    for domain, display in SOURCE_NAME_MAP.items():
+        if domain in source_name:
+            return display
+    return source_name
+
+# ================= 信源列表（同前） =================
 RAW_SOURCES = [
     "https://www.bbc.com/zhongwen/simp",
     "https://www.rfa.org/mandarin",
@@ -84,7 +143,6 @@ RAW_SOURCES = [
     "https://x.com/CECCgov",
 ]
 
-# ================= 辅助函数 =================
 def clean_html(text):
     if not text:
         return ""
@@ -170,10 +228,12 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
             # 提取友好的来源名称
             if "x.com/" in original_url:
                 parts = original_url.split("/")
-                source_name = "@" + parts[3] if len(parts) > 3 else original_url
+                raw_name = parts[3] if len(parts) > 3 else original_url
+                source_name = "@" + raw_name
             else:
                 domain_match = re.search(r'https?://([^/]+)', original_url)
-                source_name = domain_match.group(1) if domain_match else original_url
+                raw_domain = domain_match.group(1) if domain_match else original_url
+                source_name = raw_domain
             items.append({
                 "title": title,
                 "link": entry.get("link", ""),
@@ -253,8 +313,8 @@ def deduplicate_table_rows(rows):
     unique = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
-        if not cells:
-            continue
+        if len(cells) != 4:
+            continue  # 只接受四列表格行
         event = cells[0]
         if event not in seen:
             seen.add(event)
@@ -270,7 +330,7 @@ def call_ai_unified(articles):
     
     blocks = []
     for art in articles:
-        meta = f"发布时间：{art.get('published_str', '未知')} | 来源：{art.get('source_name', '未知')}"
+        meta = f"发布时间：{art.get('published_str', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks.append(block)
     
@@ -285,7 +345,7 @@ def call_ai_unified(articles):
 - 输出使用 Markdown 表格格式，表格头为：| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 |
 - 每一条负面内容单独占一行。
 - 原文链接列使用 `[查看](URL)` 格式。
-- “信息来源”列填写内容的来源（例如 @USCC_GOV、BBC中文 等）。
+- “信息来源”列请直接使用输入中提供的“来源”名称（已经转换为中文）。
 - 如果没有任何负面涉华内容，只输出一行“无”。
 - 不要添加任何额外解释。
 
@@ -331,11 +391,15 @@ def call_ai_unified(articles):
                 if line.startswith("|") and "|" in line:
                     if not in_table:
                         in_table = True
+                    # 跳过分隔行
                     if re.match(r'^\|[\s\-:]+\|$', line):
                         continue
+                    # 跳过表头
                     if line.startswith(table_header):
                         continue
-                    all_table_rows.append(line)
+                    cells = [c.strip() for c in line.split("|")[1:-1]]
+                    if len(cells) == 4:
+                        all_table_rows.append(line)
         except Exception as e:
             print(f"  ✗ AI 分析批次 {batch_idx} 失败: {e}")
             continue
@@ -374,13 +438,15 @@ def generate_html_report(report_text):
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_content += '<td>\n<thead>\n'
+                html_content += '<table>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
             cells = [c.strip() for c in line.split("|")[1:-1]]
+            if len(cells) != 4:
+                continue  # 跳过不符合四列的行
             html_content += "<tr>\n"
-            for cell in cells:
+            for idx, cell in enumerate(cells):
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
                 if link_match:
                     text, url = link_match.group(1), link_match.group(2)
@@ -389,7 +455,7 @@ def generate_html_report(report_text):
             html_content += "</tr>\n"
         else:
             if in_table:
-                html_content += "</thead><tbody></tbody><table>\n"
+                html_content += "</thead><tbody></tbody></table>\n"
                 in_table = False
             if line.strip():
                 html_content += f"<p>{line}</p>\n"
@@ -441,9 +507,7 @@ def generate_index_page():
         f.write(index_html)
 
 def cleanup_old_files(days=KEEP_DAYS):
-    """删除超过指定天数的历史报告和原始数据文件"""
     cutoff = datetime.utcnow() - timedelta(days=days)
-    # 清理 reports/ 下的 report_*.html 文件（保留 index.html）
     reports_dir = "reports"
     if os.path.exists(reports_dir):
         for f in os.listdir(reports_dir):
@@ -456,7 +520,6 @@ def cleanup_old_files(days=KEEP_DAYS):
                         print(f"  🗑 已删除旧报告: {f}")
                 except Exception as e:
                     print(f"  ⚠ 删除文件 {f} 失败: {e}")
-    # 清理 data/ 下的 raw_*.json 文件
     data_dir = "data"
     if os.path.exists(data_dir):
         for f in os.listdir(data_dir):
