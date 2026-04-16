@@ -3,87 +3,75 @@
 | 事件简述 | 原文链接 | 潜在风险点 | 信息来源 |
 |----------|----------|------------|----------|
 | -------- | -------- | -------- | -------- |
-| 一中国男子涉嫌从肯尼亚走私2000只蚂蚁被判刑 | [查看](https://www.rfi.fr/cn/%E9%9D%9E%E6%B4%B2/20260415-%E4%B8%80%E4%B8%AD%E5%9B%BD%E7%94%B7%E5%AD%90%E6%B6%89%E5%AB%8C%E4%BB%8E%E8%82%AF%E5%B0%BC%E4%BA%9A%E8%B5%B0%E7%A7%812000%E5%8F%AA%E8%9A%82%E8%9A%81%E8%A2%AB%E5%88%A4%E5%88%91) | 可能影响中国公民形象与国际声誉 | @RFI |
-| 将比亚迪列入“奴役劳动”名单的巴西官员遭解雇 | [查看](https://cn.nytimes.com/world/20260416/brazil-lula-workers-rights-labor-abuse/?utm_source=RSS) | 影响中国企业在国际上的声誉与形象 | @NYTimes |
-| 中国多年来如何对伊朗进行军事援助 | [查看](https://cn.nytimes.com/china/20260416/china-iran-weapons-sales/?utm_source=RSS) | 可能引发国际社会对中国军事出口的关注与批评 | @NYTimes |
-| 习近平就伊朗战争发声，特朗普访华前中美关系再遇挑战 | [查看](https://cn.nytimes.com/world/20260415/trump-iran-blockade-china/?utm_source=RSS) | 中美关系紧张可能影响国际合作与经济 | @NYTimes |
-| 美國封鎖霍爾木茲首日：中國公司擁有的貨輪「富星號」穿越海峽後折返 | [查看](https://www.bbc.com/zhongwen/articles/cp8444l85yro/trad?at_medium=RSS&at_campaign=rss) | 可能影响中国企业的国际航运与贸易安全 | @BBC中文 |
-| 美国财长批中国囤油，称北京是“不可靠伙伴” | [查看](https://www.dw.com/zh/美国财长批中国囤油-称北京是-不可靠伙伴/a-76793819?maca=chi-rss-chi-all-1127-rdf) | 国际关系紧张，经济合作受损 | @dw.com |
-| 贝森特指责中国在中东战事期间囤积石油 | [查看](https://nitter.net/whyyoutouzhele/status/2044596642309870043#m) | 国际形象受损，可能引发经济制裁 | @whyyoutouzhele |
-| 中国技术卷入中东战事？伊朗疑用中国“间谍卫星” | [查看](https://www.dw.com/zh/中国技术卷入中东战事？伊朗疑用中国-间谍卫星/a-76788342?maca=chi-rss-chi-all-1127-rdf) | 国家安全风险，国际关系紧张 | @dw.com |
-| 美国封锁霍尔木兹海峡，逼中国坐上谈判桌？ | [查看](https://www.dw.com/zh/美國封鎖霍爾木茲海峽-逼中國坐上談判桌？/a-76785198?maca=chi-rss-chi-all-1127-rdf) | 地缘政治风险，可能影响能源供应 | @dw.com |
-| 特朗普称自己是“全世界对中国最强硬的人” | [查看](https://www.dw.com/zh/特朗普：我是-全世界对中国最强硬的人/a-76795152?maca=chi-rss-chi-all-1127-rdf) | 中美关系紧张，可能影响贸易 | @dw.com |
-| 许家印当庭认罪悔罪，恒大地产面临法律问题 | [查看](https://nitter.net/whyyoutouzhele/status/2044604189871837669#m) | 企业信誉受损，可能影响投资者信心 | @whyyoutouzhele |
-| 北京信访局外安装防爬刺以防访民喊冤 | [查看](https://nitter.net/whyyoutouzhele/status/2044611747856654489#m) | 社会不满情绪，可能引发抗议 | @whyyoutouzhele |
-| 河南班主任猥亵女学生，仅被拘留10天 | [查看](https://nitter.net/whyyoutouzhele/status/2044573990094561495#m) | 社会治安问题，公众信任缺失 | @whyyoutouzhele |
-| 上海官员让路导致交通堵塞，公众反应强烈 | [查看](https://nitter.net/whyyoutouzhele/status/2044619290465505695#m) | 社会不满情绪，可能引发抗议 | @whyyoutouzhele |
-| 外卖员因过度工作致植物人，社会问题引发关注 | [查看](https://nitter.net/whyyoutouzhele/status/2044634387979829513#m) | 劳动者权益问题，社会不满情绪 | @whyyoutouzhele |
+| 一中国男子涉嫌从肯尼亚走私2000只蚂蚁被判刑 | [查看](https://www.rfi.fr/cn/%E9%9D%9E%E6%B4%B2/20260415-%E4%B8%80%E4%B8%AD%E5%9B%BD%E7%94%B7%E5%AD%90%E6%B6%89%E5%AB%8C%E4%BB%8E%E8%82%AF%E5%B0%BC%E4%BA%9A%E8%B5%B0%E7%A7%812000%E5%8F%AA%E8%9A%82%E8%9A%81%E8%A2%AB%E5%88%A4%E5%88%91) | 影响国家形象，涉及走私行为 | 法国国际广播电台 |
+| 将比亚迪列入“奴役劳动”名单的巴西官员遭解雇 | [查看](https://cn.nytimes.com/world/20260416/brazil-lula-workers-rights-labor-abuse/?utm_source=RSS) | 影响企业声誉，涉及人权问题 | 纽约时报中文网 |
+| 中国多年来如何对伊朗进行军事援助 | [查看](https://cn.nytimes.com/china/20260416/china-iran-weapons-sales/?utm_source=RSS) | 影响国际关系，涉及军事合作 | 纽约时报中文网 |
+| 习近平就伊朗战争发声，特朗普访华前中美关系再遇挑战 | [查看](https://cn.nytimes.com/world/20260415/trump-iran-blockade-china/?utm_source=RSS) | 影响中美关系，可能加剧国际紧张局势 | 纽约时报中文网 |
+| IWF警告：全球债务将升至100%  美中两国增长最快 | [查看](https://www.dw.com/zh/iwf警告：全球债务将升至100-美中两国增长最快/a-76796912?maca=chi-rss-chi-all-1127-rdf) | 经济风险，可能影响全球经济稳定 | 德国之声 |
+| 习近平对伊朗战争表态，隐晦批评美国 | [查看](https://cn.nytimes.com/world/20260415/xi-iran-war-china/?utm_source=RSS) | 影响国际关系，可能加剧中美对抗 | 纽约时报中文网 |
+| 美国财长批中国囤油 称北京是“不可靠伙伴” | [查看](https://www.dw.com/zh/美国财长批中国囤油-称北京是-不可靠伙伴/a-76793819?maca=chi-rss-chi-all-1127-rdf) | 影响中美关系，经济制裁风险 | 德国之声 |
+| 中国技术卷入中东战事？伊朗疑用中国“间谍卫星” | [查看](https://www.dw.com/zh/中国技术卷入中东战事？伊朗疑用中国-间谍卫星/a-76788342?maca=chi-rss-chi-all-1127-rdf) | 国家安全风险，国际形象受损 | 德国之声 |
+| 美國封鎖霍爾木茲海峽 逼中國坐上談判桌？ | [查看](https://www.dw.com/zh/美國封鎖霍爾木茲海峽-逼中國坐上談判桌？/a-76785198?maca=chi-rss-chi-all-1127-rdf) | 经济利益受损，国际关系紧张 | 德国之声 |
+| 特朗普：我是“全世界对中国最强硬的人” | [查看](https://www.dw.com/zh/特朗普：我是-全世界对中国最强硬的人/a-76795152?maca=chi-rss-chi-all-1127-rdf) | 中美关系紧张，外交风险 | 德国之声 |
+| 德语媒体：习近平在欧盟中所剩无几的好友 | [查看](https://www.dw.com/zh/德语媒体：习近平在欧盟中所剩无几的好友/a-76791695?maca=chi-rss-chi-all-1127-rdf) | 外交孤立，国际形象受损 | 德国之声 |
+| 美方指责中国在中美伊战争期间大规模囤积石油 | [查看](https://www.dw.com/zh/美方指责中国在中美伊战争期间大规模囤积石油/a-76785198?maca=chi-rss-chi-all-1127-rdf) | 经济制裁风险，国际关系紧张 | 德国之声 |
+| 举报海南省东方市宝上村 村霸、欺压百姓 | [查看](https://nitter.net/newszg_official/status/2044391547370901968#m) | 社会治安问题，政府形象受损 | 新闻调查 |
+| 广东海丰海富花园阿姨因物业问题自杀事件 | [查看](https://nitter.net/newszg_official/status/2044290001450807502#m) | 社会问题，公众安全感下降 | 新闻调查 |
+| 安徽医科大学一男子跳楼身亡 | [查看](https://nitter.net/newszg_official/status/2044288613895286914#m) | 社会心理健康问题，公众安全感下降 | 新闻调查 |
+| 上海丝芭传媒创办人王子杰猝死 | [查看](https://www.ntdtv.com/gb/2026/04/16/a104087118.html) | 企业稳定性问题，公众信任度下降 | 新唐人 |
+| 中国高铁惊人真相 | [查看](https://www.ntdtv.com/gb/2026/04/16/a104087111.html) | 国家形象受损，经济发展信心下降 | 新唐人 |
+| 《纽约时报》大翻车 川普怒批 | [查看](https://www.ntdtv.com/gb/2026/04/16/a104087101.html) | 媒体公信力问题，国际舆论风险 | 新唐人 |
+| 美国财政部长贝森特批评中国在中东战争期间囤积石油，称其为“不可靠的全球合作伙伴”。 | [查看](https://nitter.net/whyyoutouzhele/status/2044596642309870043#m) | 国际形象受损，可能影响外交关系 | 李老师不是你老师啊 |
+| 北京私下与美国沟通，争取中国船只在霍尔木兹海峡的通航权。 | [查看](https://rfa.org/mandarin/guoji/2026/04/15/china-hormuz-navigation-rights-blockade/) | 可能引发国际紧张局势 | 自由亚洲电台 |
+| 中共在中东战争期间被指责囤积石油，限制某些商品的出口。 | [查看](https://www.ntdtv.com/gb/2026/04/16/a104087086.html) | 国际社会对中国的信任度下降 | 新唐人 |
+| 许家印因恒大地产案件当庭认罪，学校迅速切割与其关系。 | [查看](https://nitter.net/whyyoutouzhele/status/2044604189871837669#m) | 企业形象受损，影响投资者信心 | 李老师不是你老师啊 |
+| 河北一女教师因反对房地产开发被控“破坏生产经营罪”。 | [查看](https://nitter.net/whyyoutouzhele/status/2044581545974071296#m) | 反映社会矛盾，可能引发公众不满 | 李老师不是你老师啊 |
+| 河南一班主任因猥亵女学生仅被拘留10天，社会反响强烈。 | [查看](https://nitter.net/whyyoutouzhele/status/2044573990094561495#m) | 社会对法律公正的质疑，可能引发抗议 | 李老师不是你老师啊 |
+| 北京信访局外安装防爬刺以阻止访民表达不满。 | [查看](https://nitter.net/whyyoutouzhele/status/2044611747856654489#m) | 反映政府对民众诉求的压制，可能引发更大不满 | 李老师不是你老师啊 |
+| 上海因官员通行导致数百辆车堵塞，民众反感。 | [查看](https://nitter.net/whyyoutouzhele/status/2044619290465505695#m) | 反映社会对官员特权的不满，可能引发抗议 | 李老师不是你老师啊 |
+| 中国政府进一步收紧对官方天主教教会和全国约1,200万天主教徒的意识形态管制。 | [查看](https://nitter.net/hrw_chinese/status/2044559654642954698#m) | 宗教自由受限，可能引发国际关注和谴责。 | 人权观察中文 |
+| 中国天主教爱国会和中国天主教主教团要求所有教职人员将旅行证件上交相关部门，出境需国家批准。 | [查看](https://nitter.net/hrw_chinese/status/2044559655871889602#m) | 侵犯个人自由，可能引发国际人权争议。 | 人权观察中文 |
+| 中国政府长期限制天主教徒的宗教自由，尤其是地下教会信徒。 | [查看](https://nitter.net/hrw_chinese/status/2044559656597467436#m) | 宗教迫害加剧，可能导致国际社会的强烈反对。 | 人权观察中文 |
+| 美国政府威胁制裁中国，有两家中国银行收到了美国财政部的信函。 | [查看](https://nitter.net/xinwendiaocha/status/2044586294748299320#m) | 可能影响中美经济关系，增加金融风险。 | 新闻调查 |
+| 恒大集团许家印一审开庭，涉及多项罪名，案件波及大量投资者和业主。 | [查看](https://nitter.net/xinwendiaocha/status/2044613066848149618#m) | 可能引发金融市场动荡，影响经济信心。 | 新闻调查 |
+| 中国初中生讽刺中国政府的官僚体制，视频爆火。 | [查看](https://nitter.net/xinwendiaocha/status/2044474159556923886#m) | 社会不满情绪上升，可能引发更广泛的抗议活动。 | 新闻调查 |
+| 法轮功成员因支持台、港独被判监一年，涉及煽动行为。 | [查看](https://nitter.net/dw_chinese/status/2044296803601060255#m) | 可能引发对言论自由的关注和争议。 | 新闻调查 |
+| 中共发言人被全网嘲笑，涉及台湾统一的言论。 | [查看](https://nitter.net/xinwendiaocha/status/2044464534644265214#m) | 可能影响中共的公信力和对外形象。 | 新闻调查 |
+| 香港曾是全球最大规模纪念六四的自由之地，现在已死。 | [查看](https://nitter.net/malonginchina/status/2044578130774679746#m) | 反映对言论自由和历史记忆的压制，可能引发国际关注。 | 周锋锁 |
+| 中国的海底数据中心在推进人工智能霸权的同时，向外输出环境成本。 | [查看](https://nitter.net/JeanetteT346680/status/2044468790302228713#m) | 可能引发国际社会对中国环境政策的批评。 | 周锋锁 |
 | --- | --- | --- | --- |
-| 被控为中共培训飞行员 退役军人将被引渡回美国受审 | [查看](https://www.epochtimes.com/gb/26/4/16/n14742591.htm) | 中共的军事培训与国际法律问题 | www.epochtimes.com |
-| 马斯克美国一举动 给中共带来恶梦 | [查看](https://www.ntdtv.com/gb/2026/04/16/a104087090.html) | 中美科技竞争加剧 | www.ntdtv.com |
-| 停火不延长？美伊恐再开战，贝森特点名中共囤油 | [查看](https://www.ntdtv.com/gb/2026/04/16/a104087086.html) | 中共在国际冲突中的角色 | www.ntdtv.com |
-| 举报海南省东方市宝上村 村霸、欺压百姓 | [查看](https://nitter.net/newszg_official/status/2044391547370901968#m) | 社会治安问题 | @newszg_official |
-| 安徽医科大学第一附属医院南区，一30多岁男子跳楼身亡 | [查看](https://nitter.net/newszg_official/status/2044288613895286914#m) | 精神健康与社会压力 | @newszg_official |
-| 广东海丰海富花园有个阿姨因物业问题自杀 | [查看](https://nitter.net/newszg_official/status/2044290001450807502#m) | 社会矛盾与心理健康 | @newszg_official |
-| 中国政府进一步收紧对官方天主教教会的意识形态管制，限制宗教活动 | [查看](https://nitter.net/hrw_chinese/status/2044559654642954698#m) | 宗教自由受限，可能引发国际关注与谴责 | @hrw_chinese |
-| 中国天主教教职人员被要求上交旅行证件，出境需国家批准 | [查看](https://nitter.net/hrw_chinese/status/2044559655871889602#m) | 宗教迫害与人权问题，可能引发国际舆论 | @hrw_chinese |
-| 中国政府长期限制天主教徒的宗教自由，迫害地下教会 | [查看](https://nitter.net/hrw_chinese/status/2044559656597467436#m) | 宗教自由受限，可能引发国际关注与谴责 | @hrw_chinese |
-| 恒大集团许家印一审开庭，涉及多项罪名，负债接近2.4万亿人民币 | [查看](https://nitter.net/xinwendiaocha/status/2044613066848149618#m) | 经济危机风险，影响房地产市场与金融稳定 | @xinwendiaocha |
-| 美国政府威胁制裁中国，涉及伊朗资金流动 | [查看](https://nitter.net/xinwendiaocha/status/2044586294748299320#m) | 可能导致中美关系紧张与经济制裁 | @xinwendiaocha |
-| “重点人员”概念在中国公安系统中的应用，涉及多类人群 | [查看](https://nitter.net/wang_maya/status/2044412005402951888#m) | 个人自由受限，可能引发社会不满与抗议 | @hrw_chinese |
-| 纪念“六四”事件，提及对历史的坚持与记忆 | [查看](https://nitter.net/wangdan1989/status/2044408174976139639#m) | 政治敏感性，可能引发政府打压与舆论反弹 | @wangdan1989 |
-| 中国初中生讽刺中国政府的官僚体制！视频爆火！ | [查看](https://nitter.net/xinwendiaocha/status/2044474159556923886#m) | 政府形象受损，民众不满情绪上升 | @xinwendiaocha |
-| 中共发言人忽悠台湾被全网嘲笑。网友嘲讽说：“希望早日统一，让台湾农民也能享受200元每月的养老金” | [查看](https://nitter.net/xinwendiaocha/status/2044464534644265214#m) | 政府公信力下降，社会分裂加剧 | @xinwendiaocha |
-| 20年前，思科在深圳起诉华为，盗用思科的代码，结果死活起诉不成功。 | [查看](https://nitter.net/lidangzzz/status/2044338761996071214#m) | 外资企业对中国法律环境的不信任，影响外资投资 | @lidangzzz |
+| 中国出台新规反制“脱钩”，外企员工面临被“限制出境”的直接威胁 | [查看](https://nitter.net/hrichina/status/2044287647976165630#m) | 侵犯个人基本权利，外企员工面临出境限制 | 周锋锁 |
+| 油价难救产能过剩 中国光伏业忧生存危机 | [查看](https://www.epochtimes.com/gb/26/4/16/n14742540.htm) | 光伏行业面临生存危机，可能影响经济发展 | 大纪元 |
 | 无 |  |  |  |
-| 中国出台新规反制“脱钩”，外企员工面临被“限制出境”的直接威胁 | [查看](https://nitter.net/hrichina/status/2044287647976165630#m) | 侵犯个人基本权利，可能导致外企员工被限制出境 | @UHRP_Chinese |
-| 中国的海底雄心：以全球“热能债务”驱动人工智能竞赛 | [查看](https://nitter.net/JeanetteT346680/status/2044468790302228713#m) | 破坏环境和国际共识，输出环境成本 | @ZhouFengSuo |
-| 香港法院裁定法轮功成员煽动港独、台独，判处一年监禁 | [查看](https://nitter.net/dw_chinese/status/2044296803601060255#m) | 侵犯言论自由，打压异议声音 | @ZhouFengSuo |
-| 台湾重判6名军中“内鬼”，为中共效力 | [查看](https://nitter.net/dw_chinese/status/2044387328693530935#m) | 国家安全风险，间谍活动 | @UHRP_Chinese |
-| 2025年国家名声排名中，中国名列倒数 | [查看](https://nitter.net/fangshimin/status/2044526325906751609#m) | 国际形象受损，影响外交关系 | @fangshimin |
-| 霍尔木兹封锁升级，北京私下争取通航权 | [查看](https://rfa.org/mandarin/guoji/2026/04/15/china-hormuz-navigation-rights-blockade/) | 影响中国的能源安全和国际航运 | www.rfa.org |
-| 官府垫高网络墙，翻墙更难 | [查看](https://nitter.net/Xianzhong_1953/status/2044412492164763770#m) | 信息封锁，限制公民获取信息的自由 | @ZhouFengSuo |
-| 中共被指为香港自由之地的罪魁祸首 | [查看](https://nitter.net/malonginchina/status/2044578130774679746#m) | 对言论自由和集会自由的压制 | @ZhouFengSuo |
-| 中国政府加强对跨国企业的监管，限制外企供应链 | [查看](https://nitter.net/hrichina/status/2044287647976165630#m) | 影响外资信心，可能导致经济下滑 | @UHRP_Chinese |
-| 法轮功成员因煽动言论被判刑，反映香港言论自由受限 | [查看](https://nitter.net/dw_chinese/status/2044296803601060255#m) | 进一步打压异议声音，影响社会稳定 | @ZhouFengSuo |
-| 香港法院判决法轮功成员因煽动港独、台独罪名监禁一年 | [查看](https://nitter.net/dw_chinese/status/2044296803601060255#m) | 可能引发国际关注和人权争议 | @UHRP_Chinese |
-| 江西人权捍卫者肖青山因维权被判刑4年6个月 | [查看](https://nitter.net/CHRDnet/status/2044398629385916579#m) | 反映中国人权状况恶化 | @UHRP_Chinese |
-| 藏族僧人巴丹益西因教藏语文被秘密判刑6年 | [查看](https://nitter.net/hrichina/status/2044377823620857935#m) | 可能引发国际社会对中国文化压制的关注 | @UHRP_Chinese |
-| 新疆维吾尔族记者因记录维吾尔历史被重判17年 | [查看](https://nitter.net/cppc2014/status/2044332681337651694#m) | 反映新疆人权状况和文化压制 | @UHRP_Chinese |
-| 中国出台新规反制“脱钩”，外企员工面临被限制出境 | [查看](https://nitter.net/hrichina/status/2044287647976165630#m) | 可能影响外资企业在华运营和人权 | @UHRP_Chinese |
-| 中国驻尼泊尔大使施压要求遵守“一个中国”原则 | [查看](https://nitter.net/VOT_Chinese_/status/2044374182281052519#m) | 可能引发外交紧张和人权问题 | @UHRP_Chinese |
-| 哈萨克斯坦法院判决19名被告因抗议中国暴政有罪 | [查看](https://nitter.net/UHRP_Chinese/status/2044450504462172366#m) | 可能引发对中国政府的国际批评 | @UHRP_Chinese |
-| 中共在美国政治中的深耕长达半个多世纪，硕果累累。 | [查看](https://nitter.net/liangziyueqian1/status/2044595633781387406#m) | 影响美国两党政治，可能导致对华政策的偏见和误解。 | @liangziyueqian1 |
-| Jensen提到中国在计算能力上的提升，暗示美国需与中国对话。 | [查看](https://nitter.net/badiucao/status/2044522681186598970#m) | 可能导致对中国技术的误解和恐惧，影响国际关系。 | @badiucao |
-| 中国在俄罗斯无人机中占有80%的关键组件，质疑中国的承诺。 | [查看](https://nitter.net/badiucao/status/2044571727007805653#m) | 可能引发对中国军事支持的担忧，影响国际形象。 | @badiucao |
-| 中共的支持重心一直放在美国共和党一边。 | [查看](https://nitter.net/liangziyueqian1/status/2044599723684925562#m) | 可能导致对中共的误解和偏见，影响两国关系。 | @liangziyueqian1 |
-| 中国在高科技领域的落后被批评，暗示文化和认知上的缺陷。 | [查看](https://nitter.net/badiucao/status/2044579997034365225#m) | 可能导致对中国科技发展的偏见和误解。 | @badiucao |
-| 中共与美国民主党的抹黑手法相似，暗示其在美国政治中的影响力。 | [查看](https://nitter.net/liangziyueqian1/status/2044445710960222393#m) | 可能引发对中共干预美国政治的担忧。 | @liangziyueqian1 |
-| 中共的武器外援可能受到影响，暗示其国际支持的脆弱性。 | [查看](https://nitter.net/liangziyueqian1/status/2044595633781387406#m) | 可能影响中共在国际上的军事合作。 | @liangziyueqian1 |
-| 中共的支持被认为是美国共和党的传统，可能加剧两国对立。 | [查看](https://nitter.net/liangziyueqian1/status/2044599723684925562#m) | 可能导致对中共的误解和偏见，影响两国关系。 | @liangziyueqian1 |
-| 伊朗战事的外溢影响削弱中国经济增长动能，中国3月规模以上工业增加值同比增长5.7%，较1至2月6.3%的增速放缓。 | [查看](https://www.zaobao.com.sg/news/china/story20260416-8902123?utm_medium=Social&utm_source=Twit) | 经济增长放缓可能影响社会稳定 | @zaobaosg |
-| 油价飙升冲击航班！中国多条航线取消，航空业开始明显受到影响。 | [查看](https://nitter.net/dajiyuan/status/2044599154513686910#m) | 航空业受损可能导致经济影响和民众不满 | @dajiyuan |
-| 受美制裁中国油轮被迫折返霍尔木兹海峡！未能突破美军封锁。 | [查看](https://nitter.net/dajiyuan/status/2044595009908039748#m) | 国际制裁可能导致能源供应链风险 | @dajiyuan |
-| 中国外交部排名第二的副部长孙卫东被免职，可能影响外交政策稳定性。 | [查看](https://www.zaobao.com.sg/news/china/story20260415-8899370?utm_medium=Social&utm_source=Twitte) | 政治动荡可能影响国际关系 | @zaobaosg |
-| 香港曾經係每年全球最大規模紀念六四啲自由之地，現在已死。中共係罪魁禍首！ | [查看](https://nitter.net/malonginchina/status/2044578130774679746#m) | 政治压制可能引发国际关注与谴责 | @wurenhua |
-| 美軍基地遭襲 中企借空巴衛星圖助伊朗？ | [查看](https://nitter.net/dajiyuan/status/2044592687891001723#m) | 中企可能被指控协助敌对国家，影响国际形象与商业合作 | @dajiyuan |
-| 美财政部长证实已向两家中国银行发出警告，如与伊朗有业务往来将被制裁 | [查看](https://www.voachinese.com/a/bessent-chinese-banks-have-been-warned-about-holding-iranian-funds-20260415/8138109.htm) | 中资银行可能面临制裁风险，影响金融业务与国际关系 | @VOAChinese |
-| 美国常驻联合国代表华尔兹：美国持续加强国际组织领导权，抗衡中国影响力 | [查看](https://www.voachinese.com/a/un-ambassador-waltz-on-strengthen-leadership-in-international-organizations-to-counter-c-20260415/8138108.html) | 中美在国际组织中的竞争加剧，可能影响中国的国际地位 | @VOAChinese |
-| 中企AI卫星影像助伊朗锁定美 | [查看](https://nitter.net/dajiyuan/status/2044592687891001723#m) | 中企被指控参与军事活动，可能导致国际制裁与信任危机 | @dajiyuan |
-| 马斯克加速布局太阳能制造 中国优势受挑战？ | [查看](https://nitter.net/NTDChinese/status/2044613607636521012#m) | 中国在光伏产业的主导地位可能受到威胁，影响经济利益 | @NTDChinese |
-| 15年來最大波裁員 英媒BBC每10人有1人需離職 | [查看](https://nitter.net/NTDChinese/status/2044613607636521012#m) | 媒体信任度下降，可能影响对中国报道的公正性 | @NTDChinese |
-| 伊朗承认战争重创经济 损失已达 | [查看](https://nitter.net/NTDChinese/status/2044613723592220883#m) | 中美在中东的经济利益可能受到影响 | @NTDChinese |
-| 美财政部长警告，即将对伊朗祭出「金融轰炸」 | [查看](https://nitter.net/dajiyuan/status/2044591027693248801#m) | 中资企业可能受到连带影响，面临制裁风险 | @dajiyuan |
-| 美军对伊朗港口封锁进入第三天 | [查看](https://nitter.net/VOAChinese/status/2044558803492909529#m) | 中美关系紧张，可能影响中国在中东的利益 | @VOAChinese |
-| 美国与伊朗政权进行了谈判，第二轮直接会谈“很可能”将在巴基斯坦进行 | [查看](https://nitter.net/VOAChinese/status/2044541611007168574#m) | 中美在中东的战略利益可能受到影响 | @VOAChinese |
-| Reports that China pressured global shipping giants like @Maersk and Mediterranean ​Shipping Company to withdraw from Panama Canal ports are deeply concerning. | [查看](https://nitter.net/ChinaSelect/status/2044433237435458021#m) | 可能影响国际贸易和全球供应链稳定 | @ChinaSelect |
-| U.S. AI leaders like @OpenAI, @AnthropicAI, and @Google are sounding the alarm. Chinese firms are attempting to “distill” and replicate America’s most advanced AI models. | [查看](https://nitter.net/ChinaSelect/status/2044474818028847492#m) | 可能导致技术盗窃和竞争不公平 | @ChinaSelect |
-| China’s Efforts to Promote Benchmark Alternatives and Industry Deep Dives (Panel 2) | [查看](https://nitter.net/USCC_GOV/status/2044441005437452442#m) | 可能对美国市场和经济安全构成威胁 | @USCC_GOV |
-| Just how much control does China have over the price of commodities, like ag goods, energy and oil products, base metals, and critical minerals? | [查看](https://nitter.net/USCC_GOV/status/2044441001817776424#m) | 可能影响全球市场价格和供应链 | @USCC_GOV |
-| 中国同意不向伊朗提供武器 | [查看](https://www.voachinese.com/a/president-trump-says-china-agreed-not-to-provide-weapons-to-iran-20260415/8138014.html) | 可能引发国际制裁和外交紧张 | @VOAChinese |
-| 中国产国旗竟标“美国制造”？美国联邦贸易委员会出手整治 | [查看](https://www.voachinese.com/a/ftc-announces-made-in-the-usa-sweep-20260415/8138075.html) | 可能影响中美贸易关系和品牌形象 | @VOAChinese |
-| Catholics in China face escalating repression that violates their religious freedoms. | [查看](https://nitter.net/hrw/status/2044539915849887828#m) | 宗教自由受限，可能引发国际关注与谴责 | @hrw |
-| A decade into Xi Jinping’s Sinicization campaign, Catholics in China face escalating repression. | [查看](https://nitter.net/hrw/status/2044539915849887828#m) | 宗教自由受限，可能引发国际关注与谴责 | @hrw |
-| Under a newly passed law, heavy punishments are imposed on anyone who disseminates news related to military entities in China. | [查看](https://nitter.net/hrw/status/2044588348010897671#m) | 言论自由受限，可能引发国际社会的批评 | @hrw |
-|  |  |  |  |
-| “Dark Nets, Illicit Labor—Confronting China’s IUU Fishing and Seafood Supply Chain”  | [查看](https://nitter.net/CECCgov/status/2044433331798839323#m) | 涉及中国的非法、不报告和无管制（IUU）捕鱼活动及其对海鲜供应链的影响 | @CECCgov |
+| 台湾重判6名军中“内鬼”，因为为中共效力而被判刑 | [查看](https://nitter.net/dw_chinese/status/2044387328693530935#m) | 国家安全威胁，间谍活动 | UHRP中文 |
+| 法轮功成员因煽动港独、台独被判监一年 | [查看](https://nitter.net/dw_chinese/status/2044296803601060255#m) | 煽动分裂国家，违反国家安全法 | UHRP中文 |
+| 江西人权捍卫者肖青山被判刑4年6个月，因维权活动 | [查看](https://nitter.net/CHRDnet/status/2044398629385916579#m) | 人权侵犯，打压维权活动 | UHRP中文 |
+| 哈萨克斯坦法院判19名被告因反对中国暴政而有罪 | [查看](https://nitter.net/UHRP_Chinese/status/2044450504462172366#m) | 反对中国政府的抗议活动被镇压 | UHRP中文 |
+| 被控为中共培训飞行员的退役军人将被引渡回美国受审 | [查看](https://www.epochtimes.com/gb/26/4/16/n14742591.htm) | 涉及间谍活动和国家安全 | 大纪元 |
+| 中国驻尼泊尔大使施压，要求遵守“一个中国”原则，限制台湾活动 | [查看](https://nitter.net/VOT_Chinese_/status/2044374182281052519#m) | 外交关系紧张，影响中尼关系 | UHRP中文 |
+| 藏族僧人巴丹益西因教学生藏语文被秘密判刑6年 | [查看](https://nitter.net/hrichina/status/2044377823620857935#m) | 侵犯人权，文化压制 | UHRP中文 |
+| 新疆历史学家阿力甫·把拉提·爱尔克因研究维吾尔文化被重判17年 | [查看](https://nitter.net/cppc2014/status/2044332681337651694#m) | 政治迫害，文化灭绝 | UHRP中文 |
+| 中国出台新规反制“脱钩”，外企员工面临被限制出境的威胁 | [查看](https://nitter.net/hrichina/status/2044287647976165630#m) | 侵犯个人自由，影响外企运营 | UHRP中文 |
+| 维吾尔族记者塔希尔·伊敏无法陪伴女儿庆祝生日，反映家庭分离问题 | [查看](https://nitter.net/UHRP_Chinese/status/2044446876414488787#m) | 人权问题，家庭分离 | UHRP中文 |
+| 中国政府新规可能导致外企员工被限制出境，侵犯基本权利 | [查看](https://nitter.net/hrichina/status/2044287647976165630#m) | 法规滥用，个人权利受损 | UHRP中文 |
+| 中国对于外企施加压力，限制其与台湾的联系 | [查看](https://nitter.net/VOT_Chinese_/status/2044374182281052519#m) | 外交政策风险，国际形象受损 | UHRP中文 |
+| 中国政府因外部压力而限制外国企业，可能引发经济制裁 | [查看](https://nitter.net/hrichina/status/2044287647976165630#m) | 经济风险，国际关系紧张 | UHRP中文 |
+| 维吾尔族记者的家庭分离反映出人权问题 | [查看](https://nitter.net/UHRP_Chinese/status/2044446876414488787#m) | 人权侵犯，社会问题 | UHRP中文 |
+| 中国对外企施加限制，可能导致国际关系恶化 | [查看](https://nitter.net/hrichina/status/2044287647976165630#m) | 外交风险，经济后果 | UHRP中文 |
+| 香港曾經係每年全球最大規模紀念六四啲自由之地，現在已死。中共係罪魁禍首！ | [查看](https://nitter.net/malonginchina/status/2044578130774679746#m) | 政治压制与言论自由缺失 | 吴仁华 |
+| 伊朗战事的外溢影响削弱中国经济增长动能，中国3月规模以上工业增加值同比增长5.7%，较1至2月6.3%的增速放缓。 | [查看](https://nitter.net/zaobaosg/status/2044634636794446043#m) | 经济增长放缓 | 联合早报 |
+| 油價飆升衝擊航班！中國多條航線取消 | [查看](https://nitter.net/dajiyuan/status/2044599154513686910#m) | 航空业受损与出行不便 | 大纪元新闻网 |
+| 受美制裁中國油輪被迫折返霍爾木茲海峽 | [查看](https://nitter.net/dajiyuan/status/2044595009908039748#m) | 中國油輪受到美國制裁，可能影响中国的能源供应和国际贸易 | 大纪元 |
+| 中企AI衛星影像助伊朗鎖定美 | [查看](https://nitter.net/dajiyuan/status/2044592687891001723#m) | 中企技术可能被用于军事目的，影响中美关系 | 大纪元 |
+| 美财政部长证实已向两家中国银行发出警告，如与伊朗有业务往来将被制裁 | [查看](https://www.voachinese.com/a/bessent-chinese-banks-have-been-warned-about-holding-iranian-funds-20260415/8138109.htm) | 中美金融关系紧张，可能影响中资银行的国际业务 | 美国之音中文 |
+| 中国产国旗竟标“美国制造”？美国联邦贸易委员会出手整治 | [查看](https://www.voachinese.com/a/ftc-announces-made-in-the-usa-sweep-20260415/8138075.html) | 可能引发中美贸易争端，影响中国出口 | 美国之音中文 |
+| 美国常驻联合国代表华尔兹：美国持续加强国际组织领导权，抗衡中国影响力 | [查看](https://www.voachinese.com/a/un-ambassador-waltz-on-strengthen-leadership-in-international-organizations-to-counter-c/8138108.html) | 美国对中国的战略对抗，可能加剧国际关系紧张 | 美国之音中文 |
+| 特朗普总统：美国主导的针对伊朗政权的行动“接近结束”，重申如果不达成核协议，将打击其桥梁和电厂 | [查看](https://www.voachinese.com/a/trump-says-us-led-operation-against-iranian-regime-close-to-over-as-he-re/8138108.html) | 中美关系受影响，可能引发地区安全问题 | 美国之音中文 |
+| 马斯克加速布局太阳能制造，中国优势受挑战？ | [查看](https://nitter.net/NTDChinese/status/2044608566116622838#m) | 中国在全球光伏产业的主导地位可能受到威胁 | 新唐人 |
+| 美军实施“零突围”封锁霍尔木兹海峡；中国网友买iPhone惊现隐形税 | [查看](https://nitter.net/NTDChinese/status/2044585775623283125#m) | 可能影响中国消费者及国际贸易 | 新唐人 |
+| 中国掌握全球逾80%太阳能板供应及核心设备 | [查看](https://nitter.net/NTDChinese/status/2044607638663811371#m) | 中美能源竞争加剧，影响全球市场 | 新唐人 |
+| 报告称中国企业试图“提炼”和复制美国最先进的人工智能模型 | [查看](https://nitter.net/ChinaSelect/status/2044474818028847492#m) | 知识产权盗窃、技术竞争加剧 | 众院中国问题特设委员会 |
+| 报告称中国施压全球航运巨头如马士基和地中海航运公司撤出巴拿马运河港口 | [查看](https://nitter.net/ChinaSelect/status/2044433237435458021#m) | 国际贸易关系紧张、经济制裁风险 | 众院中国问题特设委员会 |
+| 报告称中国在美国的研究和开发中渗透 | [查看](https://nitter.net/ChinaSelect/status/2044438422945722746#m) | 国家安全威胁、技术泄露 | 众院中国问题特设委员会 |
+| “在习近平的中国化运动十年后，天主教徒面临加剧的压制，侵犯了他们的宗教自由。” | [查看](https://nitter.net/hrw/status/2044539915849887828#m) | 宗教自由受限，可能引发国际关注和谴责 | 人权观察 |
+| 针对中国的非法捕鱼和海鲜供应链问题的讨论 | [查看](https://nitter.net/CECCgov/status/2044433331798839323#m) | 可能涉及环境破坏和国际关系紧张 | 国会-行政部门中国委员会 |
