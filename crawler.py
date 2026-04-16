@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 对比前次报告，标记新增内容
+# crawler.py - 相似度去重 + 新增标记 + AI重试 + 时间过滤严格 + 重复3次隐藏
 import os
 import json
 import feedparser
@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import openai
+import difflib
 
 # ================= 配置 =================
 GH_TOKEN = os.environ.get("GH_MODELS_TOKEN")
@@ -38,10 +39,14 @@ USER_AGENTS = [
 ]
 
 KEEP_DAYS = 7
+SIMILARITY_THRESHOLD = 0.5      # 相似度阈值
+MAX_REPEAT_COUNT = 3            # 重复3次后隐藏
+
+# 事件计数文件
+EVENT_COUNTS_FILE = "event_counts.json"
 
 # ================= 信源中文名称映射表 =================
 SOURCE_NAME_MAP = {
-    # X 账号映射
     "whyyoutouzhele": "李老师不是你老师啊",
     "wangzhian8848": "王局志安",
     "newszg_official": "新闻调查",
@@ -75,7 +80,6 @@ SOURCE_NAME_MAP = {
     "ASPI_org": "澳大利亚战略政策研究所",
     "JamestownFdn": "詹姆斯敦基金会",
     "CECCgov": "国会-行政部门中国委员会",
-    # 新闻网站域名映射
     "bbc.com": "BBC中文",
     "rfa.org": "自由亚洲电台",
     "dw.com": "德国之声",
@@ -96,7 +100,7 @@ def get_display_source(source_name):
             return display
     return source_name
 
-# ================= 信源列表（同前） =================
+# ================= 信源列表 =================
 RAW_SOURCES = [
     "https://www.bbc.com/zhongwen/simp",
     "https://www.rfa.org/mandarin",
@@ -147,6 +151,7 @@ def clean_html(text):
     return soup.get_text().strip()[:500]
 
 def parse_published_strict(published_str):
+    """严格解析时间，无法解析时返回 None（丢弃该条目）"""
     if not published_str:
         return None
     formats = [
@@ -208,10 +213,9 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
         for entry in feed.entries:
             published_str = entry.get("published", entry.get("updated", ""))
             pub_dt = parse_published_strict(published_str)
-            if pub_dt is not None and pub_dt < cutoff:
+            # 无法解析时间或时间超出24小时，都跳过
+            if pub_dt is None or pub_dt < cutoff:
                 continue
-            if pub_dt is None:
-                print(f"  ⚠ 时间字段缺失或无法解析，保留条目: {entry.get('title', '')[:50]}")
             title = clean_html(entry.get("title", ""))
             summary = clean_html(entry.get("summary", ""))
             if not summary:
@@ -236,7 +240,7 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 "summary": summary,
                 "source": original_url,
                 "source_name": source_name,
-                "published_str": published_str if published_str else "未知时间",
+                "published_str": published_str,
                 "fetched_at": datetime.utcnow().isoformat()
             })
             if len(items) >= 12:
@@ -305,8 +309,8 @@ def fetch_all_sources():
     return all_items
 
 def load_previous_events():
-    """从上次生成的 report.md 中提取所有事件简述（去重）"""
-    events = set()
+    """从上次生成的 report.md 中提取所有事件简述（列表）"""
+    events = []
     if not os.path.exists("report.md"):
         return events
     try:
@@ -322,24 +326,84 @@ def load_previous_events():
                     continue
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 if len(cells) >= 1:
-                    events.add(cells[0])  # 事件简述是第一列
+                    event = cells[0].replace("🆕", "").strip()
+                    events.append(event)
         print(f"从上次报告加载了 {len(events)} 个事件简述")
     except Exception as e:
         print(f"加载上次报告失败: {e}")
     return events
 
-def deduplicate_table_rows(rows):
-    seen = set()
-    unique = []
+def load_event_counts():
+    """加载事件连续出现次数计数"""
+    if os.path.exists(EVENT_COUNTS_FILE):
+        try:
+            with open(EVENT_COUNTS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_event_counts(counts):
+    with open(EVENT_COUNTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(counts, f, ensure_ascii=False, indent=2)
+
+def is_similar(a, b, threshold=SIMILARITY_THRESHOLD):
+    return difflib.SequenceMatcher(None, a, b).ratio() >= threshold
+
+def deduplicate_and_mark_new(rows, old_events):
+    """
+    相似度去重，并标记新增（相对于 old_events）。
+    返回 (unique_rows, events_in_report)
+    """
+    unique_rows = []
+    kept_events = []
+    events_in_report = []   # 用于后续更新计数
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 4:
             continue
         event = cells[0]
-        if event not in seen:
-            seen.add(event)
-            unique.append(row)
-    return unique
+        # 与已保留的事件比较相似度
+        duplicate = False
+        for kept in kept_events:
+            if is_similar(event, kept):
+                duplicate = True
+                break
+        if duplicate:
+            continue
+        # 判断是否新增（与 old_events 比较）
+        is_new = True
+        for old in old_events:
+            if is_similar(event, old):
+                is_new = False
+                break
+        if is_new:
+            cells[0] = "🆕 " + event
+            row = "| " + " | ".join(cells) + " |"
+        unique_rows.append(row)
+        kept_events.append(event)
+        events_in_report.append(event)
+    return unique_rows, events_in_report
+
+def call_ai_with_retry(prompt, max_retries=3):
+    """带指数退避重试的 AI 调用"""
+    for attempt in range(max_retries):
+        try:
+            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
+            response = client.chat.completions.create(
+                model=AI_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=3000,
+            )
+            content = response.choices[0].message.content
+            if content is not None:
+                return content
+        except Exception as e:
+            print(f"  AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # 指数退避
+    return None
 
 def call_ai_unified(articles, old_events):
     if not articles:
@@ -390,59 +454,57 @@ def call_ai_unified(articles, old_events):
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 |"
     table_sep = "|----------|----------|------------|----------|"
-    client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
-        try:
-            response = client.chat.completions.create(
-                model=AI_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=3000,
-            )
-            content = response.choices[0].message.content
-            if content is None:
-                print(f"  ✗ AI 分析批次 {batch_idx} 返回空内容，跳过")
-                continue
-            lines = content.split("\n")
-            in_table = False
-            for line in lines:
-                if line.startswith("|") and "|" in line:
-                    if not in_table:
-                        in_table = True
-                    if re.match(r'^\|[\s\-:]+\|$', line):
-                        continue
-                    if line.startswith(table_header):
-                        continue
-                    cells = [c.strip() for c in line.split("|")[1:-1]]
-                    if len(cells) == 4:
-                        all_table_rows.append(line)
-        except Exception as e:
-            print(f"  ✗ AI 分析批次 {batch_idx} 失败: {e}")
+        content = call_ai_with_retry(prompt)
+        if content is None:
+            print(f"  ✗ AI 分析批次 {batch_idx} 重试失败，跳过")
             continue
+        lines = content.split("\n")
+        in_table = False
+        for line in lines:
+            if line.startswith("|") and "|" in line:
+                if not in_table:
+                    in_table = True
+                if re.match(r'^\|[\s\-:]+\|$', line):
+                    continue
+                if line.startswith(table_header):
+                    continue
+                cells = [c.strip() for c in line.split("|")[1:-1]]
+                if len(cells) == 4:
+                    all_table_rows.append(line)
     
     if not all_table_rows:
         return "无相关内容。\n"
     
-    # 去重并标记新增
-    seen = set()
-    unique_rows = []
-    for row in all_table_rows:
-        cells = [c.strip() for c in row.split("|")[1:-1]]
-        event = cells[0]
-        if event in seen:
-            continue
-        seen.add(event)
-        # 检查是否为新事件
-        if event not in old_events:
-            # 在事件简述前加 🆕 标记
-            cells[0] = "🆕 " + cells[0]
-            row = "| " + " | ".join(cells) + " |"
-        unique_rows.append(row)
-    
+    unique_rows, events_in_report = deduplicate_and_mark_new(all_table_rows, old_events)
     final_table = "\n".join([table_header, table_sep] + unique_rows)
-    return final_table
+    return final_table, events_in_report
+
+def filter_by_repeat_count(rows, event_counts):
+    """
+    根据连续出现次数过滤行，只保留计数 < MAX_REPEAT_COUNT 的事件。
+    同时返回更新后的计数。
+    """
+    new_rows = []
+    new_counts = {}
+    for row in rows:
+        cells = [c.strip() for c in row.split("|")[1:-1]]
+        if len(cells) != 4:
+            continue
+        event = cells[0].replace("🆕", "").strip()
+        # 获取当前计数，默认0
+        count = event_counts.get(event, 0)
+        # 如果本次出现，计数+1；否则计数置0（但本次出现意味着+1）
+        # 由于我们只处理本次出现的行，所以直接+1
+        new_count = count + 1
+        new_counts[event] = new_count
+        if new_count < MAX_REPEAT_COUNT:
+            new_rows.append(row)
+        else:
+            print(f"  🗑 隐藏重复事件（已出现 {new_count} 次）: {event[:50]}")
+    return new_rows, new_counts
 
 def generate_html_report(report_text):
     html_content = f"""<!DOCTYPE html>
@@ -497,7 +559,7 @@ def generate_html_report(report_text):
     html_content += f"""
 </div>
 <div class="footer">
-    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成，🆕 标记表示自上次运行以来新增的内容。</p>
+    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成。🆕 表示与上次报告相似度低于50%的新增事件；重复出现 {MAX_REPEAT_COUNT} 次后的事件将被隐藏。</p>
 </div>
 </body>
 </html>"""
@@ -578,11 +640,34 @@ def main():
         with open("report.html", "w") as f:
             f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
         return
-    # 加载上一次的事件列表
     old_events = load_previous_events()
+    event_counts = load_event_counts()
     print("=== 调用 AI 分析（统一分析，AI 自动识别报告并优先展示） ===")
-    report = call_ai_unified(all_articles, old_events)
-    full_report = "# 📊 内容安全行业舆情报告\n\n" + report
+    report_table, events_in_report = call_ai_unified(all_articles, old_events)
+    # 根据重复次数过滤
+    if report_table != "无相关内容。\n":
+        # 将 report_table 分割成行，提取表格行
+        lines = report_table.split("\n")
+        header = lines[0] if lines else ""
+        sep = lines[1] if len(lines) > 1 else ""
+        table_rows = lines[2:] if len(lines) > 2 else []
+        filtered_rows, new_counts = filter_by_repeat_count(table_rows, event_counts)
+        # 更新所有计数（包括本次未出现的事件，计数清零）
+        # 注意：new_counts 只包含了本次出现的事件，未出现的事件需要重置为0
+        for event in list(event_counts.keys()):
+            if event not in new_counts:
+                new_counts[event] = 0
+        save_event_counts(new_counts)
+        if filtered_rows:
+            final_table = "\n".join([header, sep] + filtered_rows)
+        else:
+            final_table = "无相关内容（所有事件已重复超过阈值）。\n"
+    else:
+        final_table = report_table
+        # 如果没有内容，将已有事件计数全部清零（因为本次没有事件）
+        new_counts = {event: 0 for event in event_counts}
+        save_event_counts(new_counts)
+    full_report = "# 📊 内容安全行业舆情报告\n\n" + final_table
     save_reports_with_history(full_report, all_articles)
     print(f"=== 清理超过 {KEEP_DAYS} 天的旧文件 ===")
     cleanup_old_files()
