@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 修复表格乱码 + 信息来源中文映射
+# crawler.py - 对比前次报告，标记新增内容
 import os
 import json
 import feedparser
@@ -86,14 +86,11 @@ SOURCE_NAME_MAP = {
 }
 
 def get_display_source(source_name):
-    """将来源名（如 @whyyoutouzhele 或 bbc.com）转换为中文显示名"""
-    # 如果已经是中文或特殊格式，直接返回
     if source_name.startswith("@") and len(source_name) > 1:
         username = source_name[1:]
         if username in SOURCE_NAME_MAP:
             return SOURCE_NAME_MAP[username]
         return source_name
-    # 域名匹配
     for domain, display in SOURCE_NAME_MAP.items():
         if domain in source_name:
             return display
@@ -225,7 +222,6 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
             if h in processed_hashes:
                 continue
             processed_hashes.add(h)
-            # 提取友好的来源名称
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -308,20 +304,44 @@ def fetch_all_sources():
     print(f"去重后共 {len(all_items)} 条（已通过内容哈希去重）")
     return all_items
 
+def load_previous_events():
+    """从上次生成的 report.md 中提取所有事件简述（去重）"""
+    events = set()
+    if not os.path.exists("report.md"):
+        return events
+    try:
+        with open("report.md", "r", encoding="utf-8") as f:
+            content = f.read()
+        lines = content.split("\n")
+        in_table = False
+        for line in lines:
+            if line.startswith("|") and "|" in line:
+                if not in_table:
+                    in_table = True
+                if re.match(r'^\|[\s\-:]+\|$', line):
+                    continue
+                cells = [c.strip() for c in line.split("|")[1:-1]]
+                if len(cells) >= 1:
+                    events.add(cells[0])  # 事件简述是第一列
+        print(f"从上次报告加载了 {len(events)} 个事件简述")
+    except Exception as e:
+        print(f"加载上次报告失败: {e}")
+    return events
+
 def deduplicate_table_rows(rows):
     seen = set()
     unique = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 4:
-            continue  # 只接受四列表格行
+            continue
         event = cells[0]
         if event not in seen:
             seen.add(event)
             unique.append(row)
     return unique
 
-def call_ai_unified(articles):
+def call_ai_unified(articles, old_events):
     if not articles:
         return "无相关内容。\n"
     
@@ -391,10 +411,8 @@ def call_ai_unified(articles):
                 if line.startswith("|") and "|" in line:
                     if not in_table:
                         in_table = True
-                    # 跳过分隔行
                     if re.match(r'^\|[\s\-:]+\|$', line):
                         continue
-                    # 跳过表头
                     if line.startswith(table_header):
                         continue
                     cells = [c.strip() for c in line.split("|")[1:-1]]
@@ -407,7 +425,22 @@ def call_ai_unified(articles):
     if not all_table_rows:
         return "无相关内容。\n"
     
-    unique_rows = deduplicate_table_rows(all_table_rows)
+    # 去重并标记新增
+    seen = set()
+    unique_rows = []
+    for row in all_table_rows:
+        cells = [c.strip() for c in row.split("|")[1:-1]]
+        event = cells[0]
+        if event in seen:
+            continue
+        seen.add(event)
+        # 检查是否为新事件
+        if event not in old_events:
+            # 在事件简述前加 🆕 标记
+            cells[0] = "🆕 " + cells[0]
+            row = "| " + " | ".join(cells) + " |"
+        unique_rows.append(row)
+    
     final_table = "\n".join([table_header, table_sep] + unique_rows)
     return final_table
 
@@ -444,9 +477,9 @@ def generate_html_report(report_text):
                 continue
             cells = [c.strip() for c in line.split("|")[1:-1]]
             if len(cells) != 4:
-                continue  # 跳过不符合四列的行
+                continue
             html_content += "<tr>\n"
-            for idx, cell in enumerate(cells):
+            for cell in cells:
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
                 if link_match:
                     text, url = link_match.group(1), link_match.group(2)
@@ -464,7 +497,7 @@ def generate_html_report(report_text):
     html_content += f"""
 </div>
 <div class="footer">
-    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成，仅供参考。</p>
+    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成，🆕 标记表示自上次运行以来新增的内容。</p>
 </div>
 </body>
 </html>"""
@@ -545,8 +578,10 @@ def main():
         with open("report.html", "w") as f:
             f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
         return
+    # 加载上一次的事件列表
+    old_events = load_previous_events()
     print("=== 调用 AI 分析（统一分析，AI 自动识别报告并优先展示） ===")
-    report = call_ai_unified(all_articles)
+    report = call_ai_unified(all_articles, old_events)
     full_report = "# 📊 内容安全行业舆情报告\n\n" + report
     save_reports_with_history(full_report, all_articles)
     print(f"=== 清理超过 {KEEP_DAYS} 天的旧文件 ===")
