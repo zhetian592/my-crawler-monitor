@@ -61,7 +61,6 @@ SOURCE_NAME_MAP = {
     "fangshimin": "方世民",
     "UHRP_Chinese": "UHRP中文",
     "jhf8964": "静好",
-    "amnestychinese": "国际特赦中文",
     "liangziyueqian1": "量子跃迁",
     "badiucao": "巴丢草",
     "wurenhua": "吴仁华",
@@ -73,12 +72,10 @@ SOURCE_NAME_MAP = {
     "ODNIgov": "国家情报总监办公室",
     "ChinaSelect": "众院中国问题特设委员会",
     "CNASdc": "新美国安全中心",
-    "CSR_Institute": "CSRI",
     "hrw": "人权观察",
     "amnesty": "国际特赦组织",
     "FreedomHouse": "自由之家",
     "ASPI_org": "澳大利亚战略政策研究所",
-    "JamestownFdn": "詹姆斯敦基金会",
     "CECCgov": "国会-行政部门中国委员会",
     "bbc.com": "BBC中文",
     "rfa.org": "自由亚洲电台",
@@ -100,7 +97,7 @@ def get_display_source(source_name):
             return display
     return source_name
 
-# ================= 信源列表 =================
+# ================= 信源列表（已移除三个不稳定账号） =================
 RAW_SOURCES = [
     "https://www.bbc.com/zhongwen/simp",
     "https://www.rfa.org/mandarin",
@@ -123,7 +120,6 @@ RAW_SOURCES = [
     "https://x.com/fangshimin",
     "https://x.com/UHRP_Chinese",
     "https://x.com/jhf8964",
-    "https://x.com/amnestychinese",
     "https://x.com/liangziyueqian1",
     "https://x.com/badiucao",
     "https://x.com/wurenhua",
@@ -135,12 +131,10 @@ RAW_SOURCES = [
     "https://x.com/ODNIgov",
     "https://x.com/ChinaSelect",
     "https://x.com/CNASdc",
-    "https://x.com/CSR_Institute",
     "https://x.com/hrw",
     "https://x.com/amnesty",
     "https://x.com/FreedomHouse",
     "https://x.com/ASPI_org",
-    "https://x.com/JamestownFdn",
     "https://x.com/CECCgov",
 ]
 
@@ -213,7 +207,6 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
         for entry in feed.entries:
             published_str = entry.get("published", entry.get("updated", ""))
             pub_dt = parse_published_strict(published_str)
-            # 无法解析时间或时间超出24小时，都跳过
             if pub_dt is None or pub_dt < cutoff:
                 continue
             title = clean_html(entry.get("title", ""))
@@ -357,13 +350,12 @@ def deduplicate_and_mark_new(rows, old_events):
     """
     unique_rows = []
     kept_events = []
-    events_in_report = []   # 用于后续更新计数
+    events_in_report = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 4:
             continue
         event = cells[0]
-        # 与已保留的事件比较相似度
         duplicate = False
         for kept in kept_events:
             if is_similar(event, kept):
@@ -371,7 +363,6 @@ def deduplicate_and_mark_new(rows, old_events):
                 break
         if duplicate:
             continue
-        # 判断是否新增（与 old_events 比较）
         is_new = True
         for old in old_events:
             if is_similar(event, old):
@@ -402,12 +393,12 @@ def call_ai_with_retry(prompt, max_retries=3):
         except Exception as e:
             print(f"  AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
             if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)  # 指数退避
+                time.sleep(2 ** attempt)
     return None
 
 def call_ai_unified(articles, old_events):
     if not articles:
-        return "无相关内容。\n"
+        return "无相关内容。\n", []
     
     def estimate_tokens(text):
         return int(len(text) / 1.5)
@@ -476,7 +467,7 @@ def call_ai_unified(articles, old_events):
                     all_table_rows.append(line)
     
     if not all_table_rows:
-        return "无相关内容。\n"
+        return "无相关内容。\n", []
     
     unique_rows, events_in_report = deduplicate_and_mark_new(all_table_rows, old_events)
     final_table = "\n".join([table_header, table_sep] + unique_rows)
@@ -485,7 +476,7 @@ def call_ai_unified(articles, old_events):
 def filter_by_repeat_count(rows, event_counts):
     """
     根据连续出现次数过滤行，只保留计数 < MAX_REPEAT_COUNT 的事件。
-    同时返回更新后的计数。
+    返回 (new_rows, new_counts)
     """
     new_rows = []
     new_counts = {}
@@ -494,10 +485,7 @@ def filter_by_repeat_count(rows, event_counts):
         if len(cells) != 4:
             continue
         event = cells[0].replace("🆕", "").strip()
-        # 获取当前计数，默认0
         count = event_counts.get(event, 0)
-        # 如果本次出现，计数+1；否则计数置0（但本次出现意味着+1）
-        # 由于我们只处理本次出现的行，所以直接+1
         new_count = count + 1
         new_counts[event] = new_count
         if new_count < MAX_REPEAT_COUNT:
@@ -547,7 +535,7 @@ def generate_html_report(report_text):
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_content += f"<td>{cell}</td>\n"
-            html_content += "</tr>\n"
+            html_content += "<tr>\n"
         else:
             if in_table:
                 html_content += "</thead><tbody></tbody></table>\n"
@@ -646,14 +634,11 @@ def main():
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
     # 根据重复次数过滤
     if report_table != "无相关内容。\n":
-        # 将 report_table 分割成行，提取表格行
         lines = report_table.split("\n")
         header = lines[0] if lines else ""
         sep = lines[1] if len(lines) > 1 else ""
         table_rows = lines[2:] if len(lines) > 2 else []
         filtered_rows, new_counts = filter_by_repeat_count(table_rows, event_counts)
-        # 更新所有计数（包括本次未出现的事件，计数清零）
-        # 注意：new_counts 只包含了本次出现的事件，未出现的事件需要重置为0
         for event in list(event_counts.keys()):
             if event not in new_counts:
                 new_counts[event] = 0
@@ -664,7 +649,6 @@ def main():
             final_table = "无相关内容（所有事件已重复超过阈值）。\n"
     else:
         final_table = report_table
-        # 如果没有内容，将已有事件计数全部清零（因为本次没有事件）
         new_counts = {event: 0 for event in event_counts}
         save_event_counts(new_counts)
     full_report = "# 📊 内容安全行业舆情报告\n\n" + final_table
