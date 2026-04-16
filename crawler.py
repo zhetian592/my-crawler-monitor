@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 相似度去重+信源计数 + 新增标记 + AI重试 + 跨天重复隐藏
+# crawler.py - 相似度去重+信源计数 + 新增标记 + AI重试 + 跨天重复隐藏（带冷却期）
 import os
 import json
 import feedparser
@@ -39,12 +39,13 @@ USER_AGENTS = [
 ]
 
 KEEP_DAYS = 7
-SIMILARITY_THRESHOLD = 0.5      # 相似度阈值
-MAX_REPEAT_COUNT = 3            # 跨天重复隐藏阈值
+SIMILARITY_THRESHOLD = 0.5
+MAX_REPEAT_COUNT = 3
+COOLDOWN_DAYS = 7          # 冷却期：隐藏后多少天内再次出现继续隐藏
 
 EVENT_COUNTS_FILE = "event_counts.json"
 
-# ================= 信源中文名称映射表 =================
+# ================= 信源中文名称映射表（与之前相同） =================
 SOURCE_NAME_MAP = {
     "whyyoutouzhele": "李老师不是你老师啊",
     "wangzhian8848": "王局志安",
@@ -96,7 +97,7 @@ def get_display_source(source_name):
             return display
     return source_name
 
-# ================= 信源列表（已移除三个不稳定账号） =================
+# ================= 信源列表（同前） =================
 RAW_SOURCES = [
     "https://www.bbc.com/zhongwen/simp",
     "https://www.rfa.org/mandarin",
@@ -318,7 +319,6 @@ def load_previous_events():
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 if len(cells) >= 1:
                     event = cells[0].replace("🆕", "").strip()
-                    # 去除信源计数标记（如“（3个信源）”）
                     event = re.sub(r'（\d+个信源）', '', event).strip()
                     events.append(event)
         print(f"从上次报告加载了 {len(events)} 个事件简述")
@@ -327,12 +327,21 @@ def load_previous_events():
     return events
 
 def load_event_counts():
+    """加载事件计数，格式：{event: {"count": n, "last_seen": "YYYY-MM-DD"}}"""
     if os.path.exists(EVENT_COUNTS_FILE):
         try:
             with open(EVENT_COUNTS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                # 兼容旧格式（纯数字）
+                if isinstance(data, dict) and all(isinstance(v, int) for v in data.values()):
+                    # 转换为新格式
+                    new_data = {}
+                    for k, v in data.items():
+                        new_data[k] = {"count": v, "last_seen": datetime.utcnow().strftime("%Y-%m-%d")}
+                    return new_data
+                return data
         except:
-            return {}
+            pass
     return {}
 
 def save_event_counts(counts):
@@ -343,12 +352,9 @@ def is_similar(a, b, threshold=SIMILARITY_THRESHOLD):
     return difflib.SequenceMatcher(None, a, b).ratio() >= threshold
 
 def deduplicate_and_mark_new(rows, old_events):
-    """
-    相似度去重，合并相同事件的不同信源，统计来源数量。
-    返回 (unique_rows, events_in_report)
-    """
+    """相似度去重，合并信源，返回 (unique_rows, events_in_report)"""
     # 解析所有行
-    events_data = []  # (event_text, source, link, risk, original_row)
+    events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 4:
@@ -379,18 +385,15 @@ def deduplicate_and_mark_new(rows, old_events):
     events_in_report = []
     for group in merged:
         first_event, first_src, first_link, first_risk, _ = group[0]
-        # 收集所有来源（去重）
         sources = sorted(set([s for _, s, _, _, _ in group]))
         source_count = len(sources)
         source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
-        # 构建事件简述（添加信源计数）
         event_text = first_event
         if source_count > 1:
             event_text = f"{event_text}（{source_count}个信源）"
-        # 构建新行
         new_cells = [event_text, first_link, first_risk, source_display]
         new_row = "| " + " | ".join(new_cells) + " |"
-        # 判断是否新增（与历史事件比较）
+        # 判断是否新增
         is_new = True
         for old in old_events:
             if is_similar(first_event, old):
@@ -500,23 +503,50 @@ def call_ai_unified(articles, old_events):
     return final_table, events_in_report
 
 def filter_by_repeat_count(rows, event_counts):
-    """跨天重复隐藏：连续出现 MAX_REPEAT_COUNT 次后隐藏"""
-    new_rows = []
+    """
+    根据连续出现次数和冷却期过滤行。
+    返回 (new_rows, new_counts)
+    """
+    today = datetime.utcnow().date()
     new_counts = {}
+    new_rows = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 4:
             continue
-        # 提取原始事件简述（去除 🆕 和 信源计数标记）
+        # 提取原始事件简述（去除标记和计数）
         event = cells[0].replace("🆕", "").strip()
         event = re.sub(r'（\d+个信源）', '', event).strip()
-        count = event_counts.get(event, 0)
-        new_count = count + 1
-        new_counts[event] = new_count
-        if new_count < MAX_REPEAT_COUNT:
-            new_rows.append(row)
+        # 获取已有记录
+        record = event_counts.get(event, {"count": 0, "last_seen": None})
+        count = record.get("count", 0)
+        last_seen_str = record.get("last_seen")
+        last_seen = datetime.strptime(last_seen_str, "%Y-%m-%d").date() if last_seen_str else None
+        
+        # 决定本次是否显示
+        if count >= MAX_REPEAT_COUNT:
+            # 已达到阈值，检查冷却期
+            if last_seen and (today - last_seen).days < COOLDOWN_DAYS:
+                # 仍在冷却期内，隐藏
+                print(f"  🗑 隐藏重复事件（冷却期内）: {event[:50]}")
+                # 更新计数（不重置，保持阈值，更新最后出现时间）
+                new_counts[event] = {"count": count, "last_seen": today.isoformat()}
+                continue
+            else:
+                # 冷却期已过，重置计数为1（视为新的一轮）
+                count = 1
         else:
-            print(f"  🗑 隐藏重复事件（已出现 {new_count} 次）: {event[:50]}")
+            # 未达阈值，正常累加
+            count += 1
+        
+        # 显示该行
+        new_rows.append(row)
+        new_counts[event] = {"count": count, "last_seen": today.isoformat()}
+    
+    # 对于本次未出现的事件，保留原有记录（不重置）
+    for event, record in event_counts.items():
+        if event not in new_counts:
+            new_counts[event] = record
     return new_rows, new_counts
 
 def generate_html_report(report_text):
@@ -563,7 +593,7 @@ def generate_html_report(report_text):
             html_content += "</tr>\n"
         else:
             if in_table:
-                html_content += "</thead><tbody></tbody></tr>\n"
+                html_content += "</thead><tbody></tbody></table>\n"
                 in_table = False
             if line.strip():
                 html_content += f"<p>{line}</p>\n"
@@ -572,7 +602,7 @@ def generate_html_report(report_text):
     html_content += f"""
 </div>
 <div class="footer">
-    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成。🆕 表示与上次报告相似度低于50%的新增事件；括号内为多个信源报道计数；重复出现 {MAX_REPEAT_COUNT} 次后的事件将被隐藏。</p>
+    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成。🆕 表示与上次报告相似度低于50%的新增事件；括号内为多个信源报道计数；连续出现 {MAX_REPEAT_COUNT} 次后的事件将进入 {COOLDOWN_DAYS} 天冷却期，冷却期内再次出现会被隐藏。</p>
 </div>
 </body>
 </html>"""
@@ -657,25 +687,22 @@ def main():
     event_counts = load_event_counts()
     print("=== 调用 AI 分析（统一分析，AI 自动识别报告并优先展示） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
-    # 跨天重复隐藏
+    # 跨天重复隐藏（带冷却期）
     if report_table != "无相关内容。\n":
         lines = report_table.split("\n")
         header = lines[0] if lines else ""
         sep = lines[1] if len(lines) > 1 else ""
         table_rows = lines[2:] if len(lines) > 2 else []
         filtered_rows, new_counts = filter_by_repeat_count(table_rows, event_counts)
-        for event in list(event_counts.keys()):
-            if event not in new_counts:
-                new_counts[event] = 0
         save_event_counts(new_counts)
         if filtered_rows:
             final_table = "\n".join([header, sep] + filtered_rows)
         else:
-            final_table = "无相关内容（所有事件已重复超过阈值）。\n"
+            final_table = "无相关内容（所有事件已进入冷却期）。\n"
     else:
         final_table = report_table
-        new_counts = {event: 0 for event in event_counts}
-        save_event_counts(new_counts)
+        # 没有新内容，计数保持不变
+        save_event_counts(event_counts)
     full_report = "# 📊 内容安全行业舆情报告\n\n" + final_table
     save_reports_with_history(full_report, all_articles)
     print(f"=== 清理超过 {KEEP_DAYS} 天的旧文件 ===")
