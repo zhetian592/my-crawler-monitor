@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 最终版：报告优先 + 自动分批 + 元数据（VOA已替换为X账号）
+# crawler.py - 统一分析，AI 自动识别报告并优先展示，增加信息来源列，自动清理旧文件
 import os
 import json
 import feedparser
@@ -37,15 +37,11 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-REPORT_X_USERNAMES = [
-    "USCC_GOV", "ODNIgov", "ChinaSelect", "CNASdc", "CSR_Institute",
-    "hrw", "hrw_chinese", "amnesty", "FreedomHouse", "ASPI_org",
-    "JamestownFdn", "CECCgov"
-]
+# 保留历史报告的天数（可修改）
+KEEP_DAYS = 7
 
 # ================= 信源列表 =================
 RAW_SOURCES = [
-    # 新闻网站（不含VOA RSS）
     "https://www.bbc.com/zhongwen/simp",
     "https://www.rfa.org/mandarin",
     "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
@@ -53,8 +49,6 @@ RAW_SOURCES = [
     "https://cn.nytimes.com/",
     "https://www.ntdtv.com/gb/instant-news.html",
     "https://www.epochtimes.com/gb/instant-news.htm",
-
-    # 普通 X 账号（包括新增的 VOAChinese）
     "https://x.com/whyyoutouzhele",
     "https://x.com/wangzhian8848",
     "https://x.com/newszg_official",
@@ -76,9 +70,7 @@ RAW_SOURCES = [
     "https://x.com/zaobaosg",
     "https://x.com/dajiyuan",
     "https://x.com/NTDChinese",
-    "https://x.com/VOAChinese",          # VOA 官方 X 账号（替代原 RSS）
-
-    # 报告类 X 官方账号
+    "https://x.com/VOAChinese",
     "https://x.com/USCC_GOV",
     "https://x.com/ODNIgov",
     "https://x.com/ChinaSelect",
@@ -123,16 +115,9 @@ def content_hash(title, summary):
     text = (title + " " + summary)[:500]
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
-def is_report_source(source_url):
-    source_lower = source_url.lower()
-    for username in REPORT_X_USERNAMES:
-        if f"/{username.lower()}" in source_lower or f"/{username}" in source_lower:
-            return True
-    return False
-
 def url_to_rss(url):
     rsshub = random.choice(RSSHUB_INSTANCES)
-    if "voachinese.com" in url:   # 已无VOA RSS，保留以防万一
+    if "voachinese.com" in url:
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
@@ -178,20 +163,17 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 summary = clean_html(entry.get("content", [{}])[0].get("value", ""))
             if not summary:
                 summary = title
-            is_report = is_report_source(original_url)
             h = content_hash(title, summary)
             if h in processed_hashes:
                 continue
             processed_hashes.add(h)
-            source_name = original_url
+            # 提取友好的来源名称
             if "x.com/" in original_url:
                 parts = original_url.split("/")
-                if len(parts) > 3:
-                    source_name = "@" + parts[3]
+                source_name = "@" + parts[3] if len(parts) > 3 else original_url
             else:
                 domain_match = re.search(r'https?://([^/]+)', original_url)
-                if domain_match:
-                    source_name = domain_match.group(1)
+                source_name = domain_match.group(1) if domain_match else original_url
             items.append({
                 "title": title,
                 "link": entry.get("link", ""),
@@ -199,8 +181,7 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 "source": original_url,
                 "source_name": source_name,
                 "published_str": published_str if published_str else "未知时间",
-                "fetched_at": datetime.utcnow().isoformat(),
-                "is_report": is_report
+                "fetched_at": datetime.utcnow().isoformat()
             })
             if len(items) >= 12:
                 break
@@ -280,10 +261,9 @@ def deduplicate_table_rows(rows):
             unique.append(row)
     return unique
 
-def call_ai_for_category(articles, category_name):
-    """自动分批调用 AI，合并结果，返回最终表格"""
+def call_ai_unified(articles):
     if not articles:
-        return f"## {category_name}\n\n无相关内容。\n"
+        return "无相关内容。\n"
     
     def estimate_tokens(text):
         return int(len(text) / 1.5)
@@ -300,10 +280,12 @@ def call_ai_for_category(articles, category_name):
     prompt_prefix = """你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**。
 
 **重要说明**：
-- 只输出**负面涉华**内容，不要输出正面或中性内容。
-- 使用 Markdown 表格格式，表格头为：| 事件简述 | 原文链接 | 潜在风险点 |
+- 请优先输出来自官方机构、智库、政府部门的报告类内容（如 USCC、HRW、Amnesty、ASPI 等），这类内容放在表格的前面。
+- 对于普通新闻和普通 X 账号的内容，放在报告类内容之后。
+- 输出使用 Markdown 表格格式，表格头为：| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 |
 - 每一条负面内容单独占一行。
 - 原文链接列使用 `[查看](URL)` 格式。
+- “信息来源”列填写内容的来源（例如 @USCC_GOV、BBC中文 等）。
 - 如果没有任何负面涉华内容，只输出一行“无”。
 - 不要添加任何额外解释。
 
@@ -323,11 +305,11 @@ def call_ai_for_category(articles, category_name):
     if current_batch:
         batches.append(current_batch)
     
-    print(f"  → {category_name}: {len(articles)} 条内容，分为 {len(batches)} 批")
+    print(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
     
     all_table_rows = []
-    table_header = "| 事件简述 | 原文链接 | 潜在风险点 |"
-    table_sep = "|----------|----------|------------|"
+    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 |"
+    table_sep = "|----------|----------|------------|----------|"
     client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
@@ -337,10 +319,13 @@ def call_ai_for_category(articles, category_name):
                 model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                max_tokens=2000,
+                max_tokens=3000,
             )
-            report = response.choices[0].message.content
-            lines = report.split("\n")
+            content = response.choices[0].message.content
+            if content is None:
+                print(f"  ✗ AI 分析批次 {batch_idx} 返回空内容，跳过")
+                continue
+            lines = content.split("\n")
             in_table = False
             for line in lines:
                 if line.startswith("|") and "|" in line:
@@ -356,13 +341,13 @@ def call_ai_for_category(articles, category_name):
             continue
     
     if not all_table_rows:
-        return f"## {category_name}\n\n无相关内容。\n"
+        return "无相关内容。\n"
     
     unique_rows = deduplicate_table_rows(all_table_rows)
     final_table = "\n".join([table_header, table_sep] + unique_rows)
-    return f"## {category_name}\n\n{final_table}\n"
+    return final_table
 
-def generate_html_report(report_text, all_articles):
+def generate_html_report(report_text):
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -371,14 +356,12 @@ def generate_html_report(report_text, all_articles):
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 20px; line-height: 1.5; }}
         h1 {{ font-size: 1.8rem; border-bottom: 1px solid #eaecef; }}
-        h2 {{ font-size: 1.4rem; margin-top: 1.5em; }}
         table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
         th, td {{ border: 1px solid #dfe2e5; padding: 8px 12px; text-align: left; vertical-align: top; }}
         th {{ background-color: #f6f8fa; }}
         a {{ color: #0366d6; text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
         .footer {{ margin-top: 30px; font-size: 12px; color: #6a737d; }}
-        hr {{ margin: 30px 0; }}
     </style>
 </head>
 <body>
@@ -389,11 +372,9 @@ def generate_html_report(report_text, all_articles):
     lines = report_text.split("\n")
     in_table = False
     for line in lines:
-        if line.startswith("## "):
-            html_content += f"<h2>{line[3:]}</h2>\n"
-        elif line.startswith("|") and "|" in line:
+        if line.startswith("|") and "|" in line:
             if not in_table:
-                html_content += '<table>\n<thead>\n'
+                html_content += '<td>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -405,10 +386,10 @@ def generate_html_report(report_text, all_articles):
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_content += f"<td>{cell}</td>\n"
-            html_content += "<tr>\n"
+            html_content += "</tr>\n"
         else:
             if in_table:
-                html_content += "</thead><tbody></tbody></table>\n"
+                html_content += "</thead><tbody></tbody><table>\n"
                 in_table = False
             if line.strip():
                 html_content += f"<p>{line}</p>\n"
@@ -427,7 +408,7 @@ def save_reports_with_history(report_text, all_articles):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(report_text)
-    html_content = generate_html_report(report_text, all_articles)
+    html_content = generate_html_report(report_text)
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
     os.makedirs("reports", exist_ok=True)
@@ -459,6 +440,36 @@ def generate_index_page():
     with open(os.path.join(reports_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(index_html)
 
+def cleanup_old_files(days=KEEP_DAYS):
+    """删除超过指定天数的历史报告和原始数据文件"""
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    # 清理 reports/ 下的 report_*.html 文件（保留 index.html）
+    reports_dir = "reports"
+    if os.path.exists(reports_dir):
+        for f in os.listdir(reports_dir):
+            if f.startswith("report_") and f.endswith(".html"):
+                filepath = os.path.join(reports_dir, f)
+                try:
+                    mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+                    if mtime < cutoff:
+                        os.remove(filepath)
+                        print(f"  🗑 已删除旧报告: {f}")
+                except Exception as e:
+                    print(f"  ⚠ 删除文件 {f} 失败: {e}")
+    # 清理 data/ 下的 raw_*.json 文件
+    data_dir = "data"
+    if os.path.exists(data_dir):
+        for f in os.listdir(data_dir):
+            if f.startswith("raw_") and f.endswith(".json"):
+                filepath = os.path.join(data_dir, f)
+                try:
+                    mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
+                    if mtime < cutoff:
+                        os.remove(filepath)
+                        print(f"  🗑 已删除旧数据: {f}")
+                except Exception as e:
+                    print(f"  ⚠ 删除文件 {f} 失败: {e}")
+
 def main():
     start = time.time()
     print("=== 开始抓取信源（过去24小时） ===")
@@ -471,14 +482,12 @@ def main():
         with open("report.html", "w") as f:
             f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
         return
-    report_articles = [a for a in all_articles if a.get("is_report")]
-    other_articles = [a for a in all_articles if not a.get("is_report")]
-    print(f"报告类条目: {len(report_articles)} 条，普通类条目: {len(other_articles)} 条")
-    print("=== 调用 AI 分析（报告类优先） ===")
-    report_section = call_ai_for_category(report_articles, "📄 涉华负面报告（官方机构）")
-    other_section = call_ai_for_category(other_articles, "📰 其他涉华负面新闻")
-    full_report = report_section + "\n---\n" + other_section
+    print("=== 调用 AI 分析（统一分析，AI 自动识别报告并优先展示） ===")
+    report = call_ai_unified(all_articles)
+    full_report = "# 📊 内容安全行业舆情报告\n\n" + report
     save_reports_with_history(full_report, all_articles)
+    print(f"=== 清理超过 {KEEP_DAYS} 天的旧文件 ===")
+    cleanup_old_files()
     print(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
 
 if __name__ == "__main__":
