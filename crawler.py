@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 相似度去重 + 新增标记 + AI重试 + 时间过滤严格 + 重复3次隐藏
+# crawler.py - 相似度去重+信源计数 + 新增标记 + AI重试 + 跨天重复隐藏
 import os
 import json
 import feedparser
@@ -40,9 +40,8 @@ USER_AGENTS = [
 
 KEEP_DAYS = 7
 SIMILARITY_THRESHOLD = 0.5      # 相似度阈值
-MAX_REPEAT_COUNT = 3            # 重复3次后隐藏
+MAX_REPEAT_COUNT = 3            # 跨天重复隐藏阈值
 
-# 事件计数文件
 EVENT_COUNTS_FILE = "event_counts.json"
 
 # ================= 信源中文名称映射表 =================
@@ -145,7 +144,6 @@ def clean_html(text):
     return soup.get_text().strip()[:500]
 
 def parse_published_strict(published_str):
-    """严格解析时间，无法解析时返回 None（丢弃该条目）"""
     if not published_str:
         return None
     formats = [
@@ -320,6 +318,8 @@ def load_previous_events():
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 if len(cells) >= 1:
                     event = cells[0].replace("🆕", "").strip()
+                    # 去除信源计数标记（如“（3个信源）”）
+                    event = re.sub(r'（\d+个信源）', '', event).strip()
                     events.append(event)
         print(f"从上次报告加载了 {len(events)} 个事件简述")
     except Exception as e:
@@ -327,7 +327,6 @@ def load_previous_events():
     return events
 
 def load_event_counts():
-    """加载事件连续出现次数计数"""
     if os.path.exists(EVENT_COUNTS_FILE):
         try:
             with open(EVENT_COUNTS_FILE, "r", encoding="utf-8") as f:
@@ -345,39 +344,66 @@ def is_similar(a, b, threshold=SIMILARITY_THRESHOLD):
 
 def deduplicate_and_mark_new(rows, old_events):
     """
-    相似度去重，并标记新增（相对于 old_events）。
+    相似度去重，合并相同事件的不同信源，统计来源数量。
     返回 (unique_rows, events_in_report)
     """
-    unique_rows = []
-    kept_events = []
-    events_in_report = []
+    # 解析所有行
+    events_data = []  # (event_text, source, link, risk, original_row)
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 4:
             continue
         event = cells[0]
-        duplicate = False
-        for kept in kept_events:
-            if is_similar(event, kept):
-                duplicate = True
-                break
-        if duplicate:
+        link = cells[1]
+        risk = cells[2]
+        source = cells[3]
+        events_data.append((event, source, link, risk, row))
+    
+    # 合并相似事件
+    merged = []
+    used = [False] * len(events_data)
+    for i, (event_i, src_i, link_i, risk_i, row_i) in enumerate(events_data):
+        if used[i]:
             continue
+        group = [(event_i, src_i, link_i, risk_i, row_i)]
+        for j, (event_j, src_j, link_j, risk_j, row_j) in enumerate(events_data):
+            if i == j or used[j]:
+                continue
+            if is_similar(event_i, event_j):
+                group.append((event_j, src_j, link_j, risk_j, row_j))
+                used[j] = True
+        used[i] = True
+        merged.append(group)
+    
+    unique_rows = []
+    events_in_report = []
+    for group in merged:
+        first_event, first_src, first_link, first_risk, _ = group[0]
+        # 收集所有来源（去重）
+        sources = sorted(set([s for _, s, _, _, _ in group]))
+        source_count = len(sources)
+        source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
+        # 构建事件简述（添加信源计数）
+        event_text = first_event
+        if source_count > 1:
+            event_text = f"{event_text}（{source_count}个信源）"
+        # 构建新行
+        new_cells = [event_text, first_link, first_risk, source_display]
+        new_row = "| " + " | ".join(new_cells) + " |"
+        # 判断是否新增（与历史事件比较）
         is_new = True
         for old in old_events:
-            if is_similar(event, old):
+            if is_similar(first_event, old):
                 is_new = False
                 break
         if is_new:
-            cells[0] = "🆕 " + event
-            row = "| " + " | ".join(cells) + " |"
-        unique_rows.append(row)
-        kept_events.append(event)
-        events_in_report.append(event)
+            new_cells[0] = "🆕 " + new_cells[0]
+            new_row = "| " + " | ".join(new_cells) + " |"
+        unique_rows.append(new_row)
+        events_in_report.append(first_event)
     return unique_rows, events_in_report
 
 def call_ai_with_retry(prompt, max_retries=3):
-    """带指数退避重试的 AI 调用"""
     for attempt in range(max_retries):
         try:
             client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
@@ -474,17 +500,16 @@ def call_ai_unified(articles, old_events):
     return final_table, events_in_report
 
 def filter_by_repeat_count(rows, event_counts):
-    """
-    根据连续出现次数过滤行，只保留计数 < MAX_REPEAT_COUNT 的事件。
-    返回 (new_rows, new_counts)
-    """
+    """跨天重复隐藏：连续出现 MAX_REPEAT_COUNT 次后隐藏"""
     new_rows = []
     new_counts = {}
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 4:
             continue
+        # 提取原始事件简述（去除 🆕 和 信源计数标记）
         event = cells[0].replace("🆕", "").strip()
+        event = re.sub(r'（\d+个信源）', '', event).strip()
         count = event_counts.get(event, 0)
         new_count = count + 1
         new_counts[event] = new_count
@@ -535,10 +560,10 @@ def generate_html_report(report_text):
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_content += f"<td>{cell}</td>\n"
-            html_content += "<tr>\n"
+            html_content += "</tr>\n"
         else:
             if in_table:
-                html_content += "</thead><tbody></tbody></table>\n"
+                html_content += "</thead><tbody></tbody></tr>\n"
                 in_table = False
             if line.strip():
                 html_content += f"<p>{line}</p>\n"
@@ -547,7 +572,7 @@ def generate_html_report(report_text):
     html_content += f"""
 </div>
 <div class="footer">
-    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成。🆕 表示与上次报告相似度低于50%的新增事件；重复出现 {MAX_REPEAT_COUNT} 次后的事件将被隐藏。</p>
+    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成。🆕 表示与上次报告相似度低于50%的新增事件；括号内为多个信源报道计数；重复出现 {MAX_REPEAT_COUNT} 次后的事件将被隐藏。</p>
 </div>
 </body>
 </html>"""
@@ -632,7 +657,7 @@ def main():
     event_counts = load_event_counts()
     print("=== 调用 AI 分析（统一分析，AI 自动识别报告并优先展示） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
-    # 根据重复次数过滤
+    # 跨天重复隐藏
     if report_table != "无相关内容。\n":
         lines = report_table.split("\n")
         header = lines[0] if lines else ""
