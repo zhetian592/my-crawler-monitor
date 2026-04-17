@@ -165,7 +165,6 @@ def parse_published_strict(published_str):
     return None
 
 def format_time_ago(pub_dt):
-    """将发布时间与当前时间比较，返回易读字符串（如 '2小时前', '3天前'）"""
     if pub_dt is None:
         return "未知"
     now = datetime.utcnow()
@@ -259,7 +258,6 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 domain_match = re.search(r'https?://([^/]+)', original_url)
                 raw_domain = domain_match.group(1) if domain_match else original_url
                 source_name = raw_domain
-            # 计算发布多久前
             time_ago = format_time_ago(pub_dt)
             items.append({
                 "title": title,
@@ -268,7 +266,7 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 "source": original_url,
                 "source_name": source_name,
                 "published_str": published_str,
-                "pub_dt": pub_dt,
+                "pub_dt": pub_dt.isoformat() if pub_dt else None,  # 转为字符串避免JSON错误
                 "time_ago": time_ago,
                 "fetched_at": datetime.utcnow().isoformat()
             })
@@ -388,7 +386,7 @@ def deduplicate_and_mark_new(rows, old_events):
     events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
-        if len(cells) != 5:   # 现在表格有5列
+        if len(cells) != 5:
             continue
         event = cells[0]
         link = cells[1]
@@ -574,7 +572,7 @@ def generate_html_report(report_text, all_articles):
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<table>\n<thead>\n'
+                html_table += '<tr>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -591,12 +589,11 @@ def generate_html_report(report_text, all_articles):
             html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></table>\n"
+                html_table += "</thead><tbody></tbody></tr>\n"
                 in_table = False
     if in_table:
         html_table += "</thead><tbody></tbody></table>\n"
 
-    # 登录验证脚本
     login_script = '''
 <script>
 (function() {
