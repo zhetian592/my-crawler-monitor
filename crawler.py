@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 相似度去重+信源计数 + 新增标记 + AI重试 + 跨天重复隐藏（带冷却期）
+# crawler.py - 相似度去重+信源计数 + 新增标记 + AI重试 + 跨天重复隐藏 + 链接转换为官方X链接
 import os
 import json
 import feedparser
@@ -41,11 +41,11 @@ USER_AGENTS = [
 KEEP_DAYS = 7
 SIMILARITY_THRESHOLD = 0.5
 MAX_REPEAT_COUNT = 3
-COOLDOWN_DAYS = 7          # 冷却期：隐藏后多少天内再次出现继续隐藏
+COOLDOWN_DAYS = 7
 
 EVENT_COUNTS_FILE = "event_counts.json"
 
-# ================= 信源中文名称映射表（与之前相同） =================
+# ================= 信源中文名称映射表 =================
 SOURCE_NAME_MAP = {
     "whyyoutouzhele": "李老师不是你老师啊",
     "wangzhian8848": "王局志安",
@@ -97,7 +97,7 @@ def get_display_source(source_name):
             return display
     return source_name
 
-# ================= 信源列表（同前） =================
+# ================= 信源列表 =================
 RAW_SOURCES = [
     "https://www.bbc.com/zhongwen/simp",
     "https://www.rfa.org/mandarin",
@@ -192,6 +192,19 @@ def url_to_rss(url):
         return f"{rsshub}/uscc/reports"
     return url
 
+def convert_to_official_x_link(link):
+    """将 Nitter 链接转换为官方 X 链接"""
+    if not link:
+        return link
+    # 替换常见的 Nitter 域名
+    link = link.replace("nitter.net", "x.com")
+    link = link.replace("twitter.net", "x.com")
+    link = link.replace("nitter.poast.org", "x.com")
+    link = link.replace("nitter.private.coffee", "x.com")
+    link = link.replace("nitter.42l.fr", "x.com")
+    # 确保路径格式正确（Nitter 的 /username/status/123 与官方一致）
+    return link
+
 def fetch_single_rss(rss_url, original_url, processed_hashes):
     try:
         headers = {"User-Agent": random.choice(USER_AGENTS)}
@@ -218,6 +231,10 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
             if h in processed_hashes:
                 continue
             processed_hashes.add(h)
+            # 获取链接并转换为官方 X 链接
+            link = entry.get("link", "")
+            link = convert_to_official_x_link(link)
+            # 提取来源名称
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -228,7 +245,7 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 source_name = raw_domain
             items.append({
                 "title": title,
-                "link": entry.get("link", ""),
+                "link": link,
                 "summary": summary,
                 "source": original_url,
                 "source_name": source_name,
@@ -301,7 +318,6 @@ def fetch_all_sources():
     return all_items
 
 def load_previous_events():
-    """从上次生成的 report.md 中提取所有事件简述（列表）"""
     events = []
     if not os.path.exists("report.md"):
         return events
@@ -327,14 +343,11 @@ def load_previous_events():
     return events
 
 def load_event_counts():
-    """加载事件计数，格式：{event: {"count": n, "last_seen": "YYYY-MM-DD"}}"""
     if os.path.exists(EVENT_COUNTS_FILE):
         try:
             with open(EVENT_COUNTS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # 兼容旧格式（纯数字）
                 if isinstance(data, dict) and all(isinstance(v, int) for v in data.values()):
-                    # 转换为新格式
                     new_data = {}
                     for k, v in data.items():
                         new_data[k] = {"count": v, "last_seen": datetime.utcnow().strftime("%Y-%m-%d")}
@@ -352,8 +365,6 @@ def is_similar(a, b, threshold=SIMILARITY_THRESHOLD):
     return difflib.SequenceMatcher(None, a, b).ratio() >= threshold
 
 def deduplicate_and_mark_new(rows, old_events):
-    """相似度去重，合并信源，返回 (unique_rows, events_in_report)"""
-    # 解析所有行
     events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
@@ -365,7 +376,6 @@ def deduplicate_and_mark_new(rows, old_events):
         source = cells[3]
         events_data.append((event, source, link, risk, row))
     
-    # 合并相似事件
     merged = []
     used = [False] * len(events_data)
     for i, (event_i, src_i, link_i, risk_i, row_i) in enumerate(events_data):
@@ -393,7 +403,6 @@ def deduplicate_and_mark_new(rows, old_events):
             event_text = f"{event_text}（{source_count}个信源）"
         new_cells = [event_text, first_link, first_risk, source_display]
         new_row = "| " + " | ".join(new_cells) + " |"
-        # 判断是否新增
         is_new = True
         for old in old_events:
             if is_similar(first_event, old):
@@ -503,10 +512,6 @@ def call_ai_unified(articles, old_events):
     return final_table, events_in_report
 
 def filter_by_repeat_count(rows, event_counts):
-    """
-    根据连续出现次数和冷却期过滤行。
-    返回 (new_rows, new_counts)
-    """
     today = datetime.utcnow().date()
     new_counts = {}
     new_rows = []
@@ -514,36 +519,26 @@ def filter_by_repeat_count(rows, event_counts):
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 4:
             continue
-        # 提取原始事件简述（去除标记和计数）
         event = cells[0].replace("🆕", "").strip()
         event = re.sub(r'（\d+个信源）', '', event).strip()
-        # 获取已有记录
         record = event_counts.get(event, {"count": 0, "last_seen": None})
         count = record.get("count", 0)
         last_seen_str = record.get("last_seen")
         last_seen = datetime.strptime(last_seen_str, "%Y-%m-%d").date() if last_seen_str else None
         
-        # 决定本次是否显示
         if count >= MAX_REPEAT_COUNT:
-            # 已达到阈值，检查冷却期
             if last_seen and (today - last_seen).days < COOLDOWN_DAYS:
-                # 仍在冷却期内，隐藏
                 print(f"  🗑 隐藏重复事件（冷却期内）: {event[:50]}")
-                # 更新计数（不重置，保持阈值，更新最后出现时间）
                 new_counts[event] = {"count": count, "last_seen": today.isoformat()}
                 continue
             else:
-                # 冷却期已过，重置计数为1（视为新的一轮）
                 count = 1
         else:
-            # 未达阈值，正常累加
             count += 1
         
-        # 显示该行
         new_rows.append(row)
         new_counts[event] = {"count": count, "last_seen": today.isoformat()}
     
-    # 对于本次未出现的事件，保留原有记录（不重置）
     for event, record in event_counts.items():
         if event not in new_counts:
             new_counts[event] = record
@@ -602,7 +597,7 @@ def generate_html_report(report_text):
     html_content += f"""
 </div>
 <div class="footer">
-    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成。🆕 表示与上次报告相似度低于50%的新增事件；括号内为多个信源报道计数；连续出现 {MAX_REPEAT_COUNT} 次后的事件将进入 {COOLDOWN_DAYS} 天冷却期，冷却期内再次出现会被隐藏。</p>
+    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成。🆕 表示与上次报告相似度低于50%的新增事件；括号内为多个信源报道计数；连续出现 {MAX_REPEAT_COUNT} 次后的事件将进入 {COOLDOWN_DAYS} 天冷却期，冷却期内再次出现会被隐藏。所有链接已转换为官方 X 链接（x.com）。</p>
 </div>
 </body>
 </html>"""
@@ -687,7 +682,6 @@ def main():
     event_counts = load_event_counts()
     print("=== 调用 AI 分析（统一分析，AI 自动识别报告并优先展示） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
-    # 跨天重复隐藏（带冷却期）
     if report_table != "无相关内容。\n":
         lines = report_table.split("\n")
         header = lines[0] if lines else ""
@@ -701,7 +695,6 @@ def main():
             final_table = "无相关内容（所有事件已进入冷却期）。\n"
     else:
         final_table = report_table
-        # 没有新内容，计数保持不变
         save_event_counts(event_counts)
     full_report = "# 📊 内容安全行业舆情报告\n\n" + final_table
     save_reports_with_history(full_report, all_articles)
