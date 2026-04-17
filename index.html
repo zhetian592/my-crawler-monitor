@@ -129,7 +129,7 @@
             <div class="update-time">📅 报告时间：<span id="report-time">--</span></div>
             <div>
                 <button id="refresh-btn">🔄 刷新报告</button>
-                <a href="reports/index.html" target="_blank" style="margin-left: 12px; text-decoration: none; background: #28a745; color: white; padding: 6px 14px; border-radius: 30px; font-size: 0.85rem;">📚 历史报告</a>
+                <button id="history-btn" style="background: #28a745; margin-left: 8px;">📚 历史报告</button>
             </div>
         </div>
         <div id="report-content">
@@ -160,7 +160,18 @@
             document.getElementById('report-time').textContent = reportTime;
             
             // 转换为 HTML
-            const html = marked.parse(text);
+            let html = marked.parse(text);
+            // 为所有链接添加 target="_blank"
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            tempDiv.querySelectorAll('a').forEach(link => {
+                if (link.href && !link.href.startsWith('#')) {
+                    link.setAttribute('target', '_blank');
+                    link.setAttribute('rel', 'noopener noreferrer');
+                }
+            });
+            html = tempDiv.innerHTML;
+            
             reportDiv.innerHTML = `<div class="report">${html}</div>`;
             
             // 检测新报告（基于报告时间或内容前150字符）
@@ -203,6 +214,9 @@
     }
     
     document.getElementById('refresh-btn').addEventListener('click', loadReport);
+    document.getElementById('history-btn').addEventListener('click', () => {
+        window.open('reports/index.html', '_blank');
+    });
     loadReport();
 </script>
 </body>
