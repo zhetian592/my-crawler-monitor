@@ -6,28 +6,72 @@
     <title>🛡️ 内容安全舆情监控系统</title>
     <style>
         * { box-sizing: border-box; }
+        /* 基础变量（浅色模式） */
+        :root {
+            --bg-body: #f0f2f5;
+            --bg-card: #ffffff;
+            --text-primary: #1e2a3a;
+            --text-secondary: #555;
+            --border: #e0e0e0;
+            --link: #1e3a8a;
+            --link-hover: #0f2b6d;
+            --btn-primary: #1e3a8a;
+            --btn-primary-hover: #0f2b6d;
+            --btn-history: #28a745;
+            --btn-history-hover: #218838;
+            --table-header-bg: #f8f9fc;
+            --banner-bg: #ff9800;
+            --banner-text: #fff;
+            --error-bg: #ffebee;
+            --error-text: #c62828;
+        }
+        /* 深色模式 */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-body: #1a1a2e;
+                --bg-card: #16213e;
+                --text-primary: #eaeef2;
+                --text-secondary: #aaa;
+                --border: #2a3a5e;
+                --link: #6ea8fe;
+                --link-hover: #9ec8ff;
+                --btn-primary: #4a6fa5;
+                --btn-primary-hover: #6c8ebf;
+                --btn-history: #2e8b57;
+                --btn-history-hover: #3cb371;
+                --table-header-bg: #1f2a44;
+                --banner-bg: #d9661a;
+                --banner-text: #f0f0f0;
+                --error-bg: #3a1f1f;
+                --error-text: #ff8a7a;
+            }
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
             padding: 20px;
-            background: #f0f2f5;
+            background: var(--bg-body);
+            color: var(--text-primary);
             line-height: 1.5;
+            transition: background 0.2s, color 0.2s;
         }
         .container {
             max-width: 1300px;
             margin: 0 auto;
+            position: relative;
         }
         h1 {
-            color: #1e3a8a;
             font-size: 1.8rem;
             margin-top: 0;
+            color: var(--link);
         }
         .card {
-            background: white;
+            background: var(--bg-card);
             border-radius: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             padding: 20px 24px;
             margin-bottom: 20px;
+            border: 1px solid var(--border);
         }
         .info-bar {
             display: flex;
@@ -38,11 +82,11 @@
             margin-bottom: 20px;
         }
         .update-time {
-            color: #555;
+            color: var(--text-secondary);
             font-size: 0.9rem;
         }
         button {
-            background: #1e3a8a;
+            background: var(--btn-primary);
             color: white;
             border: none;
             padding: 6px 14px;
@@ -52,11 +96,20 @@
             transition: 0.2s;
         }
         button:hover {
-            background: #0f2b6d;
+            background: var(--btn-primary-hover);
+        }
+        .history-btn {
+            background: var(--btn-history);
+        }
+        .history-btn:hover {
+            background: var(--btn-history-hover);
+        }
+        .theme-toggle {
+            background: #6c757d;
         }
         .new-report-banner {
-            background: #ff9800;
-            color: #fff;
+            background: var(--banner-bg);
+            color: var(--banner-text);
             padding: 12px 20px;
             border-radius: 12px;
             margin-bottom: 20px;
@@ -79,25 +132,26 @@
             margin: 16px 0;
         }
         .report th, .report td {
-            border: 1px solid #ddd;
+            border: 1px solid var(--border);
             padding: 8px 10px;
             text-align: left;
             vertical-align: top;
         }
         .report th {
-            background-color: #f8f9fc;
+            background-color: var(--table-header-bg);
             font-weight: 600;
         }
         .report a {
-            color: #1e3a8a;
+            color: var(--link);
             text-decoration: none;
         }
         .report a:hover {
             text-decoration: underline;
+            color: var(--link-hover);
         }
         .loader {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #1e3a8a;
+            border: 3px solid var(--border);
+            border-top: 3px solid var(--link);
             border-radius: 50%;
             width: 30px;
             height: 30px;
@@ -112,11 +166,40 @@
             margin-top: 20px;
             text-align: center;
             font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        /* 回到顶部按钮 */
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--btn-primary);
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            border: none;
+            z-index: 100;
+        }
+        .back-to-top.show {
+            opacity: 0.8;
+        }
+        .back-to-top:hover {
+            opacity: 1;
         }
         @media (max-width: 700px) {
             body { padding: 12px; }
             .card { padding: 16px; }
             .report td, .report th { font-size: 12px; padding: 6px; }
+            .back-to-top { width: 36px; height: 36px; font-size: 20px; bottom: 20px; right: 20px; }
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -124,26 +207,116 @@
 <body>
 <div class="container">
     <div class="card">
-        <h1>🛡️ 内容安全行业舆情监控系统</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <h1>🛡️ 内容安全行业舆情监控系统</h1>
+            <div>
+                <button id="themeToggleBtn" class="theme-toggle" style="margin-right: 8px;">🌓 深色/浅色</button>
+            </div>
+        </div>
         <div class="info-bar">
             <div class="update-time">📅 报告时间：<span id="report-time">--</span></div>
             <div>
                 <button id="refresh-btn">🔄 刷新报告</button>
-                <button id="history-btn" style="background: #28a745; margin-left: 8px;">📚 历史报告</button>
+                <button id="history-btn" class="history-btn" style="margin-left: 8px;">📚 历史报告</button>
             </div>
         </div>
         <div id="report-content">
             <div class="loader"></div>
         </div>
         <div class="footer-links">
-            <span>⚡ 数据来自每小时爬取 | 自动生成涉华负面报告</span>
+            <span>⚡ 数据来自定期爬取 | 自动生成涉华负面报告</span>
         </div>
     </div>
 </div>
+<button id="backToTop" class="back-to-top" title="回到顶部">↑</button>
 
 <script>
-    let lastReportShort = localStorage.getItem('lastReportShort') || '';
-    let lastReportTimestamp = localStorage.getItem('lastReportTimestamp') || '';
+    let lastReportTimeStr = localStorage.getItem('lastReportTime') || '';
+    let currentTheme = localStorage.getItem('theme') || 'auto';
+
+    // 应用主题
+    function applyTheme() {
+        if (currentTheme === 'dark') {
+            document.documentElement.style.setProperty('--bg-body', '#1a1a2e');
+            document.documentElement.style.setProperty('--bg-card', '#16213e');
+            document.documentElement.style.setProperty('--text-primary', '#eaeef2');
+            document.documentElement.style.setProperty('--text-secondary', '#aaa');
+            document.documentElement.style.setProperty('--border', '#2a3a5e');
+            document.documentElement.style.setProperty('--link', '#6ea8fe');
+            document.documentElement.style.setProperty('--link-hover', '#9ec8ff');
+            document.documentElement.style.setProperty('--btn-primary', '#4a6fa5');
+            document.documentElement.style.setProperty('--btn-primary-hover', '#6c8ebf');
+            document.documentElement.style.setProperty('--btn-history', '#2e8b57');
+            document.documentElement.style.setProperty('--btn-history-hover', '#3cb371');
+            document.documentElement.style.setProperty('--table-header-bg', '#1f2a44');
+            document.documentElement.style.setProperty('--banner-bg', '#d9661a');
+            document.documentElement.style.setProperty('--banner-text', '#f0f0f0');
+            document.documentElement.style.setProperty('--error-bg', '#3a1f1f');
+            document.documentElement.style.setProperty('--error-text', '#ff8a7a');
+        } else if (currentTheme === 'light') {
+            document.documentElement.style.setProperty('--bg-body', '#f0f2f5');
+            document.documentElement.style.setProperty('--bg-card', '#ffffff');
+            document.documentElement.style.setProperty('--text-primary', '#1e2a3a');
+            document.documentElement.style.setProperty('--text-secondary', '#555');
+            document.documentElement.style.setProperty('--border', '#e0e0e0');
+            document.documentElement.style.setProperty('--link', '#1e3a8a');
+            document.documentElement.style.setProperty('--link-hover', '#0f2b6d');
+            document.documentElement.style.setProperty('--btn-primary', '#1e3a8a');
+            document.documentElement.style.setProperty('--btn-primary-hover', '#0f2b6d');
+            document.documentElement.style.setProperty('--btn-history', '#28a745');
+            document.documentElement.style.setProperty('--btn-history-hover', '#218838');
+            document.documentElement.style.setProperty('--table-header-bg', '#f8f9fc');
+            document.documentElement.style.setProperty('--banner-bg', '#ff9800');
+            document.documentElement.style.setProperty('--banner-text', '#fff');
+            document.documentElement.style.setProperty('--error-bg', '#ffebee');
+            document.documentElement.style.setProperty('--error-text', '#c62828');
+        } else {
+            // auto: 移除自定义样式，让 CSS 媒体查询生效
+            document.documentElement.style.removeProperty('--bg-body');
+            document.documentElement.style.removeProperty('--bg-card');
+            document.documentElement.style.removeProperty('--text-primary');
+            document.documentElement.style.removeProperty('--text-secondary');
+            document.documentElement.style.removeProperty('--border');
+            document.documentElement.style.removeProperty('--link');
+            document.documentElement.style.removeProperty('--link-hover');
+            document.documentElement.style.removeProperty('--btn-primary');
+            document.documentElement.style.removeProperty('--btn-primary-hover');
+            document.documentElement.style.removeProperty('--btn-history');
+            document.documentElement.style.removeProperty('--btn-history-hover');
+            document.documentElement.style.removeProperty('--table-header-bg');
+            document.documentElement.style.removeProperty('--banner-bg');
+            document.documentElement.style.removeProperty('--banner-text');
+            document.documentElement.style.removeProperty('--error-bg');
+            document.documentElement.style.removeProperty('--error-text');
+        }
+        localStorage.setItem('theme', currentTheme);
+    }
+
+    document.getElementById('themeToggleBtn').addEventListener('click', () => {
+        if (currentTheme === 'auto') currentTheme = 'light';
+        else if (currentTheme === 'light') currentTheme = 'dark';
+        else currentTheme = 'auto';
+        applyTheme();
+    });
+
+    // 回到顶部逻辑
+    const backBtn = document.getElementById('backToTop');
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 300) {
+            backBtn.classList.add('show');
+        } else {
+            backBtn.classList.remove('show');
+        }
+    });
+    backBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // 提取报告中的生成时间（第一行匹配）
+    function extractReportTime(markdownText) {
+        const match = markdownText.match(/生成时间：([^\n]+)/);
+        return match ? match[1].trim() : null;
+    }
 
     async function loadReport() {
         const reportDiv = document.getElementById('report-content');
@@ -154,14 +327,16 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const text = await response.text();
             
-            // 提取报告内的生成时间
-            const timeMatch = text.match(/生成时间：([^\n]+)/);
-            const reportTime = timeMatch ? timeMatch[1] : new Date().toLocaleString();
-            document.getElementById('report-time').textContent = reportTime;
+            const reportTime = extractReportTime(text);
+            if (reportTime) {
+                document.getElementById('report-time').textContent = reportTime;
+            } else {
+                document.getElementById('report-time').textContent = new Date().toLocaleString();
+            }
             
             // 转换为 HTML
             let html = marked.parse(text);
-            // 为所有链接添加 target="_blank"
+            // 强制所有链接新标签打开
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = html;
             tempDiv.querySelectorAll('a').forEach(link => {
@@ -171,15 +346,11 @@
                 }
             });
             html = tempDiv.innerHTML;
-            
             reportDiv.innerHTML = `<div class="report">${html}</div>`;
             
-            // 检测新报告（基于报告时间或内容前150字符）
-            const shortSig = text.substring(0, 200);
-            const isNew = (lastReportShort !== shortSig);
-            
-            if (isNew && lastReportShort !== '') {
-                // 显示顶部横幅（如果还没有）
+            // 新报告检测：基于生成时间
+            const isNew = (reportTime && lastReportTimeStr !== reportTime);
+            if (isNew && lastReportTimeStr !== '') {
                 if (!document.querySelector('.new-report-banner')) {
                     const banner = document.createElement('div');
                     banner.className = 'new-report-banner';
@@ -190,19 +361,15 @@
                     const container = document.querySelector('.container');
                     container.insertBefore(banner, container.firstChild);
                 }
-                // 更新存储
-                localStorage.setItem('lastReportShort', shortSig);
-                localStorage.setItem('lastReportTimestamp', reportTime);
-                lastReportShort = shortSig;
-            } else if (lastReportShort === '') {
-                // 首次运行，存储但不弹横幅
-                localStorage.setItem('lastReportShort', shortSig);
-                localStorage.setItem('lastReportTimestamp', reportTime);
-                lastReportShort = shortSig;
+                localStorage.setItem('lastReportTime', reportTime);
+                lastReportTimeStr = reportTime;
+            } else if (lastReportTimeStr === '') {
+                localStorage.setItem('lastReportTime', reportTime || '');
+                lastReportTimeStr = reportTime || '';
             }
         } catch (err) {
             reportDiv.innerHTML = `
-                <div style="color: #c62828; background: #ffebee; padding: 20px; border-radius: 12px;">
+                <div style="color: var(--error-text); background: var(--error-bg); padding: 20px; border-radius: 12px;">
                     <strong>⚠️ 加载失败</strong><br>
                     ${err.message}<br><br>
                     <button onclick="loadReport()">🔄 重试</button>
@@ -212,11 +379,30 @@
             `;
         }
     }
+
+    // 历史报告按钮：预检 reports/index.html 是否存在
+    document.getElementById('history-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('history-btn');
+        const originalText = btn.innerText;
+        btn.innerText = '⏳ 检查中...';
+        btn.disabled = true;
+        try {
+            const response = await fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/reports/index.html');
+            if (response.ok) {
+                window.open('reports/index.html', '_blank');
+            } else {
+                alert('历史报告目录尚未生成。请先运行爬虫任务，生成至少一份报告后再查看历史。');
+            }
+        } catch (err) {
+            alert('无法访问历史报告目录。请确认爬虫已成功运行并提交了 reports/ 目录。');
+        } finally {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    });
     
     document.getElementById('refresh-btn').addEventListener('click', loadReport);
-    document.getElementById('history-btn').addEventListener('click', () => {
-        window.open('reports/index.html', '_blank');
-    });
+    applyTheme(); // 初始化主题
     loadReport();
 </script>
 </body>
