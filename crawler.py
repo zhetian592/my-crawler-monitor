@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 相似度去重+信源计数 + 新增标记 + AI重试 + 跨天重复隐藏 + 链接转换 + report.html登录保护
+# crawler.py - 相似度去重+信源计数 + 新增标记 + AI重试 + 跨天重复隐藏 + 链接转换 + report.html登录保护 + 发布多久前
 import os
 import json
 import feedparser
@@ -51,16 +51,16 @@ SOURCE_NAME_MAP = {
     "wangzhian8848": "王局志安",
     "newszg_official": "新闻调查",
     "wangdan1989": "王丹",
-    "torontobigface": "多伦多方脸",
+    "torontobigface": "大脸撑在小胸上",
     "hrw_chinese": "人权观察中文",
-    "dayangelcp": "大眼哥",
+    "dayangelcp": "大天使",
     "xinwendiaocha": "新闻调查",
     "xiaojingcanxue": "小警犬",
-    "ZhouFengSuo": "中国人权-Human",
+    "ZhouFengSuo": "周锋锁",
     "lidangzzz": "李老师不是你老师啊",
-    "fangshimin": "方舟子",
-    "UHRP_Chinese": "维吾尔人权项目",
-    "jhf8964": "季风",
+    "fangshimin": "方世民",
+    "UHRP_Chinese": "UHRP中文",
+    "jhf8964": "静好",
     "liangziyueqian1": "量子跃迁",
     "badiucao": "巴丢草",
     "wurenhua": "吴仁华",
@@ -164,6 +164,27 @@ def parse_published_strict(published_str):
             continue
     return None
 
+def format_time_ago(pub_dt):
+    """将发布时间与当前时间比较，返回易读字符串（如 '2小时前', '3天前'）"""
+    if pub_dt is None:
+        return "未知"
+    now = datetime.utcnow()
+    diff = now - pub_dt
+    seconds = diff.total_seconds()
+    if seconds < 60:
+        return "刚刚"
+    if seconds < 3600:
+        minutes = int(seconds // 60)
+        return f"{minutes}分钟前"
+    if seconds < 86400:
+        hours = int(seconds // 3600)
+        return f"{hours}小时前"
+    if seconds < 604800:
+        days = int(seconds // 86400)
+        return f"{days}天前"
+    weeks = int(seconds // 604800)
+    return f"{weeks}周前"
+
 def content_hash(title, summary):
     text = (title + " " + summary)[:500]
     return hashlib.md5(text.encode('utf-8')).hexdigest()
@@ -238,6 +259,8 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 domain_match = re.search(r'https?://([^/]+)', original_url)
                 raw_domain = domain_match.group(1) if domain_match else original_url
                 source_name = raw_domain
+            # 计算发布多久前
+            time_ago = format_time_ago(pub_dt)
             items.append({
                 "title": title,
                 "link": link,
@@ -245,6 +268,8 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
                 "source": original_url,
                 "source_name": source_name,
                 "published_str": published_str,
+                "pub_dt": pub_dt,
+                "time_ago": time_ago,
                 "fetched_at": datetime.utcnow().isoformat()
             })
             if len(items) >= 12:
@@ -363,25 +388,26 @@ def deduplicate_and_mark_new(rows, old_events):
     events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
-        if len(cells) != 4:
+        if len(cells) != 5:   # 现在表格有5列
             continue
         event = cells[0]
         link = cells[1]
         risk = cells[2]
         source = cells[3]
-        events_data.append((event, source, link, risk, row))
+        time_ago = cells[4]
+        events_data.append((event, source, link, risk, time_ago, row))
     
     merged = []
     used = [False] * len(events_data)
-    for i, (event_i, src_i, link_i, risk_i, row_i) in enumerate(events_data):
+    for i, (event_i, src_i, link_i, risk_i, time_ago_i, row_i) in enumerate(events_data):
         if used[i]:
             continue
-        group = [(event_i, src_i, link_i, risk_i, row_i)]
-        for j, (event_j, src_j, link_j, risk_j, row_j) in enumerate(events_data):
+        group = [(event_i, src_i, link_i, risk_i, time_ago_i, row_i)]
+        for j, (event_j, src_j, link_j, risk_j, time_ago_j, row_j) in enumerate(events_data):
             if i == j or used[j]:
                 continue
             if is_similar(event_i, event_j):
-                group.append((event_j, src_j, link_j, risk_j, row_j))
+                group.append((event_j, src_j, link_j, risk_j, time_ago_j, row_j))
                 used[j] = True
         used[i] = True
         merged.append(group)
@@ -389,14 +415,14 @@ def deduplicate_and_mark_new(rows, old_events):
     unique_rows = []
     events_in_report = []
     for group in merged:
-        first_event, first_src, first_link, first_risk, _ = group[0]
-        sources = sorted(set([s for _, s, _, _, _ in group]))
+        first_event, first_src, first_link, first_risk, first_time_ago, _ = group[0]
+        sources = sorted(set([s for _, s, _, _, _, _ in group]))
         source_count = len(sources)
         source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
         event_text = first_event
         if source_count > 1:
             event_text = f"{event_text}（{source_count}个信源）"
-        new_cells = [event_text, first_link, first_risk, source_display]
+        new_cells = [event_text, first_link, first_risk, source_display, first_time_ago]
         new_row = "| " + " | ".join(new_cells) + " |"
         is_new = True
         for old in old_events:
@@ -418,7 +444,7 @@ def call_ai_with_retry(prompt, max_retries=3):
                 model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                max_tokens=3000,
+                max_tokens=4000,
             )
             content = response.choices[0].message.content
             if content is not None:
@@ -438,7 +464,7 @@ def call_ai_unified(articles, old_events):
     
     blocks = []
     for art in articles:
-        meta = f"发布时间：{art.get('published_str', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
+        meta = f"发布时间：{art.get('time_ago', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks.append(block)
     
@@ -450,10 +476,11 @@ def call_ai_unified(articles, old_events):
 **重要说明**：
 - 请优先输出来自官方机构、智库、政府部门的报告类内容（如 USCC、HRW、Amnesty、ASPI 等），这类内容放在表格的前面。
 - 对于普通新闻和普通 X 账号的内容，放在报告类内容之后。
-- 输出使用 Markdown 表格格式，表格头为：| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 |
+- 输出使用 Markdown 表格格式，表格头为：| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |
 - 每一条负面内容单独占一行。
 - 原文链接列使用 `[查看](URL)` 格式。
 - “信息来源”列请直接使用输入中提供的“来源”名称（已经转换为中文）。
+- “发布多久前”列请直接使用输入中提供的“发布时间”字段（已经是易读格式，如“2小时前”）。
 - 如果没有任何负面涉华内容，只输出一行“无”。
 - 不要添加任何额外解释。
 
@@ -476,8 +503,8 @@ def call_ai_unified(articles, old_events):
     print(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
     
     all_table_rows = []
-    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 |"
-    table_sep = "|----------|----------|------------|----------|"
+    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |"
+    table_sep = "|----------|----------|------------|----------|------------|"
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
@@ -496,7 +523,7 @@ def call_ai_unified(articles, old_events):
                 if line.startswith(table_header):
                     continue
                 cells = [c.strip() for c in line.split("|")[1:-1]]
-                if len(cells) == 4:
+                if len(cells) == 5:
                     all_table_rows.append(line)
     
     if not all_table_rows:
@@ -512,7 +539,7 @@ def filter_by_repeat_count(rows, event_counts):
     new_rows = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
-        if len(cells) != 4:
+        if len(cells) != 5:
             continue
         event = cells[0].replace("🆕", "").strip()
         event = re.sub(r'（\d+个信源）', '', event).strip()
@@ -540,8 +567,7 @@ def filter_by_repeat_count(rows, event_counts):
     return new_rows, new_counts
 
 def generate_html_report(report_text, all_articles):
-    """生成 HTML 报告，并注入登录保护"""
-    # 将 report_text 中的 Markdown 表格转换为 HTML
+    """生成 HTML 报告，并注入登录保护，支持五列表格"""
     lines = report_text.split("\n")
     html_table = ""
     in_table = False
@@ -553,7 +579,7 @@ def generate_html_report(report_text, all_articles):
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
             cells = [c.strip() for c in line.split("|")[1:-1]]
-            if len(cells) != 4:
+            if len(cells) != 5:
                 continue
             html_table += "<tr>\n"
             for cell in cells:
@@ -562,15 +588,15 @@ def generate_html_report(report_text, all_articles):
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_table += f"<td>{cell}</td>\n"
-            html_table += "<tr>\n"
+            html_table += "</tr>\n"
         else:
             if in_table:
                 html_table += "</thead><tbody></tbody></table>\n"
                 in_table = False
     if in_table:
-        html_table += "</thead><tbody></tbody><table>\n"
+        html_table += "</thead><tbody></tbody></table>\n"
 
-    # 登录验证脚本（与 index.html 保持一致）
+    # 登录验证脚本
     login_script = '''
 <script>
 (function() {
@@ -588,7 +614,6 @@ def generate_html_report(report_text, all_articles):
 </script>
 '''
 
-    # 构建完整 HTML
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -598,7 +623,7 @@ def generate_html_report(report_text, all_articles):
         body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 20px; line-height: 1.5; }}
         h1 {{ font-size: 1.8rem; border-bottom: 1px solid #eaecef; }}
         table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
-        th, td {{ border: 1px solid #dfe2e5; padding: 8px 12px; text-align: left; vertical-align: top; }}
+        th, td {{ border: 1px solid #dfe2e5; padding: 8px 10px; text-align: left; vertical-align: top; }}
         th {{ background-color: #f6f8fa; }}
         a {{ color: #0366d6; text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
