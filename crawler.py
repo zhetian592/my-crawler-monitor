@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 相似度去重+信源计数 + 新增标记 + AI重试 + 跨天重复隐藏 + 链接转换为官方X链接
+# crawler.py - 相似度去重+信源计数 + 新增标记 + AI重试 + 跨天重复隐藏 + 链接转换 + report.html登录保护
 import os
 import json
 import feedparser
@@ -193,16 +193,13 @@ def url_to_rss(url):
     return url
 
 def convert_to_official_x_link(link):
-    """将 Nitter 链接转换为官方 X 链接"""
     if not link:
         return link
-    # 替换常见的 Nitter 域名
     link = link.replace("nitter.net", "x.com")
     link = link.replace("twitter.net", "x.com")
     link = link.replace("nitter.poast.org", "x.com")
     link = link.replace("nitter.private.coffee", "x.com")
     link = link.replace("nitter.42l.fr", "x.com")
-    # 确保路径格式正确（Nitter 的 /username/status/123 与官方一致）
     return link
 
 def fetch_single_rss(rss_url, original_url, processed_hashes):
@@ -231,10 +228,8 @@ def fetch_single_rss(rss_url, original_url, processed_hashes):
             if h in processed_hashes:
                 continue
             processed_hashes.add(h)
-            # 获取链接并转换为官方 X 链接
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
-            # 提取来源名称
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -544,7 +539,56 @@ def filter_by_repeat_count(rows, event_counts):
             new_counts[event] = record
     return new_rows, new_counts
 
-def generate_html_report(report_text):
+def generate_html_report(report_text, all_articles):
+    """生成 HTML 报告，并注入登录保护"""
+    # 将 report_text 中的 Markdown 表格转换为 HTML
+    lines = report_text.split("\n")
+    html_table = ""
+    in_table = False
+    for line in lines:
+        if line.startswith("|") and "|" in line:
+            if not in_table:
+                html_table += '<table>\n<thead>\n'
+                in_table = True
+            if re.match(r'^\|[\s\-:]+\|$', line):
+                continue
+            cells = [c.strip() for c in line.split("|")[1:-1]]
+            if len(cells) != 4:
+                continue
+            html_table += "<tr>\n"
+            for cell in cells:
+                link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
+                if link_match:
+                    text, url = link_match.group(1), link_match.group(2)
+                    cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
+                html_table += f"<td>{cell}</td>\n"
+            html_table += "<tr>\n"
+        else:
+            if in_table:
+                html_table += "</thead><tbody></tbody></table>\n"
+                in_table = False
+    if in_table:
+        html_table += "</thead><tbody></tbody><table>\n"
+
+    # 登录验证脚本（与 index.html 保持一致）
+    login_script = '''
+<script>
+(function() {
+    const PASSWORD = 'yangge233';
+    const SESSION_KEY = 'logged_in';
+    if (sessionStorage.getItem(SESSION_KEY) === 'true') return;
+    let pwd = prompt('请输入访问密码：');
+    if (pwd === PASSWORD) {
+        sessionStorage.setItem(SESSION_KEY, 'true');
+    } else {
+        document.body.innerHTML = '<div style="text-align:center; margin-top:50px;"><h2>密码错误，无法访问</h2></div>';
+        throw new Error('登录失败');
+    }
+})();
+</script>
+'''
+
+    # 构建完整 HTML
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -560,44 +604,16 @@ def generate_html_report(report_text):
         a:hover {{ text-decoration: underline; }}
         .footer {{ margin-top: 30px; font-size: 12px; color: #6a737d; }}
     </style>
+    {login_script}
 </head>
 <body>
 <h1>📊 内容安全行业舆情报告</h1>
 <p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
 <div id="report">
-"""
-    lines = report_text.split("\n")
-    in_table = False
-    for line in lines:
-        if line.startswith("|") and "|" in line:
-            if not in_table:
-                html_content += '<table>\n<thead>\n'
-                in_table = True
-            if re.match(r'^\|[\s\-:]+\|$', line):
-                continue
-            cells = [c.strip() for c in line.split("|")[1:-1]]
-            if len(cells) != 4:
-                continue
-            html_content += "<tr>\n"
-            for cell in cells:
-                link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
-                if link_match:
-                    text, url = link_match.group(1), link_match.group(2)
-                    cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
-                html_content += f"<td>{cell}</td>\n"
-            html_content += "</tr>\n"
-        else:
-            if in_table:
-                html_content += "</thead><tbody></tbody></table>\n"
-                in_table = False
-            if line.strip():
-                html_content += f"<p>{line}</p>\n"
-    if in_table:
-        html_content += "</thead><tbody></tbody></table>\n"
-    html_content += f"""
+{html_table}
 </div>
 <div class="footer">
-    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成。🆕 表示与上次报告相似度低于50%的新增事件；括号内为多个信源报道计数；连续出现 {MAX_REPEAT_COUNT} 次后的事件将进入 {COOLDOWN_DAYS} 天冷却期，冷却期内再次出现会被隐藏。所有链接已转换为官方 X 链接（x.com）。</p>
+    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成，仅供参考。</p>
 </div>
 </body>
 </html>"""
@@ -607,7 +623,7 @@ def save_reports_with_history(report_text, all_articles):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(report_text)
-    html_content = generate_html_report(report_text)
+    html_content = generate_html_report(report_text, all_articles)
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
     os.makedirs("reports", exist_ok=True)
@@ -634,7 +650,7 @@ def generate_index_page():
     for f in files:
         timestamp = f.replace("report_", "").replace(".html", "")
         display = timestamp[:4] + "-" + timestamp[4:6] + "-" + timestamp[6:8] + " " + timestamp[9:11] + ":" + timestamp[11:13] + ":" + timestamp[13:15]
-        index_html += f'<li><a href="{f}">{display} UTC</a></li>'
+        index_html += f'<li><a href="{f}" target="_blank">{display} UTC</a></li>'
     index_html += "</ul><p><a href='../report.html'>查看最新报告</a></p></body></html>"
     with open(os.path.join(reports_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(index_html)
