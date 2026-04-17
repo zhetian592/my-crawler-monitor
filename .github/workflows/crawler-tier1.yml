@@ -1,8 +1,6 @@
-name: Tier1 - Auto (每2小时 9:00-21:00)
+name: Tier1 - Manual
 
 on:
-  schedule:
-    - cron: '0 1,3,5,7,9,11,13 * * *'
   workflow_dispatch:
 
 jobs:
@@ -31,7 +29,7 @@ jobs:
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto update $(date -u '+%Y-%m-%d %H:%M:%S')"
+          commit_message: "Manual update $(date -u '+%Y-%m-%d %H:%M:%S')"
           file_pattern: "data/* report.md report.html reports/*"
           commit_user_name: "github-actions[bot]"
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
