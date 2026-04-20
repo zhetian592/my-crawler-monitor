@@ -1,4 +1,4 @@
-SOURCE_NAME_MAP = {
+{
     "whyyoutouzhele": "李老师不是你老师",
     "wangzhian8848": "王局志安",
     "newszg_official": "新闻调查",
@@ -26,8 +26,6 @@ SOURCE_NAME_MAP = {
     "FreedomHouse": "自由之家",
     "ASPI_org": "澳大利亚战略政策研究所",
     "CECCgov": "国会-行政部门中国委员会",
-    
-    # 新增映射
     "reuters.com": "路透社",
     "wsj.com": "华尔街日报",
     "ft.com": "金融时报",
