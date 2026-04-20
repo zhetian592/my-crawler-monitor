@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>🛡️ 内容安全舆情监控系统（境外） </title>
+    <title>🛡️ 内容安全舆情监控系统（境外）</title>
     <style>
         * { box-sizing: border-box; }
         :root {
@@ -385,7 +385,7 @@
 
     // ---------- 应用初始化 ----------
     function initApp() {
-        // 主题管理（代码与之前类似，精简版）
+        // 主题管理（与之前相同，省略详细代码以保持简洁，实际已包含完整功能）
         let currentTheme = localStorage.getItem('theme') || 'auto';
         function setDarkModeVariables() {
             const root = document.documentElement.style;
@@ -506,38 +506,35 @@
         });
         backBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 
-        // 报告加载与统计（增加弹窗反馈）
+        // 报告加载与统计（增加内容变化检测）
         let lastReportTime = localStorage.getItem('lastReportTime') || '';
+        let lastReportHash = localStorage.getItem('lastReportHash') || ''; // 存储报告内容的哈希值
+
         function extractReportTime(markdownText) {
             const match = markdownText.match(/生成时间：([^\n]+)/);
             return match ? match[1].trim() : null;
         }
-        function extractTableRows(htmlString) {
-            const temp = document.createElement('div');
-            temp.innerHTML = htmlString;
-            const rows = temp.querySelectorAll('table tbody tr');
-            return rows.length;
+
+        function simpleHash(text) {
+            // 简单哈希：取前200字符 + 长度（足够判断变化）
+            return text.slice(0, 200) + text.length;
         }
-        function updateStats(total, newCount) {
-            const statsDiv = document.getElementById('stats');
-            if (total === undefined) {
-                statsDiv.style.display = 'none';
-                return;
-            }
-            statsDiv.style.display = 'flex';
-            statsDiv.innerHTML = `<span>📊 本次报告共 ${total} 条涉华事件</span><span>🆕 其中新增 ${newCount} 条</span>`;
-        }
-        async function loadReport() {
+
+        async function loadReport(showAlertIfChanged = true) {
             const reportDiv = document.getElementById('report-content');
             reportDiv.innerHTML = '<div class="loader"></div>';
-            updateStats(); // 隐藏统计
+            // 隐藏统计
+            const statsDiv = document.getElementById('stats');
+            if (statsDiv) statsDiv.style.display = 'none';
             try {
                 const response = await fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/report.md');
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const text = await response.text();
+                const currentHash = simpleHash(text);
                 const reportTime = extractReportTime(text);
                 if (reportTime) document.getElementById('report-time').textContent = reportTime;
                 else document.getElementById('report-time').textContent = new Date().toLocaleString();
+
                 let html = marked.parse(text);
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = html;
@@ -549,7 +546,8 @@
                 });
                 html = tempDiv.innerHTML;
                 reportDiv.innerHTML = `<div class="report">${html}</div>`;
-                // 统计总行数和新增数（从表格中解析 🆕 标记）
+
+                // 统计总行数和新增数
                 const tableRows = reportDiv.querySelectorAll('table tbody tr');
                 const total = tableRows.length;
                 let newCount = 0;
@@ -557,22 +555,39 @@
                     const firstCell = row.cells[0]?.innerText || '';
                     if (firstCell.includes('🆕')) newCount++;
                 });
-                updateStats(total, newCount);
-                // 新报告检测
-                if (reportTime && lastReportTime !== reportTime && lastReportTime !== '') {
-                    if (!document.querySelector('.new-report-banner')) {
-                        const banner = document.createElement('div');
-                        banner.className = 'new-report-banner';
-                        banner.innerHTML = `<span>📢 新舆情报告已生成！（${reportTime}）</span><button onclick="this.parentElement.remove()">关闭</button>`;
-                        document.querySelector('.container').insertBefore(banner, document.querySelector('.card'));
-                    }
-                    localStorage.setItem('lastReportTime', reportTime);
-                    lastReportTime = reportTime;
-                } else if (lastReportTime === '') {
-                    localStorage.setItem('lastReportTime', reportTime || '');
-                    lastReportTime = reportTime || '';
+                if (statsDiv) {
+                    statsDiv.style.display = 'flex';
+                    statsDiv.innerHTML = `<span>📊 本次报告共 ${total} 条涉华事件</span><span>🆕 其中新增 ${newCount} 条</span>`;
                 }
-                // 添加表格滚动提示（如果表格宽度超出容器）
+
+                // 检测报告是否真的更新
+                const isUpdated = (currentHash !== lastReportHash);
+                if (isUpdated) {
+                    // 报告内容变化
+                    if (showAlertIfChanged) alert('✅ 报告已刷新！');
+                    // 更新存储
+                    localStorage.setItem('lastReportTime', reportTime || '');
+                    localStorage.setItem('lastReportHash', currentHash);
+                    lastReportTime = reportTime || '';
+                    lastReportHash = currentHash;
+                    // 新报告横幅
+                    if (reportTime && lastReportTime !== reportTime && lastReportTime !== '') {
+                        if (!document.querySelector('.new-report-banner')) {
+                            const banner = document.createElement('div');
+                            banner.className = 'new-report-banner';
+                            banner.innerHTML = `<span>📢 新舆情报告已生成！（${reportTime}）</span><button onclick="this.parentElement.remove()">关闭</button>`;
+                            document.querySelector('.container').insertBefore(banner, document.querySelector('.card'));
+                        }
+                    }
+                } else {
+                    // 内容未变，静默刷新
+                    if (showAlertIfChanged) {
+                        // 可选：不弹窗，或者轻提示（这里不弹窗）
+                        console.log('报告内容未变化，静默刷新');
+                    }
+                }
+
+                // 表格滚动提示
                 const reportContainer = reportDiv.querySelector('.report');
                 if (reportContainer && reportContainer.scrollWidth > reportContainer.clientWidth) {
                     if (!reportDiv.querySelector('.scroll-hint')) {
@@ -582,8 +597,6 @@
                         reportDiv.insertBefore(hint, reportDiv.firstChild);
                     }
                 }
-                // 成功弹窗
-                alert('✅ 报告已刷新！');
             } catch (err) {
                 reportDiv.innerHTML = `<div style="color: var(--error-text); background: var(--error-bg); padding: 20px; border-radius: 12px;">
                     <strong>⚠️ 加载失败</strong><br>${err.message}<br><br>
@@ -595,7 +608,7 @@
             }
         }
 
-        // 每日触发次数限制
+        // 每日触发次数限制（与之前相同，略）
         const MAX_TRIGGERS_PER_DAY = 5;
         const GITHUB_TOKEN_KEY = 'github_pat';
         const REPO_OWNER = 'zhetian592';
@@ -705,11 +718,12 @@
             }
         }
 
-        document.getElementById('refresh-btn').addEventListener('click', loadReport);
+        document.getElementById('refresh-btn').addEventListener('click', () => loadReport(true));
         document.getElementById('trigger-action-btn').addEventListener('click', triggerWorkflow);
         document.getElementById('history-btn').addEventListener('click', openHistory);
         updateTriggerLimitDisplay();
-        loadReport();
+        // 首次加载不弹窗（静默）
+        loadReport(false);
     }
 
     checkLogin();
