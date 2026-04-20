@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 最终完整版
+# crawler.py - 最终完整版（日志轮转 + 语义相似度 + AI优化）
 import os
 import json
 import re
@@ -11,12 +11,21 @@ import sys
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional
+from logging.handlers import RotatingFileHandler
 
 import requests
 import feedparser
 import openai
 from bs4 import BeautifulSoup
 import difflib
+
+# 尝试导入语义相似度模型
+try:
+    from sentence_transformers import SentenceTransformer, util
+    SEMANTIC_AVAILABLE = True
+except ImportError:
+    SEMANTIC_AVAILABLE = False
+    print("sentence-transformers 未安装，将使用 difflib 进行相似度比较", file=sys.stderr)
 
 # 尝试导入 tiktoken（用于精确 token 估算）
 try:
@@ -25,17 +34,29 @@ try:
 except ImportError:
     TIKTOKEN_AVAILABLE = False
 
-# ================= 日志配置 =================
+# ================= 日志配置（轮转） =================
 LOG_FILE = "crawler.log"
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+LOG_MAX_BYTES = 10 * 1024 * 1024   # 10 MB
+LOG_BACKUP_COUNT = 5
+
+# 清除已有的 handlers
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
+# 创建文件轮转处理器
+file_handler = RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding='utf-8')
+file_handler.setLevel(logging.INFO)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 # ================= 配置常量 =================
 GH_TOKEN = os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
@@ -47,28 +68,51 @@ if os.environ.get("HTTP_PROXY"):
     PROXIES = {"http": os.environ["HTTP_PROXY"], "https": os.environ.get("HTTPS_PROXY", os.environ["HTTP_PROXY"])}
 
 KEEP_DAYS = 7
-SIMILARITY_THRESHOLD = 0.5
+SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
+AI_REQUEST_DELAY = 2          # 2秒
+DISABLE_FAILED_THRESHOLD = 3
 
 EVENT_COUNTS_FILE = "event_counts.json"
 HEALTHY_NITTER_FILE = "healthy_nitter.json"
+HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
-DEFAULT_RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.ktachibana.party"]
-FALLBACK_NITTER_INSTANCES = ["https://xcancel.com", "https://nitter.tiekoetter.com", "https://nitter.catsarch.com"]
+DISABLED_SOURCES_FILE = "disabled_sources.json"
 
-# ================= 重要：定义 USER_AGENTS =================
+FALLBACK_NITTER_INSTANCES = [
+    "https://nitter.net",
+    "https://nitter.poast.org",
+    "https://nitter.privacyredirect.com",
+    "https://lightbrd.com",
+    "https://nitter.space",
+    "https://nitter.tiekoetter.com",
+    "https://nitter.catsarch.com",
+    "https://xcancel.com"
+]
+FALLBACK_RSSHUB_INSTANCES = [
+    "https://rsshub.app",
+    "https://rsshub.ktachibana.party"
+]
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
 ]
+
+# ================= 语义相似度模型初始化 =================
+if SEMANTIC_AVAILABLE:
+    try:
+        model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+        logger.info("语义相似度模型加载成功")
+    except Exception as e:
+        SEMANTIC_AVAILABLE = False
+        logger.warning(f"语义相似度模型加载失败: {e}，将使用 difflib")
 
 # ================= 外部化配置加载 =================
 def load_sources() -> List[str]:
-    """从 sources.json 加载信源列表，若不存在则返回默认列表"""
     sources_file = "sources.json"
     if os.path.exists(sources_file):
         try:
@@ -76,7 +120,7 @@ def load_sources() -> List[str]:
                 return json.load(f)
         except Exception as e:
             logger.warning(f"加载 {sources_file} 失败: {e}")
-    # 默认信源（确保至少有一些基础源）
+    # 默认信源（精简版）
     return [
         "https://www.bbc.com/zhongwen/simp",
         "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
@@ -87,7 +131,6 @@ def load_sources() -> List[str]:
     ]
 
 def load_source_map() -> Dict[str, str]:
-    """从 source_map.json 加载名称映射，若不存在则返回空字典"""
     map_file = "source_map.json"
     if os.path.exists(map_file):
         try:
@@ -101,7 +144,6 @@ RAW_SOURCES = load_sources()
 SOURCE_NAME_MAP = load_source_map()
 
 def get_display_source(source_name: str) -> str:
-    """将原始来源名转换为友好显示名"""
     if source_name.startswith("@") and len(source_name) > 1:
         username = source_name[1:]
         if username in SOURCE_NAME_MAP:
@@ -112,12 +154,91 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
+# ================= 失败信源自动禁用 =================
+def load_disabled_sources() -> Dict[str, int]:
+    if os.path.exists(DISABLED_SOURCES_FILE):
+        try:
+            with open(DISABLED_SOURCES_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_disabled_sources(disabled: Dict[str, int]):
+    with open(DISABLED_SOURCES_FILE, 'w', encoding='utf-8') as f:
+        json.dump(disabled, f, indent=2)
+
+def update_disabled_sources(failed_sources: List[Tuple[str, str]]):
+    disabled = load_disabled_sources()
+    for url, _ in failed_sources:
+        disabled[url] = disabled.get(url, 0) + 1
+        if disabled[url] >= DISABLE_FAILED_THRESHOLD:
+            logger.warning(f"信源 {url} 已连续失败 {disabled[url]} 次，将被禁用")
+    success_urls = [s for s in RAW_SOURCES if s not in [u for u, _ in failed_sources]]
+    for url in success_urls:
+        if url in disabled:
+            del disabled[url]
+    save_disabled_sources(disabled)
+
+def is_source_disabled(url: str) -> bool:
+    disabled = load_disabled_sources()
+    return url in disabled
+
+# ================= 健康实例获取 =================
+def get_nitter_instances() -> List[str]:
+    if os.path.exists(HEALTHY_NITTER_FILE):
+        try:
+            with open(HEALTHY_NITTER_FILE, 'r', encoding='utf-8') as f:
+                instances = json.load(f)
+                if instances:
+                    return instances
+        except:
+            pass
+    return FALLBACK_NITTER_INSTANCES
+
+def get_rsshub_instances() -> List[str]:
+    if os.path.exists(HEALTHY_RSSHUB_FILE):
+        try:
+            with open(HEALTHY_RSSHUB_FILE, 'r', encoding='utf-8') as f:
+                instances = json.load(f)
+                if instances:
+                    return instances
+        except:
+            pass
+    return FALLBACK_RSSHUB_INSTANCES
+
 # ================= 辅助函数 =================
 def clean_html(text: Optional[str]) -> str:
     if not text:
         return ""
     soup = BeautifulSoup(text, "html.parser")
     return soup.get_text().strip()[:500]
+
+def normalize_event_text(text: str) -> str:
+    """标准化事件简述：去标点、去停用词、转小写"""
+    text = re.sub(r'[^\w\u4e00-\u9fff]', ' ', text)
+    stopwords = {'的', '了', '是', '在', '和', '与', '或', '一个', '这个', '那个', '有', '被', '把', '让', '给', '从', '到', '对', '向', '在', '于', '就', '都', '也', '还', '要', '会', '能', '可以', '可能', '已经', '还', '更', '最', '很', '太', '非常', '特别', '十分', '有点', '一些', '这些', '那些', '这样', '那样', '如何', '为何', '什么', '哪里', '哪个', '谁', '为什么', '怎么', '怎样'}
+    words = text.split()
+    words = [w for w in words if w not in stopwords]
+    return ' '.join(words)
+
+def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
+    """增强相似度比较（语义 + 文本）"""
+    if SEMANTIC_AVAILABLE:
+        try:
+            emb1 = model.encode(a, convert_to_tensor=True)
+            emb2 = model.encode(b, convert_to_tensor=True)
+            cosine_score = util.pytorch_cos_sim(emb1, emb2).item()
+            return cosine_score >= threshold
+        except Exception:
+            # 降级到 difflib
+            a_norm = normalize_event_text(a)
+            b_norm = normalize_event_text(b)
+            return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
+    else:
+        a_norm = normalize_event_text(a)
+        b_norm = normalize_event_text(b)
+        return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
 
 def parse_published_strict(published_str: Optional[str]) -> Optional[datetime]:
     if not published_str:
@@ -173,11 +294,10 @@ def convert_to_official_x_link(link: str) -> str:
         link = link.replace(old, new)
     return link
 
-def url_to_rss(url: str, rsshub_instance: str) -> Any:
-    """根据原始 URL 返回 RSS 地址（支持单个或列表）"""
-    # 现有信源映射
+def url_to_rss(url: str, rsshub_instances: List[str]) -> Any:
+    rsshub = random.choice(rsshub_instances)
     if "voachinese.com" in url:
-        return [f"{rsshub_instance}/voachinese/china", "http://feeds.feedburner.com/voacn"]
+        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
     if "dw.com/zh" in url:
@@ -187,50 +307,37 @@ def url_to_rss(url: str, rsshub_instance: str) -> Any:
     if "cn.nytimes.com" in url:
         return "https://cn.nytimes.com/rss/news.xml"
     if "ntdtv.com" in url:
-        return [f"{rsshub_instance}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
+        return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
     if "epochtimes.com" in url:
-        return [f"{rsshub_instance}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
+        return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
     if "x.com/" in url:
         return None
     # 新增信源映射
     if "reuters.com/world/china" in url:
-        return f"{rsshub_instance}/reuters/world/china"
+        return f"{rsshub}/reuters/world/china"
     if "wsj.com/news/china" in url:
-        return f"{rsshub_instance}/wsj/china"
+        return f"{rsshub}/wsj/china"
     if "ft.com/china" in url:
-        return f"{rsshub_instance}/ft/china"
+        return f"{rsshub}/ft/china"
     if "apnews.com/hub/china" in url:
-        return f"{rsshub_instance}/apnews/topics/china"
+        return f"{rsshub}/apnews/topics/china"
     if "asia.nikkei.com" in url:
         return "https://asia.nikkei.com/rss.xml"
     if "brookings.edu/topics/china" in url:
         return "https://www.brookings.edu/feed/?topic=china"
     if "csis.org/regions/asia/china" in url:
-        return f"{rsshub_instance}/csis/asia/china"
+        return f"{rsshub}/csis/asia/china"
     if "pewresearch.org/topic/international-affairs/global-image-of-countries/china-global-image" in url:
         return "https://www.pewresearch.org/feed/?post_type=publication&topic=china"
     if "merics.org" in url:
         return "https://merics.org/en/rss.xml"
     if "asiasociety.org/policy-institute/center-china-analysis" in url:
-        return f"{rsshub_instance}/asiasociety/center-china-analysis"
+        return f"{rsshub}/asiasociety/center-china-analysis"
     if "rsf.org/en/country/china" in url:
         return "https://rsf.org/en/rss.xml"
-    # 如果都不匹配，返回原 URL（可能无法抓取，但保底）
+    if "uscc.gov" in url:
+        return "https://www.uscc.gov/rss.xml"
     return url
-
-# ================= Nitter 实例获取 =================
-def get_nitter_instances() -> List[str]:
-    if os.path.exists(HEALTHY_NITTER_FILE):
-        try:
-            with open(HEALTHY_NITTER_FILE, 'r', encoding='utf-8') as f:
-                instances = json.load(f)
-                if isinstance(instances, list) and instances:
-                    logger.info(f"从 {HEALTHY_NITTER_FILE} 加载 {len(instances)} 个实例")
-                    return instances
-        except Exception as e:
-            logger.warning(f"读取 {HEALTHY_NITTER_FILE} 失败: {e}")
-    logger.warning(f"未找到健康实例文件，使用备用实例: {FALLBACK_NITTER_INSTANCES}")
-    return FALLBACK_NITTER_INSTANCES
 
 # ================= 抓取核心 =================
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set) -> List[Dict]:
@@ -288,7 +395,10 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set) -> 
         logger.error(f"抓取异常 {original_url}: {e}")
         return []
 
-def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], rsshub_instance: str) -> List[Dict]:
+def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], rsshub_instances: List[str]) -> List[Dict]:
+    if is_source_disabled(original_url):
+        logger.debug(f"信源 {original_url} 已被禁用，跳过")
+        return []
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         for nitter in nitter_instances:
@@ -296,26 +406,26 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
             logger.debug(f"尝试 X {username} 使用 {nitter}")
             items = fetch_single_rss(test_url, original_url, processed_hashes)
             if items:
-                logger.info(f"X {username} 成功 via {nitter} (条数: {len(items)})")
+                logger.debug(f"X {username} 成功 via {nitter} (条数: {len(items)})")
                 return items
             logger.debug(f"X {username} 失败 via {nitter}")
             time.sleep(0.5)
-        logger.warning(f"X {username} 所有实例均失败")
+        logger.debug(f"X {username} 所有实例均失败")
         return []
-    rss_candidates = url_to_rss(original_url, rsshub_instance)
+    rss_candidates = url_to_rss(original_url, rsshub_instances)
     if not rss_candidates:
-        logger.warning(f"无法生成 RSS 地址: {original_url}")
+        logger.debug(f"无法生成 RSS 地址: {original_url}")
         return []
     if isinstance(rss_candidates, str):
         rss_candidates = [rss_candidates]
     for rss_url in rss_candidates:
         items = fetch_single_rss(rss_url, original_url, processed_hashes)
         if items:
-            logger.info(f"{original_url} 成功 (条数: {len(items)}) via {rss_url}")
+            logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {rss_url}")
             return items
         logger.debug(f"{original_url} 失败 via {rss_url}")
         time.sleep(0.5)
-    logger.warning(f"{original_url} 所有 RSS 地址均失败")
+    logger.debug(f"{original_url} 所有 RSS 地址均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
@@ -324,10 +434,10 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     processed_hashes = set()
     failed_sources = []
     nitter_instances = get_nitter_instances()
-    rsshub_instance = random.choice(DEFAULT_RSSHUB_INSTANCES)
+    rsshub_instances = get_rsshub_instances()
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
-            executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances, rsshub_instance): url
+            executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances, rsshub_instances): url
             for url in RAW_SOURCES
         }
         for future in as_completed(future_to_url):
@@ -336,10 +446,10 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
                 items = future.result()
                 if items:
                     all_items.extend(items)
-                    logger.info(f"✓ {url} -> {len(items)} 条")
+                    logger.debug(f"✓ {url} -> {len(items)} 条")
                 else:
                     failed_sources.append((url, "抓取返回0条"))
-                    logger.warning(f"✗ {url} -> 0 条")
+                    logger.debug(f"✗ {url} -> 0 条")
             except Exception as e:
                 failed_sources.append((url, str(e)))
                 logger.error(f"✗ {url} 异常: {e}")
@@ -362,6 +472,7 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         data[today].append({"url": url, "reason": reason, "timestamp": datetime.utcnow().isoformat()})
     with open(FAILED_SOURCES_LOG, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    update_disabled_sources(failed_sources)
 
 # ================= 历史事件加载 =================
 def load_previous_events() -> List[str]:
@@ -425,9 +536,6 @@ def cleanup_old_events(event_counts: Dict, days: int = 30) -> Dict:
         del event_counts[event]
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
-
-def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
-    return difflib.SequenceMatcher(None, a, b).ratio() >= threshold
 
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
     events_data = []
@@ -554,20 +662,34 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
-    prompt_prefix = """你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**。
+    prompt_prefix = """你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**，并按重要性输出报告。
 
-**重要说明**：
-- 请优先输出来自官方机构、智库、政府部门的报告类内容（如 USCC、HRW、Amnesty、ASPI 等），这类内容放在表格的前面。
-- 对于普通新闻和普通 X 账号的内容，放在报告类内容之后。
-- 输出使用 Markdown 表格格式，表格头为：| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |
-- 每一条负面内容单独占一行。
+**一、请严格遵守以下过滤规则（忽略低价值内容）**：
+- 纯转发（RT/转发）且无新增实质性评论。
+- 仅包含链接，无任何文字说明或文字少于20个字符。
+- 仅含表情符号、无意义的感叹或口号（如“太可怕了”“支持”等）。
+- 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
+- 与涉华负面舆情无关的个人生活、娱乐、广告等。
+
+**二、输出格式要求**：
+- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |`
+- 每行一条负面内容，按以下优先级排序：
+  1. 来自官方机构、智库、政府部门的报告类内容（如 USCC、HRW、Amnesty、ASPI 等）。
+  2. 其他有实质分析的负面新闻或推文。
+  3. 忽略上述过滤规则中的低价值内容。
 - 原文链接列使用 `[查看](URL)` 格式。
-- “信息来源”列请直接使用输入中提供的“来源”名称（已经转换为中文）。
-- “发布多久前”列请直接使用输入中提供的“发布时间”字段（已经是易读格式，如“2小时前”）。
-- 如果没有任何负面涉华内容，只输出一行“无”。
-- 不要添加任何额外解释。
+- “信息来源”列使用输入中提供的“来源”名称（已转换为中文）。
+- “发布多久前”列直接使用输入中的“发布时间”（如“2小时前”）。
+- 如果没有任何符合要求的涉华负面内容，只输出一行“无”。
+- 不要添加任何额外解释、标题或总结。
 
-每条内容前已附带“发布时间”和“来源”，请利用这些信息判断时效性和可信度。
+**三、风险点要求**：
+- 每条风险点应包含类别（如“外交冲突”“社会维稳”“经济风险”“政治敏感”等）和简要说明，总字数不超过30字。
+- 示例：`外交冲突：中美关系因制裁再度紧张`。
+
+**四、注意**：
+- 每条内容前已附带“发布时间”和“来源”，请利用这些信息判断时效性和可信度。
+- 如果某条内容既有链接又有短评，且短评有分析价值，应保留。
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
@@ -608,6 +730,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 if len(cells) == 5:
                     all_table_rows.append(line)
+        time.sleep(AI_REQUEST_DELAY)
 
     if not all_table_rows:
         return "无相关内容。\n", []
@@ -624,7 +747,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict], failed_sour
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<table>\n<thead>\n'
+                html_table += '<tr>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -641,7 +764,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict], failed_sour
             html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></table>\n"
+                html_table += "</thead><tbody></tbody></td>\n"
                 in_table = False
     if in_table:
         html_table += "</thead><tbody></tbody></table>\n"
