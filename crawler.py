@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 舆情监控爬虫（优化版）
-# 依赖：requests, feedparser, beautifulsoup4, openai, tiktoken (可选)
+# crawler.py - 最终完整版
 import os
 import json
 import re
@@ -39,59 +38,45 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ================= 配置常量 =================
-# GitHub Models API
 GH_TOKEN = os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
 AI_BASE_URL = "https://models.inference.ai.azure.com"
 AI_MODEL = "gpt-4o-mini"
-
-# 报告密码（可从环境变量覆盖）
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
-
-# 代理（可选）
 PROXIES = None
 if os.environ.get("HTTP_PROXY"):
-    PROXIES = {
-        "http": os.environ["HTTP_PROXY"],
-        "https": os.environ.get("HTTPS_PROXY", os.environ["HTTP_PROXY"])
-    }
+    PROXIES = {"http": os.environ["HTTP_PROXY"], "https": os.environ.get("HTTPS_PROXY", os.environ["HTTP_PROXY"])}
 
-# 数据保留天数
 KEEP_DAYS = 7
-# 相似度去重阈值
 SIMILARITY_THRESHOLD = 0.5
-# 跨天重复隐藏参数
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
+MAX_WORKERS = 6
 
-# 文件路径
 EVENT_COUNTS_FILE = "event_counts.json"
 HEALTHY_NITTER_FILE = "healthy_nitter.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
+DEFAULT_RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.ktachibana.party"]
+FALLBACK_NITTER_INSTANCES = ["https://xcancel.com", "https://nitter.tiekoetter.com", "https://nitter.catsarch.com"]
 
-# 默认 RSSHub 实例列表（当无法获取健康实例时使用）
-DEFAULT_RSSHUB_INSTANCES = [
-    "https://rsshub.app",
-    "https://rsshub.ktachibana.party"
+# ================= 重要：定义 USER_AGENTS =================
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
 ]
-
-# 备用 Nitter 实例（当 healthy_nitter.json 不存在或为空时使用）
-FALLBACK_NITTER_INSTANCES = [
-    "https://xcancel.com",
-    "https://nitter.tiekoetter.com",
-    "https://nitter.catsarch.com"
-]
-
-# 并发抓取线程数
-MAX_WORKERS = 6
 
 # ================= 外部化配置加载 =================
 def load_sources() -> List[str]:
-    """加载信源列表（支持 JSON 外部文件，否则使用硬编码）"""
+    """从 sources.json 加载信源列表，若不存在则返回默认列表"""
     sources_file = "sources.json"
     if os.path.exists(sources_file):
-        with open(sources_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    # 默认硬编码信源（已移除 RFA 等不稳定源）
+        try:
+            with open(sources_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"加载 {sources_file} 失败: {e}")
+    # 默认信源（确保至少有一些基础源）
     return [
         "https://www.bbc.com/zhongwen/simp",
         "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
@@ -99,83 +84,18 @@ def load_sources() -> List[str]:
         "https://cn.nytimes.com/",
         "https://www.ntdtv.com/gb/instant-news.html",
         "https://www.epochtimes.com/gb/instant-news.htm",
-        "https://x.com/whyyoutouzhele",
-        "https://x.com/wangzhian8848",
-        "https://x.com/newszg_official",
-        "https://x.com/wangdan1989",
-        "https://x.com/torontobigface",
-        "https://x.com/hrw_chinese",
-        "https://x.com/dayangelcp",
-        "https://x.com/xinwendiaocha",
-        "https://x.com/xiaojingcanxue",
-        "https://x.com/ZhouFengSuo",
-        "https://x.com/lidangzzz",
-        "https://x.com/fangshimin",
-        "https://x.com/UHRP_Chinese",
-        "https://x.com/jhf8964",
-        "https://x.com/liangziyueqian1",
-        "https://x.com/badiucao",
-        "https://x.com/wurenhua",
-        "https://x.com/zaobaosg",
-        "https://x.com/dajiyuan",
-        "https://x.com/NTDChinese",
-        "https://x.com/VOAChinese",
-        "https://x.com/USCC_GOV",
-        "https://x.com/ODNIgov",
-        "https://x.com/ChinaSelect",
-        "https://x.com/CNASdc",
-        "https://x.com/hrw",
-        "https://x.com/amnesty",
-        "https://x.com/FreedomHouse",
-        "https://x.com/ASPI_org",
-        "https://x.com/CECCgov",
     ]
 
 def load_source_map() -> Dict[str, str]:
-    """加载信源名称映射（支持 JSON 外部文件）"""
+    """从 source_map.json 加载名称映射，若不存在则返回空字典"""
     map_file = "source_map.json"
     if os.path.exists(map_file):
-        with open(map_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    # 默认映射（部分示例）
-    return {
-        "whyyoutouzhele": "李老师不是你老师啊",
-        "wangzhian8848": "王局志安",
-        "newszg_official": "新闻调查",
-        "wangdan1989": "王丹",
-        "torontobigface": "大脸撑在小胸上",
-        "hrw_chinese": "人权观察中文",
-        "dayangelcp": "大天使",
-        "xinwendiaocha": "新闻调查",
-        "xiaojingcanxue": "小警犬",
-        "ZhouFengSuo": "周锋锁",
-        "lidangzzz": "李老师不是你老师啊",
-        "fangshimin": "方世民",
-        "UHRP_Chinese": "UHRP中文",
-        "jhf8964": "静好",
-        "liangziyueqian1": "量子跃迁",
-        "badiucao": "巴丢草",
-        "wurenhua": "吴仁华",
-        "zaobaosg": "联合早报",
-        "dajiyuan": "大纪元",
-        "NTDChinese": "新唐人",
-        "VOAChinese": "美国之音中文",
-        "USCC_GOV": "美中经济安全审查委员会",
-        "ODNIgov": "国家情报总监办公室",
-        "ChinaSelect": "众院中国问题特设委员会",
-        "CNASdc": "新美国安全中心",
-        "hrw": "人权观察",
-        "amnesty": "国际特赦组织",
-        "FreedomHouse": "自由之家",
-        "ASPI_org": "澳大利亚战略政策研究所",
-        "CECCgov": "国会-行政部门中国委员会",
-        "bbc.com": "BBC中文",
-        "dw.com": "德国之声",
-        "rfi.fr": "法国国际广播电台",
-        "cn.nytimes.com": "纽约时报中文网",
-        "ntdtv.com": "新唐人",
-        "epochtimes.com": "大纪元",
-    }
+        try:
+            with open(map_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"加载 {map_file} 失败: {e}")
+    return {}
 
 RAW_SOURCES = load_sources()
 SOURCE_NAME_MAP = load_source_map()
@@ -192,7 +112,7 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================= 工具函数 =================
+# ================= 辅助函数 =================
 def clean_html(text: Optional[str]) -> str:
     if not text:
         return ""
@@ -240,7 +160,6 @@ def content_hash(title: str, summary: str) -> str:
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 def convert_to_official_x_link(link: str) -> str:
-    """将 Nitter 链接转换为官方 X 链接"""
     if not link:
         return link
     replacements = [
@@ -256,6 +175,7 @@ def convert_to_official_x_link(link: str) -> str:
 
 def url_to_rss(url: str, rsshub_instance: str) -> Any:
     """根据原始 URL 返回 RSS 地址（支持单个或列表）"""
+    # 现有信源映射
     if "voachinese.com" in url:
         return [f"{rsshub_instance}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
@@ -272,13 +192,34 @@ def url_to_rss(url: str, rsshub_instance: str) -> Any:
         return [f"{rsshub_instance}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
     if "x.com/" in url:
         return None
-    if "uscc.gov" in url:
-        return f"{rsshub_instance}/uscc/reports"
+    # 新增信源映射
+    if "reuters.com/world/china" in url:
+        return f"{rsshub_instance}/reuters/world/china"
+    if "wsj.com/news/china" in url:
+        return f"{rsshub_instance}/wsj/china"
+    if "ft.com/china" in url:
+        return f"{rsshub_instance}/ft/china"
+    if "apnews.com/hub/china" in url:
+        return f"{rsshub_instance}/apnews/topics/china"
+    if "asia.nikkei.com" in url:
+        return "https://asia.nikkei.com/rss.xml"
+    if "brookings.edu/topics/china" in url:
+        return "https://www.brookings.edu/feed/?topic=china"
+    if "csis.org/regions/asia/china" in url:
+        return f"{rsshub_instance}/csis/asia/china"
+    if "pewresearch.org/topic/international-affairs/global-image-of-countries/china-global-image" in url:
+        return "https://www.pewresearch.org/feed/?post_type=publication&topic=china"
+    if "merics.org" in url:
+        return "https://merics.org/en/rss.xml"
+    if "asiasociety.org/policy-institute/center-china-analysis" in url:
+        return f"{rsshub_instance}/asiasociety/center-china-analysis"
+    if "rsf.org/en/country/china" in url:
+        return "https://rsf.org/en/rss.xml"
+    # 如果都不匹配，返回原 URL（可能无法抓取，但保底）
     return url
 
 # ================= Nitter 实例获取 =================
 def get_nitter_instances() -> List[str]:
-    """获取可用的 Nitter 实例（优先从 healthy_nitter.json 读取，否则使用备用）"""
     if os.path.exists(HEALTHY_NITTER_FILE):
         try:
             with open(HEALTHY_NITTER_FILE, 'r', encoding='utf-8') as f:
@@ -293,7 +234,6 @@ def get_nitter_instances() -> List[str]:
 
 # ================= 抓取核心 =================
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set) -> List[Dict]:
-    """抓取单个 RSS 源，返回条目列表"""
     try:
         headers = {"User-Agent": random.choice(USER_AGENTS)}
         time.sleep(random.uniform(0.5, 1.8))
@@ -321,7 +261,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set) -> 
             processed_hashes.add(h)
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
-            # 来源名称
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -350,7 +289,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set) -> 
         return []
 
 def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], rsshub_instance: str) -> List[Dict]:
-    """带重试的抓取，支持 X 账号多实例"""
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         for nitter in nitter_instances:
@@ -364,7 +302,6 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
             time.sleep(0.5)
         logger.warning(f"X {username} 所有实例均失败")
         return []
-    # 普通网站
     rss_candidates = url_to_rss(original_url, rsshub_instance)
     if not rss_candidates:
         logger.warning(f"无法生成 RSS 地址: {original_url}")
@@ -382,15 +319,12 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
-    """并发抓取所有信源，返回 (文章列表, 失败信源列表)"""
     logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源（过去24小时）")
     all_items = []
     processed_hashes = set()
     failed_sources = []
     nitter_instances = get_nitter_instances()
-    # 随机选择一个 RSSHub 实例（简单轮换）
-    rsshub_instances = DEFAULT_RSSHUB_INSTANCES
-    rsshub_instance = random.choice(rsshub_instances)
+    rsshub_instance = random.choice(DEFAULT_RSSHUB_INSTANCES)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
             executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances, rsshub_instance): url
@@ -414,7 +348,6 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
 
 # ================= 持久化失败记录 =================
 def log_failed_sources(failed_sources: List[Tuple[str, str]]):
-    """将失败信源记录到 JSON 文件，按日期分组"""
     today = datetime.utcnow().strftime("%Y-%m-%d")
     data = {}
     if os.path.exists(FAILED_SOURCES_LOG):
@@ -432,7 +365,6 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
 
 # ================= 历史事件加载 =================
 def load_previous_events() -> List[str]:
-    """从上次生成的 report.md 中提取事件简述（用于新增标记）"""
     events = []
     if not os.path.exists("report.md"):
         return events
@@ -463,7 +395,6 @@ def load_event_counts() -> Dict:
         try:
             with open(EVENT_COUNTS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # 兼容旧格式（纯数字）
                 if isinstance(data, dict) and all(isinstance(v, int) for v in data.values()):
                     new_data = {}
                     for k, v in data.items():
@@ -479,7 +410,6 @@ def save_event_counts(counts: Dict):
         json.dump(counts, f, ensure_ascii=False, indent=2)
 
 def cleanup_old_events(event_counts: Dict, days: int = 30) -> Dict:
-    """删除 last_seen 超过 days 天的事件"""
     cutoff = datetime.utcnow().date() - timedelta(days=days)
     to_delete = []
     for event, record in event_counts.items():
@@ -500,7 +430,6 @@ def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
     return difflib.SequenceMatcher(None, a, b).ratio() >= threshold
 
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
-    """相似度去重，合并信源，标记新增"""
     events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
@@ -553,7 +482,6 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
     return unique_rows, events_in_report
 
 def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
-    """跨天重复隐藏（冷却期）"""
     today = datetime.utcnow().date()
     new_counts = {}
     new_rows = []
@@ -614,18 +542,15 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
     return None
 
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
-    """分批调用 AI，返回 Markdown 表格和事件列表"""
     if not articles:
         return "无相关内容。\n", []
 
-    # 构建内容块
     blocks = []
     for art in articles:
         meta = f"发布时间：{art.get('time_ago', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks.append(block)
 
-    # 分批
     batches = []
     current_batch = []
     current_tokens = 0
@@ -646,7 +571,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
-    max_content_tokens = 10000  # 每批最大 token 数
+    max_content_tokens = 10000
     for block in blocks:
         block_tokens = estimate_tokens(block)
         if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
@@ -693,15 +618,13 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
 # ================= 报告生成 =================
 def generate_html_report(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]) -> str:
-    """生成 HTML 报告，包含运行状态和登录保护"""
-    # 转换表格部分
     lines = report_text.split("\n")
     html_table = ""
     in_table = False
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<tr>\n<thead>\n'
+                html_table += '<table>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -715,7 +638,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict], failed_sour
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_table += f"<td>{cell}</td>\n"
-            html_table += "<tr>\n"
+            html_table += "</tr>\n"
         else:
             if in_table:
                 html_table += "</thead><tbody></tbody></table>\n"
@@ -785,7 +708,6 @@ def generate_html_report(report_text: str, all_articles: List[Dict], failed_sour
 </html>"""
 
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
-    """保存 Markdown 和 HTML 报告，同时归档历史版本"""
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     total_sources = len(RAW_SOURCES)
     success_count = total_sources - len(failed_sources)
@@ -822,7 +744,6 @@ def save_reports_with_history(report_text: str, all_articles: List[Dict], failed
     logger.info(f"报告已保存: report.html, report.md, 历史归档 {history_path}")
 
 def generate_index_page():
-    """生成历史报告索引页"""
     reports_dir = "reports"
     if not os.path.exists(reports_dir):
         return
@@ -845,7 +766,6 @@ def generate_index_page():
         f.write(index_html)
 
 def cleanup_old_files(days: int = KEEP_DAYS):
-    """删除超过指定天数的旧报告和原始数据"""
     cutoff = datetime.utcnow() - timedelta(days=days)
     for dir_name in ["reports", "data"]:
         if not os.path.exists(dir_name):
