@@ -2,7 +2,7 @@ name: Update Nitter Instances
 
 on:
   schedule:
-    - cron: '0 2 * * *'   # 每天 UTC 02:00 运行
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,8 +11,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        # 保留 Git 凭证，以便后续 push
         with:
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -46,3 +47,4 @@ jobs:
           commit_user_name: "github-actions[bot]"
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
           branch: main
+          github_token: ${{ secrets.GITHUB_TOKEN }}
