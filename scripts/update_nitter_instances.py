@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-自动发现并测试可用的 Nitter 公共实例。
-从多个数据源收集候选实例，并发测试健康度，输出 JSON 文件。
+自动发现并测试可用的 Nitter 公共实例（优化版：增加重试、超时、UA轮换）
 """
 import json
 import re
 import time
 import logging
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Set
 
@@ -21,10 +21,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ================= 配置 =================
-TEST_USERNAME = "elonmusk"          # 测试使用的用户名
-TEST_TIMEOUT = 10                   # 每个实例测试超时（秒）
-MAX_WORKERS = 15                    # 并发测试线程数
-RETRY_COUNT = 2                     # 请求重试次数
+TEST_USERNAME = "elonmusk"
+TEST_TIMEOUT = 15                     # 增加到15秒
+MAX_WORKERS = 10                      # 并发数
+RETRY_COUNT = 2                       # 每个实例重试2次
+REQUEST_DELAY = 0.5                   # 请求间隔（秒）
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+]
 
 SOURCES = [
     "https://status.d420.de/",
@@ -32,6 +39,7 @@ SOURCES = [
     "https://github.com/zedeus/nitter/wiki/Instances"
 ]
 
+# 硬编码的备用实例池（确保至少有一些候选）
 FALLBACK_INSTANCES = [
     "https://xcancel.com",
     "https://nitter.tiekoetter.com",
@@ -51,7 +59,8 @@ def fetch_with_retry(url: str, timeout: int = 15) -> requests.Response:
     """带重试的 GET 请求"""
     for attempt in range(RETRY_COUNT):
         try:
-            resp = requests.get(url, timeout=timeout)
+            headers = {"User-Agent": random.choice(USER_AGENTS)}
+            resp = requests.get(url, timeout=timeout, headers=headers)
             if resp.status_code == 200:
                 return resp
         except Exception as e:
@@ -66,27 +75,20 @@ def extract_nitter_links_from_html(html: str) -> Set[str]:
     links = set()
     for a in soup.find_all('a', href=True):
         href = a['href']
-        # 只保留 http/https 开头的链接
         if not (href.startswith('http://') or href.startswith('https://')):
             continue
-        # 过滤掉明显不是 Nitter 实例的域名
         if 'ssllabs.com' in href or 'github.com' in href:
             continue
-        # 域名中应包含 nitter 或 xcancel
         if 'nitter' in href or 'xcancel' in href:
-            # 去掉可能的尾部斜杠
             links.add(href.rstrip('/'))
     return links
 
 
 def extract_nitter_links_from_markdown(markdown: str) -> Set[str]:
     """从 Markdown 文本中提取真正的 Nitter 实例链接"""
-    # 匹配 http/https 链接，但排除 ssllabs、github 等无关域名
-    # 同时排除 Markdown 中的图片、引用等
     raw_urls = re.findall(r'https?://[^\s\)]+', markdown)
     links = set()
     for url in raw_urls:
-        # 去除尾部标点
         url = url.rstrip('.,;:)!?')
         if not (url.startswith('http://') or url.startswith('https://')):
             continue
@@ -98,15 +100,20 @@ def extract_nitter_links_from_markdown(markdown: str) -> Set[str]:
 
 
 def test_instance(instance: str) -> bool:
-    """测试单个 Nitter 实例是否可用"""
-    try:
-        url = f"{instance}/{TEST_USERNAME}/rss"
-        resp = requests.get(url, timeout=TEST_TIMEOUT)
-        if resp.status_code == 200 and ("rss" in resp.text.lower() or "channel" in resp.text.lower()):
-            logger.debug(f"实例可用: {instance}")
-            return True
-    except Exception as e:
-        logger.debug(f"实例测试失败 {instance}: {e}")
+    """测试单个 Nitter 实例是否可用（带重试和延迟）"""
+    for attempt in range(RETRY_COUNT):
+        try:
+            headers = {"User-Agent": random.choice(USER_AGENTS)}
+            url = f"{instance}/{TEST_USERNAME}/rss"
+            resp = requests.get(url, timeout=TEST_TIMEOUT, headers=headers)
+            if resp.status_code == 200 and ("rss" in resp.text.lower() or "channel" in resp.text.lower()):
+                logger.debug(f"实例可用: {instance}")
+                return True
+            else:
+                logger.debug(f"实例测试失败 (HTTP {resp.status_code}): {instance}")
+        except Exception as e:
+            logger.debug(f"实例测试异常 {instance} (尝试 {attempt+1}/{RETRY_COUNT}): {e}")
+        time.sleep(REQUEST_DELAY)
     return False
 
 
@@ -151,7 +158,7 @@ def main():
             if future.result():
                 healthy.append(future_to_inst[future])
 
-    healthy = sorted(set(healthy))   # 去重并排序
+    healthy = sorted(set(healthy))
     if not healthy:
         logger.warning("未发现任何健康实例，使用 xcancel.com 作为最终兜底")
         healthy = ["https://xcancel.com"]
