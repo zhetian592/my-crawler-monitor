@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-自动发现并测试可用的 Nitter 公共实例（最终修复版：URL清洗+去重）
+自动发现并测试可用的 Nitter 公共实例（彻底修复版）
 """
 import json
 import re
@@ -47,18 +47,26 @@ FALLBACK_INSTANCES = [
 OUTPUT_FILE = "healthy_nitter.json"
 
 def clean_url(url: str) -> str:
-    """清洗URL：去除尾部斜杠、引号、空格，只保留基础地址"""
+    """彻底清洗 URL，去除各种干扰字符"""
     if not url:
         return ""
     url = url.strip()
-    # 去除可能包裹的引号
-    if url.startswith('"') and url.endswith('"'):
+    # 去除首尾匹配的引号（单引号或双引号）
+    if (url.startswith('"') and url.endswith('"')) or (url.startswith("'") and url.endswith("'")):
         url = url[1:-1]
+    # 去除尾部可能残留的引号（针对 nitter.privacyredirect.com/" 这种情况）
+    while url.endswith('"'):
+        url = url[:-1]
+    while url.endswith("'"):
+        url = url[:-1]
     # 去除尾部斜杠
     url = url.rstrip('/')
     # 去除 # 锚点
     if '#' in url:
         url = url.split('#')[0]
+    # 确保以 https:// 开头（如果不是，丢弃）
+    if not (url.startswith('http://') or url.startswith('https://')):
+        return ""
     return url
 
 def fetch_with_retry(url: str, timeout: int = 15):
