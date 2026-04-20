@@ -60,24 +60,40 @@ def fetch_with_retry(url: str, timeout: int = 15) -> requests.Response:
     return None
 
 
-def extract_links_from_html(html: str) -> Set[str]:
-    """从 HTML 页面中提取 Nitter 相关链接"""
+def extract_nitter_links_from_html(html: str) -> Set[str]:
+    """从 HTML 页面中提取真正的 Nitter 实例链接"""
     soup = BeautifulSoup(html, 'html.parser')
     links = set()
     for a in soup.find_all('a', href=True):
         href = a['href']
-        if href.startswith('http') and ('nitter' in href or 'xcancel' in href):
+        # 只保留 http/https 开头的链接
+        if not (href.startswith('http://') or href.startswith('https://')):
+            continue
+        # 过滤掉明显不是 Nitter 实例的域名
+        if 'ssllabs.com' in href or 'github.com' in href:
+            continue
+        # 域名中应包含 nitter 或 xcancel
+        if 'nitter' in href or 'xcancel' in href:
+            # 去掉可能的尾部斜杠
             links.add(href.rstrip('/'))
     return links
 
 
-def extract_links_from_markdown(markdown: str) -> Set[str]:
-    """从 Markdown 文本中提取 Nitter 相关链接"""
+def extract_nitter_links_from_markdown(markdown: str) -> Set[str]:
+    """从 Markdown 文本中提取真正的 Nitter 实例链接"""
+    # 匹配 http/https 链接，但排除 ssllabs、github 等无关域名
+    # 同时排除 Markdown 中的图片、引用等
     raw_urls = re.findall(r'https?://[^\s\)]+', markdown)
     links = set()
     for url in raw_urls:
+        # 去除尾部标点
+        url = url.rstrip('.,;:)!?')
+        if not (url.startswith('http://') or url.startswith('https://')):
+            continue
+        if 'ssllabs.com' in url or 'github.com' in url:
+            continue
         if 'nitter' in url or 'xcancel' in url:
-            links.add(url.rstrip('/)'))
+            links.add(url.rstrip('/'))
     return links
 
 
@@ -104,15 +120,21 @@ def collect_candidates() -> Set[str]:
             logger.warning(f"无法获取 {source_url}")
             continue
         if source_url.endswith('.md') or 'wiki' in source_url:
-            links = extract_links_from_markdown(resp.text)
+            links = extract_nitter_links_from_markdown(resp.text)
         else:
-            links = extract_links_from_html(resp.text)
+            links = extract_nitter_links_from_html(resp.text)
         candidates.update(links)
         logger.info(f"从 {source_url} 获得 {len(links)} 个链接")
     # 添加备用实例
     candidates.update(FALLBACK_INSTANCES)
-    logger.info(f"候选实例总数: {len(candidates)}")
-    return candidates
+    # 清理：去掉可能残留的 # 锚点
+    cleaned = set()
+    for c in candidates:
+        c = c.split('#')[0]
+        if c.startswith('http'):
+            cleaned.add(c)
+    logger.info(f"候选实例总数: {len(cleaned)}")
+    return cleaned
 
 
 def main():
