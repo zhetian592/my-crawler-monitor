@@ -1,8 +1,8 @@
-name: Update Nitter Instances
+name: Update RSSHub Instances
 
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 */6 * * *'   # 每6小时运行一次
   workflow_dispatch:
 
 jobs:
@@ -11,9 +11,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        # 保留 Git 凭证，以便后续 push
         with:
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -25,26 +24,14 @@ jobs:
           pip install --upgrade pip
           pip install requests beautifulsoup4
 
-      - name: Run instance discovery script
-        id: discover
-        run: python scripts/update_nitter_instances.py
-
-      - name: Check if healthy_nitter.json is valid
-        id: check
-        run: |
-          if [ -f healthy_nitter.json ] && [ -s healthy_nitter.json ]; then
-            echo "valid=true" >> $GITHUB_OUTPUT
-          else
-            echo "valid=false" >> $GITHUB_OUTPUT
-          fi
+      - name: Run RSSHub instance discovery
+        run: python scripts/update_rsshub_instances.py
 
       - name: Commit and push changes
-        if: steps.check.outputs.valid == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: auto update healthy Nitter instances"
-          file_pattern: "healthy_nitter.json"
+          commit_message: "chore: auto update healthy RSSHub instances"
+          file_pattern: "healthy_rsshub.json"
           commit_user_name: "github-actions[bot]"
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
           branch: main
-          github_token: ${{ secrets.GITHUB_TOKEN }}
