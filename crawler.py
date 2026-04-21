@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 最终完整版（日志轮转 + 语义相似度 + AI优化）
+# crawler.py - 调试版本（移除运行状态报告）
 import os
 import json
 import re
@@ -27,7 +27,7 @@ except ImportError:
     SEMANTIC_AVAILABLE = False
     print("sentence-transformers 未安装，将使用 difflib 进行相似度比较", file=sys.stderr)
 
-# 尝试导入 tiktoken（用于精确 token 估算）
+# 尝试导入 tiktoken
 try:
     import tiktoken
     TIKTOKEN_AVAILABLE = True
@@ -36,14 +36,12 @@ except ImportError:
 
 # ================= 日志配置（轮转） =================
 LOG_FILE = "crawler.log"
-LOG_MAX_BYTES = 10 * 1024 * 1024   # 10 MB
+LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
 
-# 清除已有的 handlers
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 
-# 创建文件轮转处理器
 file_handler = RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding='utf-8')
 file_handler.setLevel(logging.INFO)
 console_handler = logging.StreamHandler(sys.stdout)
@@ -72,7 +70,7 @@ SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
-AI_REQUEST_DELAY = 2          # 2秒
+AI_REQUEST_DELAY = 2
 DISABLE_FAILED_THRESHOLD = 3
 
 EVENT_COUNTS_FILE = "event_counts.json"
@@ -102,6 +100,10 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
+# 调试目标账号
+TARGET_USER = "whyyoutouzhele"
+TARGET_URL = f"https://x.com/{TARGET_USER}"
+
 # ================= 语义相似度模型初始化 =================
 if SEMANTIC_AVAILABLE:
     try:
@@ -117,18 +119,25 @@ def load_sources() -> List[str]:
     if os.path.exists(sources_file):
         try:
             with open(sources_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                sources = json.load(f)
+                if TARGET_URL in sources:
+                    logger.info(f"[DEBUG_李老师] 目标账号 {TARGET_URL} 在 sources.json 中")
+                else:
+                    logger.warning(f"[DEBUG_李老师] 目标账号 {TARGET_URL} 不在 sources.json 中！")
+                return sources
         except Exception as e:
             logger.warning(f"加载 {sources_file} 失败: {e}")
-    # 默认信源（精简版）
-    return [
+    default = [
         "https://www.bbc.com/zhongwen/simp",
         "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
         "https://www.rfi.fr/cn/",
         "https://cn.nytimes.com/",
         "https://www.ntdtv.com/gb/instant-news.html",
         "https://www.epochtimes.com/gb/instant-news.htm",
+        TARGET_URL,
     ]
+    logger.info(f"[DEBUG_李老师] 使用默认信源列表，包含 {TARGET_URL}")
+    return default
 
 def load_source_map() -> Dict[str, str]:
     map_file = "source_map.json"
@@ -215,7 +224,6 @@ def clean_html(text: Optional[str]) -> str:
     return soup.get_text().strip()[:500]
 
 def normalize_event_text(text: str) -> str:
-    """标准化事件简述：去标点、去停用词、转小写"""
     text = re.sub(r'[^\w\u4e00-\u9fff]', ' ', text)
     stopwords = {'的', '了', '是', '在', '和', '与', '或', '一个', '这个', '那个', '有', '被', '把', '让', '给', '从', '到', '对', '向', '在', '于', '就', '都', '也', '还', '要', '会', '能', '可以', '可能', '已经', '还', '更', '最', '很', '太', '非常', '特别', '十分', '有点', '一些', '这些', '那些', '这样', '那样', '如何', '为何', '什么', '哪里', '哪个', '谁', '为什么', '怎么', '怎样'}
     words = text.split()
@@ -223,7 +231,6 @@ def normalize_event_text(text: str) -> str:
     return ' '.join(words)
 
 def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
-    """增强相似度比较（语义 + 文本）"""
     if SEMANTIC_AVAILABLE:
         try:
             emb1 = model.encode(a, convert_to_tensor=True)
@@ -231,7 +238,6 @@ def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
             cosine_score = util.pytorch_cos_sim(emb1, emb2).item()
             return cosine_score >= threshold
         except Exception:
-            # 降级到 difflib
             a_norm = normalize_event_text(a)
             b_norm = normalize_event_text(b)
             return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
@@ -312,7 +318,6 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Any:
         return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
     if "x.com/" in url:
         return None
-    # 新增信源映射
     if "reuters.com/world/china" in url:
         return f"{rsshub}/reuters/world/china"
     if "wsj.com/news/china" in url:
@@ -390,6 +395,9 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set) -> 
             })
             if len(items) >= 12:
                 break
+        # 调试：如果是目标账号，打印抓取到的条目数
+        if original_url == TARGET_URL:
+            logger.info(f"[DEBUG_李老师] fetch_single_rss 抓取到 {len(items)} 条推文")
         return items
     except Exception as e:
         logger.error(f"抓取异常 {original_url}: {e}")
@@ -407,10 +415,14 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
             items = fetch_single_rss(test_url, original_url, processed_hashes)
             if items:
                 logger.debug(f"X {username} 成功 via {nitter} (条数: {len(items)})")
+                if original_url == TARGET_URL:
+                    logger.info(f"[DEBUG_李老师] 成功抓取 {len(items)} 条，实例: {nitter}")
                 return items
             logger.debug(f"X {username} 失败 via {nitter}")
             time.sleep(0.5)
         logger.debug(f"X {username} 所有实例均失败")
+        if original_url == TARGET_URL:
+            logger.warning(f"[DEBUG_李老师] 所有 Nitter 实例均失败，无法抓取")
         return []
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if not rss_candidates:
@@ -450,10 +462,16 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
                 else:
                     failed_sources.append((url, "抓取返回0条"))
                     logger.debug(f"✗ {url} -> 0 条")
+                    if url == TARGET_URL:
+                        logger.warning(f"[DEBUG_李老师] 抓取返回0条")
             except Exception as e:
                 failed_sources.append((url, str(e)))
                 logger.error(f"✗ {url} 异常: {e}")
+                if url == TARGET_URL:
+                    logger.error(f"[DEBUG_李老师] 异常: {e}")
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希去重）")
+    target_items = [item for item in all_items if item.get("source") == TARGET_URL]
+    logger.info(f"[DEBUG_李老师] 总共抓取到 {len(target_items)} 条来自目标账号的文章")
     return all_items, failed_sources
 
 # ================= 持久化失败记录 =================
@@ -653,6 +671,13 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     if not articles:
         return "无相关内容。\n", []
 
+    # 调试：统计目标账号的文章数量
+    target_articles = [a for a in articles if a.get("source") == TARGET_URL]
+    logger.info(f"[DEBUG_李老师] 进入 AI 分析前，共有 {len(target_articles)} 条来自目标账号的文章")
+    if target_articles:
+        for art in target_articles[:3]:
+            logger.info(f"[DEBUG_李老师] 示例文章: {art.get('title', '')[:100]}")
+
     blocks = []
     for art in articles:
         meta = f"发布时间：{art.get('time_ago', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
@@ -733,21 +758,30 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         time.sleep(AI_REQUEST_DELAY)
 
     if not all_table_rows:
+        logger.warning("[DEBUG_李老师] AI 分析未生成任何表格行")
         return "无相关内容。\n", []
+
+    # 调试：检查表格行中是否包含李老师的推文
+    target_rows = [row for row in all_table_rows if TARGET_USER in row or "李老师" in row]
+    logger.info(f"[DEBUG_李老师] AI 生成的表格行中包含目标账号的条目数: {len(target_rows)}")
+    if target_rows:
+        for row in target_rows[:3]:
+            logger.info(f"[DEBUG_李老师] 示例行: {row[:200]}")
 
     unique_rows, events_in_report = deduplicate_and_mark_new(all_table_rows, old_events)
     final_table = "\n".join([table_header, table_sep] + unique_rows)
     return final_table, events_in_report
 
-# ================= 报告生成 =================
-def generate_html_report(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]) -> str:
+# ================= 报告生成（无运行状态） =================
+def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
+    """生成 HTML 报告，不包含运行状态"""
     lines = report_text.split("\n")
     html_table = ""
     in_table = False
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<tr>\n<thead>\n'
+                html_table += '<table>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -764,25 +798,10 @@ def generate_html_report(report_text: str, all_articles: List[Dict], failed_sour
             html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></td>\n"
+                html_table += "</thead><tbody></tbody></table>\n"
                 in_table = False
     if in_table:
         html_table += "</thead><tbody></tbody></table>\n"
-
-    total_sources = len(RAW_SOURCES)
-    success_count = total_sources - len(failed_sources)
-    status_html = f"""
-    <div style="background-color: #f0f0f0; padding: 12px; border-radius: 8px; margin-bottom: 20px;">
-        <h2>📊 本次运行状态</h2>
-        <ul>
-            <li>✅ 成功抓取信源: {success_count}/{total_sources}</li>
-            <li>⚠️ 失败信源数: {len(failed_sources)}</li>
-            {''.join([f'<li style="color: #d9534f;">❌ 失败信源: {url} - {reason}</li>' for url, reason in failed_sources]) if failed_sources else '<li>🎉 所有信源抓取成功！</li>'}
-            <li>📄 总抓取条目: {len(all_articles)} 条（去重后）</li>
-            <li>🤖 AI 分析完成，报告生成时间: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</li>
-        </ul>
-    </div>
-    """
 
     login_script = f'''
 <script>
@@ -820,7 +839,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict], failed_sour
 </head>
 <body>
 <h1>📊 内容安全行业舆情报告</h1>
-{status_html}
+<p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
 <div id="report">
 {html_table}
 </div>
@@ -832,26 +851,11 @@ def generate_html_report(report_text: str, all_articles: List[Dict], failed_sour
 
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    total_sources = len(RAW_SOURCES)
-    success_count = total_sources - len(failed_sources)
-    status_md = f"""## 📊 本次运行状态
-
-- ✅ 成功抓取信源: {success_count}/{total_sources}
-- ⚠️ 失败信源数: {len(failed_sources)}
-"""
-    if failed_sources:
-        status_md += "**失败信源列表：**\n"
-        for url, reason in failed_sources:
-            status_md += f"  - ❌ `{url}` : {reason}\n"
-    else:
-        status_md += "- 🎉 所有信源抓取成功！\n"
-    status_md += f"- 📄 总抓取条目: {len(all_articles)} 条（去重后）\n"
-    status_md += f"- 🤖 AI 分析完成，报告生成时间: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n---\n\n"
-    full_report = status_md + report_text
+    full_report = report_text   # 不再添加状态信息
 
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(full_report)
-    html_content = generate_html_report(report_text, all_articles, failed_sources)
+    html_content = generate_html_report(report_text, all_articles)
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
 
