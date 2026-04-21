@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 调试版本（移除运行状态报告）
+# crawler.py - 最终优化版（AI提示词优化 + 链接错位修复 + 信源级时间窗口）
 import os
 import json
 import re
@@ -18,14 +18,6 @@ import feedparser
 import openai
 from bs4 import BeautifulSoup
 import difflib
-
-# 尝试导入语义相似度模型
-try:
-    from sentence_transformers import SentenceTransformer, util
-    SEMANTIC_AVAILABLE = True
-except ImportError:
-    SEMANTIC_AVAILABLE = False
-    print("sentence-transformers 未安装，将使用 difflib 进行相似度比较", file=sys.stderr)
 
 # 尝试导入 tiktoken
 try:
@@ -100,44 +92,43 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# 调试目标账号
-TARGET_USER = "whyyoutouzhele"
-TARGET_URL = f"https://x.com/{TARGET_USER}"
-
-# ================= 语义相似度模型初始化 =================
-if SEMANTIC_AVAILABLE:
-    try:
-        model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-        logger.info("语义相似度模型加载成功")
-    except Exception as e:
-        SEMANTIC_AVAILABLE = False
-        logger.warning(f"语义相似度模型加载失败: {e}，将使用 difflib")
-
-# ================= 外部化配置加载 =================
-def load_sources() -> List[str]:
+# ================= 外部化配置加载（支持信源级时间窗口） =================
+def load_sources() -> List[Dict]:
+    """
+    加载信源配置，支持两种格式：
+    1. 字符串列表（向后兼容）：自动转换为 {"url": url, "time_window_hours": 24}
+    2. 对象列表：{"url": "...", "time_window_hours": 48}
+    """
     sources_file = "sources.json"
     if os.path.exists(sources_file):
         try:
             with open(sources_file, 'r', encoding='utf-8') as f:
-                sources = json.load(f)
-                if TARGET_URL in sources:
-                    logger.info(f"[DEBUG_李老师] 目标账号 {TARGET_URL} 在 sources.json 中")
-                else:
-                    logger.warning(f"[DEBUG_李老师] 目标账号 {TARGET_URL} 不在 sources.json 中！")
-                return sources
+                raw = json.load(f)
+                if isinstance(raw, list):
+                    sources = []
+                    for item in raw:
+                        if isinstance(item, str):
+                            sources.append({"url": item, "time_window_hours": 24})
+                        elif isinstance(item, dict) and "url" in item:
+                            sources.append({
+                                "url": item["url"],
+                                "time_window_hours": item.get("time_window_hours", 24)
+                            })
+                        else:
+                            logger.warning(f"无效的信源配置: {item}")
+                    return sources
         except Exception as e:
             logger.warning(f"加载 {sources_file} 失败: {e}")
-    default = [
-        "https://www.bbc.com/zhongwen/simp",
-        "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
-        "https://www.rfi.fr/cn/",
-        "https://cn.nytimes.com/",
-        "https://www.ntdtv.com/gb/instant-news.html",
-        "https://www.epochtimes.com/gb/instant-news.htm",
-        TARGET_URL,
+    # 默认信源（包含目标账号）
+    return [
+        {"url": "https://www.bbc.com/zhongwen/simp", "time_window_hours": 24},
+        {"url": "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058", "time_window_hours": 24},
+        {"url": "https://www.rfi.fr/cn/", "time_window_hours": 24},
+        {"url": "https://cn.nytimes.com/", "time_window_hours": 24},
+        {"url": "https://www.ntdtv.com/gb/instant-news.html", "time_window_hours": 24},
+        {"url": "https://www.epochtimes.com/gb/instant-news.htm", "time_window_hours": 24},
+        {"url": "https://x.com/whyyoutouzhele", "time_window_hours": 24},
     ]
-    logger.info(f"[DEBUG_李老师] 使用默认信源列表，包含 {TARGET_URL}")
-    return default
 
 def load_source_map() -> Dict[str, str]:
     map_file = "source_map.json"
@@ -149,7 +140,10 @@ def load_source_map() -> Dict[str, str]:
             logger.warning(f"加载 {map_file} 失败: {e}")
     return {}
 
-RAW_SOURCES = load_sources()
+RAW_SOURCES_CONFIG = load_sources()
+RAW_SOURCES = [cfg["url"] for cfg in RAW_SOURCES_CONFIG]
+# 构建 URL -> 时间窗口的映射
+TIME_WINDOW_MAP = {cfg["url"]: cfg["time_window_hours"] for cfg in RAW_SOURCES_CONFIG}
 SOURCE_NAME_MAP = load_source_map()
 
 def get_display_source(source_name: str) -> str:
@@ -231,20 +225,9 @@ def normalize_event_text(text: str) -> str:
     return ' '.join(words)
 
 def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
-    if SEMANTIC_AVAILABLE:
-        try:
-            emb1 = model.encode(a, convert_to_tensor=True)
-            emb2 = model.encode(b, convert_to_tensor=True)
-            cosine_score = util.pytorch_cos_sim(emb1, emb2).item()
-            return cosine_score >= threshold
-        except Exception:
-            a_norm = normalize_event_text(a)
-            b_norm = normalize_event_text(b)
-            return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
-    else:
-        a_norm = normalize_event_text(a)
-        b_norm = normalize_event_text(b)
-        return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
+    a_norm = normalize_event_text(a)
+    b_norm = normalize_event_text(b)
+    return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
 
 def parse_published_strict(published_str: Optional[str]) -> Optional[datetime]:
     if not published_str:
@@ -344,8 +327,8 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Any:
         return "https://www.uscc.gov/rss.xml"
     return url
 
-# ================= 抓取核心 =================
-def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set) -> List[Dict]:
+# ================= 抓取核心（支持信源级时间窗口） =================
+def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
     try:
         headers = {"User-Agent": random.choice(USER_AGENTS)}
         time.sleep(random.uniform(0.5, 1.8))
@@ -354,7 +337,7 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set) -> 
             logger.debug(f"HTTP {resp.status_code} - {original_url}")
             return []
         feed = feedparser.parse(resp.content)
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
         items = []
         for entry in feed.entries:
             published_str = entry.get("published", entry.get("updated", ""))
@@ -395,15 +378,12 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set) -> 
             })
             if len(items) >= 12:
                 break
-        # 调试：如果是目标账号，打印抓取到的条目数
-        if original_url == TARGET_URL:
-            logger.info(f"[DEBUG_李老师] fetch_single_rss 抓取到 {len(items)} 条推文")
         return items
     except Exception as e:
         logger.error(f"抓取异常 {original_url}: {e}")
         return []
 
-def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], rsshub_instances: List[str]) -> List[Dict]:
+def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
@@ -412,17 +392,13 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
         for nitter in nitter_instances:
             test_url = f"{nitter}/{username}/rss"
             logger.debug(f"尝试 X {username} 使用 {nitter}")
-            items = fetch_single_rss(test_url, original_url, processed_hashes)
+            items = fetch_single_rss(test_url, original_url, processed_hashes, time_window_hours)
             if items:
                 logger.debug(f"X {username} 成功 via {nitter} (条数: {len(items)})")
-                if original_url == TARGET_URL:
-                    logger.info(f"[DEBUG_李老师] 成功抓取 {len(items)} 条，实例: {nitter}")
                 return items
             logger.debug(f"X {username} 失败 via {nitter}")
             time.sleep(0.5)
         logger.debug(f"X {username} 所有实例均失败")
-        if original_url == TARGET_URL:
-            logger.warning(f"[DEBUG_李老师] 所有 Nitter 实例均失败，无法抓取")
         return []
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if not rss_candidates:
@@ -431,7 +407,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
     if isinstance(rss_candidates, str):
         rss_candidates = [rss_candidates]
     for rss_url in rss_candidates:
-        items = fetch_single_rss(rss_url, original_url, processed_hashes)
+        items = fetch_single_rss(rss_url, original_url, processed_hashes, time_window_hours)
         if items:
             logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {rss_url}")
             return items
@@ -441,7 +417,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
-    logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源（过去24小时）")
+    logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源（时间窗口各异）")
     all_items = []
     processed_hashes = set()
     failed_sources = []
@@ -449,7 +425,7 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     rsshub_instances = get_rsshub_instances()
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
-            executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances, rsshub_instances): url
+            executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances, rsshub_instances, TIME_WINDOW_MAP.get(url, 24)): url
             for url in RAW_SOURCES
         }
         for future in as_completed(future_to_url):
@@ -462,16 +438,10 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
                 else:
                     failed_sources.append((url, "抓取返回0条"))
                     logger.debug(f"✗ {url} -> 0 条")
-                    if url == TARGET_URL:
-                        logger.warning(f"[DEBUG_李老师] 抓取返回0条")
             except Exception as e:
                 failed_sources.append((url, str(e)))
                 logger.error(f"✗ {url} 异常: {e}")
-                if url == TARGET_URL:
-                    logger.error(f"[DEBUG_李老师] 异常: {e}")
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希去重）")
-    target_items = [item for item in all_items if item.get("source") == TARGET_URL]
-    logger.info(f"[DEBUG_李老师] 总共抓取到 {len(target_items)} 条来自目标账号的文章")
     return all_items, failed_sources
 
 # ================= 持久化失败记录 =================
@@ -555,8 +525,23 @@ def cleanup_old_events(event_counts: Dict, days: int = 30) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
+def get_source_priority(source_name: str) -> int:
+    """定义来源优先级：官方机构=1，智库=2，新闻媒体=3，普通X账号=4"""
+    high_priority = {"uscc", "cecc", "chinaselect", "odni", "state", "gov"}
+    think_tank = {"brookings", "csis", "merics", "aspi", "jamestown", "hrw", "amnesty", "freedomhouse"}
+    news = {"bbc", "dw", "rfi", "nytimes", "reuters", "wsj", "ft", "ap", "nikkei"}
+    src_lower = source_name.lower()
+    if any(k in src_lower for k in high_priority):
+        return 1
+    if any(k in src_lower for k in think_tank):
+        return 2
+    if any(k in src_lower for k in news):
+        return 3
+    return 4
+
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
-    events_data = []
+    # 解析行数据
+    events_data = []  # (event, source, link, risk, time_ago, pub_dt, row)
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 5:
@@ -566,19 +551,40 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         risk = cells[2]
         source = cells[3]
         time_ago = cells[4]
-        events_data.append((event, source, link, risk, time_ago, row))
+        # 尝试从 time_ago 解析发布时间（用于排序），简单处理：提取数字小时/天
+        pub_dt = None
+        if "小时前" in time_ago:
+            try:
+                hours = int(time_ago.replace("小时前", "").strip())
+                pub_dt = datetime.utcnow() - timedelta(hours=hours)
+            except:
+                pass
+        elif "分钟前" in time_ago:
+            try:
+                minutes = int(time_ago.replace("分钟前", "").strip())
+                pub_dt = datetime.utcnow() - timedelta(minutes=minutes)
+            except:
+                pass
+        elif "天前" in time_ago:
+            try:
+                days = int(time_ago.replace("天前", "").strip())
+                pub_dt = datetime.utcnow() - timedelta(days=days)
+            except:
+                pass
+        events_data.append((event, source, link, risk, time_ago, pub_dt, row))
 
+    # 相似度合并
     merged = []
     used = [False] * len(events_data)
-    for i, (event_i, src_i, link_i, risk_i, time_ago_i, row_i) in enumerate(events_data):
+    for i, (event_i, src_i, link_i, risk_i, time_ago_i, pub_dt_i, row_i) in enumerate(events_data):
         if used[i]:
             continue
-        group = [(event_i, src_i, link_i, risk_i, time_ago_i, row_i)]
-        for j, (event_j, src_j, link_j, risk_j, time_ago_j, row_j) in enumerate(events_data):
+        group = [(event_i, src_i, link_i, risk_i, time_ago_i, pub_dt_i, row_i)]
+        for j, (event_j, src_j, link_j, risk_j, time_ago_j, pub_dt_j, row_j) in enumerate(events_data):
             if i == j or used[j]:
                 continue
             if is_similar(event_i, event_j):
-                group.append((event_j, src_j, link_j, risk_j, time_ago_j, row_j))
+                group.append((event_j, src_j, link_j, risk_j, time_ago_j, pub_dt_j, row_j))
                 used[j] = True
         used[i] = True
         merged.append(group)
@@ -586,8 +592,43 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
     unique_rows = []
     events_in_report = []
     for group in merged:
-        first_event, first_src, first_link, first_risk, first_time_ago, _ = group[0]
-        sources = sorted(set([s for _, s, _, _, _, _ in group]))
+        # 选择组内最佳链接：优先选择发布时间最新的；若发布时间相同或缺失，则选来源优先级最高的
+        best_item = None
+        best_pub = None
+        best_priority = 999
+        for item in group:
+            event, src, link, risk, time_ago, pub_dt, row = item
+            # 优先级数值越小越优先
+            priority = get_source_priority(src)
+            if best_item is None:
+                best_item = item
+                best_pub = pub_dt
+                best_priority = priority
+            else:
+                # 比较发布时间
+                if pub_dt and best_pub:
+                    if pub_dt > best_pub:
+                        best_item = item
+                        best_pub = pub_dt
+                        best_priority = priority
+                    elif pub_dt == best_pub and priority < best_priority:
+                        best_item = item
+                        best_pub = pub_dt
+                        best_priority = priority
+                elif pub_dt and not best_pub:
+                    best_item = item
+                    best_pub = pub_dt
+                    best_priority = priority
+                elif not pub_dt and best_pub:
+                    pass
+                else:
+                    if priority < best_priority:
+                        best_item = item
+                        best_pub = pub_dt
+                        best_priority = priority
+        # 取最佳项的信息
+        first_event, first_src, first_link, first_risk, first_time_ago, _, _ = best_item
+        sources = sorted(set([s for _, s, _, _, _, _, _ in group]))
         source_count = len(sources)
         source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
         event_text = first_event
@@ -671,13 +712,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     if not articles:
         return "无相关内容。\n", []
 
-    # 调试：统计目标账号的文章数量
-    target_articles = [a for a in articles if a.get("source") == TARGET_URL]
-    logger.info(f"[DEBUG_李老师] 进入 AI 分析前，共有 {len(target_articles)} 条来自目标账号的文章")
-    if target_articles:
-        for art in target_articles[:3]:
-            logger.info(f"[DEBUG_李老师] 示例文章: {art.get('title', '')[:100]}")
-
     blocks = []
     for art in articles:
         meta = f"发布时间：{art.get('time_ago', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
@@ -689,30 +723,40 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     current_tokens = 0
     prompt_prefix = """你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**，并按重要性输出报告。
 
-**一、请严格遵守以下过滤规则（忽略低价值内容）**：
+**一、请严格遵守以下过滤规则（忽略极低价值内容）**：
 - 纯转发（RT/转发）且无新增实质性评论。
-- 仅包含链接，无任何文字说明或文字少于20个字符。
+- 仅包含链接，无任何文字说明或文字少于10个字符。
 - 仅含表情符号、无意义的感叹或口号（如“太可怕了”“支持”等）。
 - 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
 - 与涉华负面舆情无关的个人生活、娱乐、广告等。
 
-**二、输出格式要求**：
+**二、必须保留的内容（不得忽略）**：
+- 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
+- 即使内容没有直接提及“中国”或“中共”，但事件发生在中国境内或涉及中国公民，也应保留。
+- 以下示例（来自真实抓取内容）必须保留：
+  * “学校强制审批出国，侵犯学生隐私”
+  * “涂鸦被刷白，抵制西方文化渗透”
+  * “外滩飞无人机被警察制止，本土化教育”
+  * “网友举报学校层层审批侵害隐私权”
+  * “博主刷白涂鸦引发文化冲突争议”
+- 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
+
+**三、输出格式要求**：
 - 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |`
 - 每行一条负面内容，按以下优先级排序：
   1. 来自官方机构、智库、政府部门的报告类内容（如 USCC、HRW、Amnesty、ASPI 等）。
-  2. 其他有实质分析的负面新闻或推文。
-  3. 忽略上述过滤规则中的低价值内容。
+  2. 其他有实质分析的负面新闻或推文（包括社会事件、政策批评等）。
 - 原文链接列使用 `[查看](URL)` 格式。
 - “信息来源”列使用输入中提供的“来源”名称（已转换为中文）。
 - “发布多久前”列直接使用输入中的“发布时间”（如“2小时前”）。
 - 如果没有任何符合要求的涉华负面内容，只输出一行“无”。
 - 不要添加任何额外解释、标题或总结。
 
-**三、风险点要求**：
-- 每条风险点应包含类别（如“外交冲突”“社会维稳”“经济风险”“政治敏感”等）和简要说明，总字数不超过30字。
-- 示例：`外交冲突：中美关系因制裁再度紧张`。
+**四、风险点要求**：
+- 每条风险点应包含类别（如“社会维稳”“教育管控”“文化冲突”“执法争议”等）和简要说明，总字数不超过30字。
+- 示例：`社会维稳：学校审批制度引发学生不满`。
 
-**四、注意**：
+**五、注意**：
 - 每条内容前已附带“发布时间”和“来源”，请利用这些信息判断时效性和可信度。
 - 如果某条内容既有链接又有短评，且短评有分析价值，应保留。
 
@@ -758,15 +802,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         time.sleep(AI_REQUEST_DELAY)
 
     if not all_table_rows:
-        logger.warning("[DEBUG_李老师] AI 分析未生成任何表格行")
         return "无相关内容。\n", []
-
-    # 调试：检查表格行中是否包含李老师的推文
-    target_rows = [row for row in all_table_rows if TARGET_USER in row or "李老师" in row]
-    logger.info(f"[DEBUG_李老师] AI 生成的表格行中包含目标账号的条目数: {len(target_rows)}")
-    if target_rows:
-        for row in target_rows[:3]:
-            logger.info(f"[DEBUG_李老师] 示例行: {row[:200]}")
 
     unique_rows, events_in_report = deduplicate_and_mark_new(all_table_rows, old_events)
     final_table = "\n".join([table_header, table_sep] + unique_rows)
@@ -774,7 +810,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
 # ================= 报告生成（无运行状态） =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
-    """生成 HTML 报告，不包含运行状态"""
     lines = report_text.split("\n")
     html_table = ""
     in_table = False
@@ -798,10 +833,10 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
             html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></table>\n"
+                html_table += "</thead><tbody></tbody><tr>\n"
                 in_table = False
     if in_table:
-        html_table += "</thead><tbody></tbody></table>\n"
+        html_table += "</thead><tbody></tbody><table>\n"
 
     login_script = f'''
 <script>
@@ -851,7 +886,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    full_report = report_text   # 不再添加状态信息
+    full_report = report_text
 
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(full_report)
