@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 全面优化版（稳定、高效、可维护）
+# crawler.py - 全面优化版（减少失败日志干扰，支持多 RSS 备用）
 import os
 import json
 import re
@@ -20,7 +20,7 @@ import openai
 from bs4 import BeautifulSoup
 import difflib
 
-# 尝试导入 tiktoken（用于精确 token 估算）
+# 尝试导入 tiktoken
 try:
     import tiktoken
     TIKTOKEN_AVAILABLE = True
@@ -36,7 +36,6 @@ PROXIES = None
 if os.environ.get("HTTP_PROXY"):
     PROXIES = {"http": os.environ["HTTP_PROXY"], "https": os.environ.get("HTTPS_PROXY", os.environ["HTTP_PROXY"])}
 
-# 可配置参数
 KEEP_DAYS = int(os.environ.get("KEEP_DAYS", 7))
 SIMILARITY_THRESHOLD = float(os.environ.get("SIMILARITY_THRESHOLD", 0.6))
 MAX_REPEAT_COUNT = int(os.environ.get("MAX_REPEAT_COUNT", 3))
@@ -44,8 +43,8 @@ COOLDOWN_DAYS = int(os.environ.get("COOLDOWN_DAYS", 7))
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", 6))
 AI_REQUEST_DELAY = float(os.environ.get("AI_REQUEST_DELAY", 2))
 DISABLE_FAILED_THRESHOLD = int(os.environ.get("DISABLE_FAILED_THRESHOLD", 3))
-DISABLE_AUTO_RECOVER_DAYS = int(os.environ.get("DISABLE_AUTO_RECOVER_DAYS", 7))  # 禁用后自动恢复天数
-EVENT_EXPIRE_DAYS = int(os.environ.get("EVENT_EXPIRE_DAYS", 60))  # 事件过期天数
+DISABLE_AUTO_RECOVER_DAYS = int(os.environ.get("DISABLE_AUTO_RECOVER_DAYS", 7))
+EVENT_EXPIRE_DAYS = int(os.environ.get("EVENT_EXPIRE_DAYS", 60))
 
 # 文件路径
 EVENT_COUNTS_FILE = "event_counts.json"
@@ -85,7 +84,7 @@ for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 
 file_handler = RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding='utf-8')
-file_handler.setLevel(logging.DEBUG)  # 文件记录 DEBUG 级别
+file_handler.setLevel(logging.DEBUG)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)  # 控制台只显示 INFO 及以上
 
@@ -100,7 +99,6 @@ logger.addHandler(console_handler)
 
 # ================= 辅助函数 =================
 def retry_on_exception(max_retries=3, delay=1, backoff=2):
-    """网络请求重试装饰器"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -180,7 +178,6 @@ def convert_to_official_x_link(link: str) -> str:
 
 # ================= 配置加载 =================
 def load_sources_config() -> List[Dict]:
-    """加载 sources.json，支持字符串或对象格式，返回统一的对象列表"""
     sources_file = "sources.json"
     default = [
         {"url": "https://www.bbc.com/zhongwen/simp", "time_window_hours": 24},
@@ -246,12 +243,10 @@ def get_display_source(source_name: str) -> str:
 
 # ================= 失败信源自动禁用与恢复 =================
 def load_disabled_sources() -> Dict[str, dict]:
-    """格式: {url: {"fail_count": n, "disabled_at": "YYYY-MM-DD"}}"""
     if os.path.exists(DISABLED_SOURCES_FILE):
         try:
             with open(DISABLED_SOURCES_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # 兼容旧格式（纯数字）
                 if isinstance(data, dict):
                     new_data = {}
                     for k, v in data.items():
@@ -269,10 +264,8 @@ def save_disabled_sources(disabled: Dict[str, dict]):
         json.dump(disabled, f, indent=2, ensure_ascii=False)
 
 def update_disabled_sources(failed_sources: List[Tuple[str, str]]):
-    """更新失败计数，连续失败达到阈值则禁用，并记录禁用时间"""
     disabled = load_disabled_sources()
     today = datetime.utcnow().date().isoformat()
-    # 处理失败的信源
     for url, _ in failed_sources:
         if url not in disabled:
             disabled[url] = {"fail_count": 0, "disabled_at": None}
@@ -280,12 +273,10 @@ def update_disabled_sources(failed_sources: List[Tuple[str, str]]):
         if disabled[url]["fail_count"] >= DISABLE_FAILED_THRESHOLD and disabled[url]["disabled_at"] is None:
             disabled[url]["disabled_at"] = today
             logger.warning(f"信源 {url} 已连续失败 {disabled[url]['fail_count']} 次，禁用（禁用时间 {today}）")
-    # 处理成功的信源（重置失败计数，清除禁用标记）
     success_urls = set(RAW_SOURCES) - {u for u, _ in failed_sources}
     for url in success_urls:
         if url in disabled:
             del disabled[url]
-    # 自动恢复：禁用超过 DISABLE_AUTO_RECOVER_DAYS 天的信源重新启用
     recover_cutoff = (datetime.utcnow().date() - timedelta(days=DISABLE_AUTO_RECOVER_DAYS)).isoformat()
     to_remove = []
     for url, info in disabled.items():
@@ -328,7 +319,6 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
 
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    """根据原始 URL 生成 RSS 地址列表"""
     rsshub = random.choice(rsshub_instances)
     # 新闻网站
     if "voachinese.com" in url:
@@ -342,10 +332,11 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     if "cn.nytimes.com" in url:
         return "https://cn.nytimes.com/rss/news.xml"
     if "ntdtv.com" in url:
+        # 新唐人：支持多个备选 RSS
         return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
     if "epochtimes.com" in url:
+        # 大纪元：支持多个备选 RSS
         return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
-    # X 账号
     if "x.com/" in url:
         return None
     # 新增信源
@@ -422,7 +413,8 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
                 break
         return items
     except Exception as e:
-        logger.error(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
+        # 网络异常降级为 WARNING，避免控制台刷屏
+        logger.warning(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
         return []
 
 def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
@@ -440,7 +432,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                 return items
             logger.debug(f"X {username} 失败 via {nitter}")
             time.sleep(0.5)
-        logger.debug(f"X {username} 所有实例均失败")
+        logger.warning(f"X {username} 所有实例均失败")
         return []
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if not rss_candidates:
@@ -455,7 +447,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
             return items
         logger.debug(f"{original_url} 失败 via {rss_url}")
         time.sleep(0.5)
-    logger.debug(f"{original_url} 所有 RSS 地址均失败")
+    logger.warning(f"{original_url} 所有 RSS 地址均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
@@ -536,7 +528,6 @@ def load_event_counts() -> Dict:
         try:
             with open(EVENT_COUNTS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # 兼容旧格式
                 if isinstance(data, dict) and all(isinstance(v, int) for v in data.values()):
                     new_data = {}
                     for k, v in data.items():
@@ -552,7 +543,6 @@ def save_event_counts(counts: Dict):
         json.dump(counts, f, ensure_ascii=False, indent=2)
 
 def cleanup_old_events(event_counts: Dict) -> Dict:
-    """删除超过 EVENT_EXPIRE_DAYS 天未出现的事件"""
     cutoff = datetime.utcnow().date() - timedelta(days=EVENT_EXPIRE_DAYS)
     to_delete = []
     for event, record in event_counts.items():
@@ -569,12 +559,11 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= 相似度去重（增强） =================
+# ================= 相似度去重 =================
 _normalized_cache = {}
 def normalize_event_text(text: str) -> str:
     if text in _normalized_cache:
         return _normalized_cache[text]
-    # 去除标点、转小写、去停用词
     text = re.sub(r'[^\w\u4e00-\u9fff]', ' ', text)
     stopwords = {'的', '了', '是', '在', '和', '与', '或', '一个', '这个', '那个', '有', '被', '把', '让', '给', '从', '到', '对', '向', '在', '于', '就', '都', '也', '还', '要', '会', '能', '可以', '可能', '已经', '还', '更', '最', '很', '太', '非常', '特别', '十分', '有点', '一些', '这些', '那些', '这样', '那样', '如何', '为何', '什么', '哪里', '哪个', '谁', '为什么', '怎么', '怎样'}
     words = text.split()
@@ -589,7 +578,6 @@ def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
     return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
 
 def get_source_priority(source_name: str) -> int:
-    """1=官方机构, 2=智库, 3=新闻媒体, 4=普通X账号"""
     high_priority = {"uscc", "cecc", "chinaselect", "odni", "state", "gov"}
     think_tank = {"brookings", "csis", "merics", "aspi", "jamestown", "hrw", "amnesty", "freedomhouse"}
     news = {"bbc", "dw", "rfi", "nytimes", "reuters", "wsj", "ft", "ap", "nikkei"}
@@ -603,7 +591,6 @@ def get_source_priority(source_name: str) -> int:
     return 4
 
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
-    # 解析行数据
     events_data = []  # (event, source, link, risk, time_ago, pub_dt, row)
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
@@ -614,7 +601,6 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         risk = cells[2]
         source = cells[3]
         time_ago = cells[4]
-        # 从 time_ago 估算发布时间（用于排序）
         pub_dt = None
         if "小时前" in time_ago:
             try:
@@ -636,7 +622,6 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
                 pass
         events_data.append((event, source, link, risk, time_ago, pub_dt, row))
 
-    # 相似度合并
     merged = []
     used = [False] * len(events_data)
     for i, (event_i, src_i, link_i, risk_i, time_ago_i, pub_dt_i, row_i) in enumerate(events_data):
@@ -655,7 +640,6 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
     unique_rows = []
     events_in_report = []
     for group in merged:
-        # 选择最佳链接：优先最新发布时间，其次来源优先级
         best_item = None
         best_pub = None
         best_priority = 999
@@ -778,7 +762,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks.append(block)
 
-    # 分批，动态调整批次大小
     batches = []
     current_batch = []
     current_tokens = 0
@@ -866,7 +849,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '</table>\n<thead>\n'
+                html_table += '<table>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -880,10 +863,10 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_table += f"<td>{cell}</td>\n"
-            html_table += "</tr>\n"
+            html_table += "<tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></table>\n"
+                html_table += "</thead><tbody></tbody></tr>\n"
                 in_table = False
     if in_table:
         html_table += "</thead><tbody></tbody></table>\n"
