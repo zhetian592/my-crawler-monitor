@@ -3,8 +3,6 @@
     "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
     "https://www.rfi.fr/cn/",
     "https://cn.nytimes.com/",
-    "https://www.ntdtv.com/gb/instant-news.html",
-    "https://www.epochtimes.com/gb/instant-news.htm",
     "https://x.com/whyyoutouzhele",
     "https://x.com/wangzhian8848",
     "https://x.com/newszg_official",
@@ -22,14 +20,5 @@
     "https://x.com/CaoChangqing",
     "https://x.com/FDD",
     "https://x.com/SophieDRich",
-    "https://x.com/amnesty",
-    {"url": "https://x.com/ChinaSelect", "time_window_hours": 48},
-    {"url": "https://x.com/USCC_GOV", "time_window_hours": 48},
-    {"url": "https://x.com/ODNIgov", "time_window_hours": 48},
-    {"url": "https://x.com/CECCgov", "time_window_hours": 48},
-    {"url": "https://x.com/CNASdc", "time_window_hours": 48},
-    "https://www.uscc.gov/rss.xml",
-    "https://www.brookings.edu/feed/?topic=china",
-    "https://merics.org/en/rss.xml",
-    "https://rsf.org/en/rss.xml"
+    "https://x.com/amnesty"
 ]
