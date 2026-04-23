@@ -14,7 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)   # 修正：getLogger 首字母大写
 
 TEST_TIMEOUT = 10
 MAX_WORKERS = 20
@@ -43,6 +43,7 @@ def fetch_with_retry(url: str, timeout: int = 15):
     return None
 
 def extract_instances_from_markdown(markdown: str) -> Set[str]:
+    """从 Markdown 表格中提取 RSSHub 实例 URL"""
     instances = set()
     for line in markdown.split('\n'):
         if '|' in line and 'https://' in line:
@@ -56,6 +57,7 @@ def extract_instances_from_markdown(markdown: str) -> Set[str]:
     return instances
 
 def test_instance(instance: str) -> bool:
+    """测试 RSSHub 实例是否可用"""
     for attempt in range(RETRY_COUNT):
         try:
             url = f"{instance}/rsshub/status"
