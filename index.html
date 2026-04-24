@@ -320,8 +320,8 @@
 </div>
 
 <script>
-    // ---------- 登录验证 ----------
-    const PASSWORD = 'yangge233';
+    // ---------- 登录验证（密码已修改） ----------
+    const PASSWORD = 'dzx12123';
     const SESSION_KEY = 'logged_in';
 
     function checkLogin() {
@@ -475,7 +475,6 @@
         backBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 
         // 报告加载与统计（修正时间显示）
-        let lastReportTime = localStorage.getItem('lastReportTime') || '';
         let lastReportHash = localStorage.getItem('lastReportHash') || '';
 
         function simpleHash(text) {
@@ -493,13 +492,27 @@
                 const text = await response.text();
                 const currentHash = simpleHash(text);
                 // 提取报告生成时间（支持多种格式）
+                // 常见: "生成时间：2026-04-24 13:08:04 UTC" 或 "生成时间: 2026-04-24 13:08:04"
                 const timeMatch = text.match(/生成时间[：:]\s*([^\n]+)/);
-                const reportTime = timeMatch ? timeMatch[1].trim() : null;
+                let reportTime = timeMatch ? timeMatch[1].trim() : null;
+                // 如果没有提取到，尝试从 Markdown 表格上方的行中查找
+                if (!reportTime) {
+                    const lines = text.split('\n');
+                    for (let line of lines) {
+                        if (line.includes('生成时间') || line.includes('生成日期')) {
+                            const match = line.match(/[：:]\s*(.+)/);
+                            if (match) {
+                                reportTime = match[1].trim();
+                                break;
+                            }
+                        }
+                    }
+                }
                 if (reportTime) {
                     document.getElementById('report-time').textContent = reportTime;
                 } else {
                     document.getElementById('report-time').textContent = '未知';
-                    console.warn('未找到报告生成时间');
+                    console.warn('未找到报告生成时间, report.md 内容:', text.substring(0, 500));
                 }
 
                 let html = marked.parse(text);
@@ -529,18 +542,14 @@
                 // 检测更新（基于哈希）
                 if (currentHash !== lastReportHash) {
                     if (showAlertIfChanged) alert('✅ 报告已刷新！');
-                    localStorage.setItem('lastReportTime', reportTime || '');
                     localStorage.setItem('lastReportHash', currentHash);
-                    lastReportTime = reportTime || '';
                     lastReportHash = currentHash;
                     // 新报告横幅（可选）
-                    if (reportTime && lastReportTime !== reportTime && lastReportTime !== '') {
-                        if (!document.querySelector('.new-report-banner')) {
-                            const banner = document.createElement('div');
-                            banner.className = 'new-report-banner';
-                            banner.innerHTML = `<span>📢 新舆情报告已生成！（${reportTime}）</span><button onclick="this.parentElement.remove()">关闭</button>`;
-                            document.querySelector('.container').insertBefore(banner, document.querySelector('.card'));
-                        }
+                    if (reportTime && !document.querySelector('.new-report-banner')) {
+                        const banner = document.createElement('div');
+                        banner.className = 'new-report-banner';
+                        banner.innerHTML = `<span>📢 新舆情报告已生成！（${reportTime}）</span><button onclick="this.parentElement.remove()">关闭</button>`;
+                        document.querySelector('.container').insertBefore(banner, document.querySelector('.card'));
                     }
                 } else {
                     if (showAlertIfChanged) console.log('报告内容未变化，静默刷新');
