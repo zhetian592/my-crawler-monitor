@@ -312,7 +312,6 @@
                 <div class="loader"></div>
             </div>
             <div class="footer-links">
-                <span id="trigger-limit-info"></span>
                 <span>⚡ 数据来自定期爬取 | 自动生成涉华负面报告</span>
             </div>
         </div>
@@ -367,7 +366,7 @@
 
     // ---------- 应用初始化 ----------
     function initApp() {
-        // 主题管理（简化，保持原有功能）
+        // 主题管理（保持原有功能）
         let currentTheme = localStorage.getItem('theme') || 'auto';
         function setDarkModeVariables() {
             const root = document.documentElement.style;
@@ -475,7 +474,7 @@
         });
         backBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 
-        // 报告加载与统计
+        // 报告加载与统计（修正时间显示）
         let lastReportTime = localStorage.getItem('lastReportTime') || '';
         let lastReportHash = localStorage.getItem('lastReportHash') || '';
 
@@ -493,8 +492,15 @@
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const text = await response.text();
                 const currentHash = simpleHash(text);
-                const reportTime = text.match(/生成时间：([^\n]+)/)?.[1] || new Date().toLocaleString();
-                document.getElementById('report-time').textContent = reportTime;
+                // 提取报告生成时间（支持多种格式）
+                const timeMatch = text.match(/生成时间[：:]\s*([^\n]+)/);
+                const reportTime = timeMatch ? timeMatch[1].trim() : null;
+                if (reportTime) {
+                    document.getElementById('report-time').textContent = reportTime;
+                } else {
+                    document.getElementById('report-time').textContent = '未知';
+                    console.warn('未找到报告生成时间');
+                }
 
                 let html = marked.parse(text);
                 const tempDiv = document.createElement('div');
@@ -520,13 +526,14 @@
                     statsDiv.innerHTML = `<span>📊 本次报告共 ${total} 条涉华事件</span><span>🆕 其中新增 ${newCount} 条</span>`;
                 }
 
-                // 检测更新
+                // 检测更新（基于哈希）
                 if (currentHash !== lastReportHash) {
                     if (showAlertIfChanged) alert('✅ 报告已刷新！');
-                    localStorage.setItem('lastReportTime', reportTime);
+                    localStorage.setItem('lastReportTime', reportTime || '');
                     localStorage.setItem('lastReportHash', currentHash);
-                    lastReportTime = reportTime;
+                    lastReportTime = reportTime || '';
                     lastReportHash = currentHash;
+                    // 新报告横幅（可选）
                     if (reportTime && lastReportTime !== reportTime && lastReportTime !== '') {
                         if (!document.querySelector('.new-report-banner')) {
                             const banner = document.createElement('div');
@@ -582,6 +589,7 @@
 
         document.getElementById('refresh-btn').addEventListener('click', () => loadReport(true));
         document.getElementById('history-btn').addEventListener('click', openHistory);
+        // 首次加载不弹窗
         loadReport(false);
     }
 
