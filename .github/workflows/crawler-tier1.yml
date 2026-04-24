@@ -1,10 +1,10 @@
-name: Tier1 - Auto (每小时 9-19点)
+name: Tier1 - Auto (每小时9-19点)
 
 on:
   schedule:
-    # UTC 1-11点 → 北京时间 9-19点，每小时一次
-    - cron: '0 1-11 * * *'
-  workflow_dispatch:   # 保留手动触发，供你自己使用
+    # UTC 1,2,3,4,5,6,7,8,9,10,11 点 → 北京时间 9,10,11,12,13,14,15,16,17,18,19 点
+    - cron: '0 1,2,3,4,5,6,7,8,9,10,11 * * *'
+  workflow_dispatch:   # 保留手动触发
 
 jobs:
   crawl:
