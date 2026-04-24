@@ -337,7 +337,7 @@
 
 <script>
     // ---------- 登录验证 ----------
-    const PASSWORD = 'dzx12123';   // 修改为你的密码
+    const PASSWORD = 'dzx12123';
     const SESSION_KEY = 'logged_in';
 
     function checkLogin() {
@@ -382,7 +382,7 @@
 
     // ---------- 应用初始化 ----------
     function initApp() {
-        // 主题管理（保留原有功能）
+        // 主题管理（保留原有功能，略）
         let currentTheme = localStorage.getItem('theme') || 'auto';
         function setDarkModeVariables() {
             const root = document.documentElement.style;
@@ -498,7 +498,6 @@
 
         // ---------- 工具函数：UTC 转北京时间 ----------
         function convertUtcToBeijing(utcTimeStr) {
-            // 尝试解析 "2026-04-24 06:20:33 UTC" 或 "2026-04-24 06:20:33"
             let cleaned = utcTimeStr.replace(' UTC', '').trim();
             let parts = cleaned.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
             if (!parts) return utcTimeStr;
@@ -520,7 +519,6 @@
         }
 
         // ---------- 报告加载与统计 ----------
-        let lastReportTime = localStorage.getItem('lastReportTime') || '';
         let lastReportHash = localStorage.getItem('lastReportHash') || '';
 
         function simpleHash(text) {
@@ -588,11 +586,9 @@
 
                 if (currentHash !== lastReportHash) {
                     if (showAlertIfChanged) alert('✅ 报告已刷新！');
-                    localStorage.setItem('lastReportTime', displayTime);
                     localStorage.setItem('lastReportHash', currentHash);
-                    lastReportTime = displayTime;
                     lastReportHash = currentHash;
-                    if (rawTime && lastReportTime !== displayTime && lastReportTime !== '') {
+                    if (rawTime) {
                         if (!document.querySelector('.new-report-banner')) {
                             const banner = document.createElement('div');
                             banner.className = 'new-report-banner';
@@ -624,43 +620,63 @@
             }
         }
 
-        // ---------- 立即更新（限制每小时一次）----------
-        const GITHUB_TOKEN_KEY = 'github_pat';
+        // ---------- 基于 GitHub API 的冷却时间（跨用户同步）----------
         const REPO_OWNER = 'zhetian592';
         const REPO_NAME = 'my-crawler-monitor';
         const WORKFLOW_ID = 'crawler-tier1.yml';
-        const TRIGGER_KEY = 'last_trigger_time';
+        const GITHUB_TOKEN_KEY = 'github_pat';
+        let currentRemainingSeconds = 0;
+        let countdownInterval = null;
 
-        function getLastTriggerTime() {
-            const stored = localStorage.getItem(TRIGGER_KEY);
-            return stored ? parseInt(stored, 10) : 0;
+        async function fetchLastRunTime() {
+            try {
+                const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/runs?per_page=1`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('无法获取工作流运行信息');
+                const data = await response.json();
+                if (data.workflow_runs && data.workflow_runs.length > 0) {
+                    const lastRun = data.workflow_runs[0];
+                    const createdAt = new Date(lastRun.created_at);
+                    const now = new Date();
+                    const elapsedSeconds = (now - createdAt) / 1000;
+                    const remaining = 3600 - elapsedSeconds;
+                    return remaining > 0 ? Math.ceil(remaining) : 0;
+                }
+                return 0;
+            } catch (err) {
+                console.warn('获取工作流最后运行时间失败:', err);
+                return 0;
+            }
         }
 
-        function setLastTriggerTime() {
-            localStorage.setItem(TRIGGER_KEY, Date.now());
-        }
-
-        function getRemainingSeconds() {
-            const last = getLastTriggerTime();
-            const elapsed = (Date.now() - last) / 1000;
-            const remaining = 3600 - elapsed;
-            return remaining > 0 ? Math.ceil(remaining) : 0;
-        }
-
-        function updateTriggerButtonState() {
+        async function updateButtonState() {
             const btn = document.getElementById('trigger-action-btn');
-            const remaining = getRemainingSeconds();
+            const remaining = await fetchLastRunTime();
+            currentRemainingSeconds = remaining;
             if (remaining > 0) {
                 btn.disabled = true;
                 btn.textContent = `⏳ 请等待 ${Math.floor(remaining/60)}分${remaining%60}秒`;
+                // 启动倒计时动画（每秒刷新一次）
+                if (countdownInterval) clearInterval(countdownInterval);
+                countdownInterval = setInterval(async () => {
+                    const newRemaining = await fetchLastRunTime();
+                    if (newRemaining <= 0) {
+                        btn.disabled = false;
+                        btn.textContent = '🚀 立即更新';
+                        if (countdownInterval) clearInterval(countdownInterval);
+                    } else {
+                        btn.textContent = `⏳ 请等待 ${Math.floor(newRemaining/60)}分${newRemaining%60}秒`;
+                    }
+                }, 1000);
             } else {
                 btn.disabled = false;
                 btn.textContent = '🚀 立即更新';
+                if (countdownInterval) clearInterval(countdownInterval);
             }
         }
 
         async function triggerWorkflow() {
-            const remaining = getRemainingSeconds();
+            const remaining = await fetchLastRunTime();
             if (remaining > 0) {
                 alert(`请等待 ${Math.floor(remaining/60)}分${remaining%60}秒后再试。`);
                 return;
@@ -686,43 +702,27 @@
                     body: JSON.stringify({ ref: 'main' })
                 });
                 if (response.ok) {
-                    setLastTriggerTime();
                     alert('✅ 已触发爬虫任务！\n请稍等几分钟，然后点击“刷新报告”查看结果。');
-                    updateTriggerButtonState();
-                    startCountdown();
+                    // 触发成功后立即刷新冷却状态
+                    await updateButtonState();
                 } else {
                     const error = await response.json();
                     if (response.status === 401 || response.status === 403) {
                         localStorage.removeItem(GITHUB_TOKEN_KEY);
                         alert('令牌无效或已过期，请重新输入。');
+                        btn.disabled = false;
+                        btn.innerText = originalText;
                     } else {
                         alert(`❌ 触发失败 (${response.status}): ${error.message || '未知错误'}`);
+                        btn.disabled = false;
+                        btn.innerText = originalText;
                     }
-                    btn.disabled = false;
-                    btn.innerText = originalText;
                 }
             } catch (err) {
                 alert(`网络错误：${err.message}`);
                 btn.disabled = false;
                 btn.innerText = originalText;
             }
-        }
-
-        let countdownInterval = null;
-        function startCountdown() {
-            if (countdownInterval) clearInterval(countdownInterval);
-            countdownInterval = setInterval(() => {
-                const remaining = getRemainingSeconds();
-                const btn = document.getElementById('trigger-action-btn');
-                if (remaining > 0) {
-                    btn.disabled = true;
-                    btn.textContent = `⏳ 请等待 ${Math.floor(remaining/60)}分${remaining%60}秒`;
-                } else {
-                    btn.disabled = false;
-                    btn.textContent = '🚀 立即更新';
-                    if (countdownInterval) clearInterval(countdownInterval);
-                }
-            }, 1000);
         }
 
         // ---------- 历史报告 ----------
@@ -751,9 +751,8 @@
         document.getElementById('trigger-action-btn').addEventListener('click', triggerWorkflow);
         document.getElementById('history-btn').addEventListener('click', openHistory);
 
-        // 初始化倒计时和按钮状态
-        updateTriggerButtonState();
-        startCountdown();
+        // 初始化冷却状态
+        updateButtonState();
 
         // 首次加载报告（不弹窗）
         loadReport(false);
