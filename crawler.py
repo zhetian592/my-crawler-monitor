@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 稳定版（已添加报告生成时间）
+# crawler.py - 稳定版（已添加报告生成时间，修复 Union 导入）
 import os
 import json
 import re
@@ -10,7 +10,7 @@ import logging
 import sys
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Union
 from logging.handlers import RotatingFileHandler
 
 import requests
@@ -841,7 +841,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
             cells = [c.strip() for c in line.split("|")[1:-1]]
             if len(cells) != 5:
                 continue
-            html_table += "<table>\n"
+            html_table += "<tr>\n"
             for cell in cells:
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
                 if link_match:
@@ -904,7 +904,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    # 为 report.md 添加时间戳（修复前端显示“未知”的问题）
+    # 为 report.md 添加时间戳
     timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
     final_content = timestamp_str + report_text
 
