@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 全面优化版（减少失败日志干扰，支持多 RSS 备用）
+# crawler.py - 稳定版（已添加报告生成时间）
 import os
 import json
 import re
@@ -10,9 +10,8 @@ import logging
 import sys
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Any, Tuple, Optional, Union
+from typing import List, Dict, Any, Tuple, Optional
 from logging.handlers import RotatingFileHandler
-from functools import wraps
 
 import requests
 import feedparser
@@ -27,7 +26,29 @@ try:
 except ImportError:
     TIKTOKEN_AVAILABLE = False
 
-# ================= 配置常量（支持环境变量覆盖） =================
+# ================= 日志配置（轮转） =================
+LOG_FILE = "crawler.log"
+LOG_MAX_BYTES = 10 * 1024 * 1024
+LOG_BACKUP_COUNT = 5
+
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
+file_handler = RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding='utf-8')
+file_handler.setLevel(logging.DEBUG)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# ================= 配置常量 =================
 GH_TOKEN = os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
 AI_BASE_URL = "https://models.inference.ai.azure.com"
 AI_MODEL = "gpt-4o-mini"
@@ -36,24 +57,22 @@ PROXIES = None
 if os.environ.get("HTTP_PROXY"):
     PROXIES = {"http": os.environ["HTTP_PROXY"], "https": os.environ.get("HTTPS_PROXY", os.environ["HTTP_PROXY"])}
 
-KEEP_DAYS = int(os.environ.get("KEEP_DAYS", 7))
-SIMILARITY_THRESHOLD = float(os.environ.get("SIMILARITY_THRESHOLD", 0.6))
-MAX_REPEAT_COUNT = int(os.environ.get("MAX_REPEAT_COUNT", 3))
-COOLDOWN_DAYS = int(os.environ.get("COOLDOWN_DAYS", 7))
-MAX_WORKERS = int(os.environ.get("MAX_WORKERS", 6))
-AI_REQUEST_DELAY = float(os.environ.get("AI_REQUEST_DELAY", 2))
-DISABLE_FAILED_THRESHOLD = int(os.environ.get("DISABLE_FAILED_THRESHOLD", 3))
-DISABLE_AUTO_RECOVER_DAYS = int(os.environ.get("DISABLE_AUTO_RECOVER_DAYS", 7))
-EVENT_EXPIRE_DAYS = int(os.environ.get("EVENT_EXPIRE_DAYS", 60))
+KEEP_DAYS = 7
+SIMILARITY_THRESHOLD = 0.6
+MAX_REPEAT_COUNT = 3
+COOLDOWN_DAYS = 7
+MAX_WORKERS = 6
+AI_REQUEST_DELAY = 2
+DISABLE_FAILED_THRESHOLD = 3
+DISABLE_AUTO_RECOVER_DAYS = 7
+EVENT_EXPIRE_DAYS = 60
 
-# 文件路径
 EVENT_COUNTS_FILE = "event_counts.json"
 HEALTHY_NITTER_FILE = "healthy_nitter.json"
 HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 
-# 备用实例
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net",
     "https://nitter.poast.org",
@@ -75,47 +94,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# ================= 日志配置 =================
-LOG_FILE = "crawler.log"
-LOG_MAX_BYTES = 10 * 1024 * 1024
-LOG_BACKUP_COUNT = 5
-
-for handler in logging.root.handlers[:]:
-    logging.root.removeHandler(handler)
-
-file_handler = RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding='utf-8')
-file_handler.setLevel(logging.DEBUG)
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)  # 控制台只显示 INFO 及以上
-
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
-
 # ================= 辅助函数 =================
-def retry_on_exception(max_retries=3, delay=1, backoff=2):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            _delay = delay
-            for attempt in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    logger.debug(f"重试 {func.__name__} (尝试 {attempt+1}/{max_retries}): {e}")
-                    time.sleep(_delay)
-                    _delay *= backoff
-            return None
-        return wrapper
-    return decorator
-
 def clean_html(text: Optional[str]) -> str:
     if not text:
         return ""
@@ -175,6 +154,31 @@ def convert_to_official_x_link(link: str) -> str:
     for old, new in replacements:
         link = link.replace(old, new)
     return link
+
+def normalize_event_text(text: str) -> str:
+    text = re.sub(r'[^\w\u4e00-\u9fff]', ' ', text)
+    stopwords = {'的', '了', '是', '在', '和', '与', '或', '一个', '这个', '那个', '有', '被', '把', '让', '给', '从', '到', '对', '向', '在', '于', '就', '都', '也', '还', '要', '会', '能', '可以', '可能', '已经', '还', '更', '最', '很', '太', '非常', '特别', '十分', '有点', '一些', '这些', '那些', '这样', '那样', '如何', '为何', '什么', '哪里', '哪个', '谁', '为什么', '怎么', '怎样'}
+    words = text.split()
+    words = [w for w in words if w not in stopwords]
+    return ' '.join(words)
+
+def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
+    a_norm = normalize_event_text(a)
+    b_norm = normalize_event_text(b)
+    return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
+
+def get_source_priority(source_name: str) -> int:
+    high_priority = {"uscc", "cecc", "chinaselect", "odni", "state", "gov"}
+    think_tank = {"brookings", "csis", "merics", "aspi", "jamestown", "hrw", "amnesty", "freedomhouse"}
+    news = {"bbc", "dw", "rfi", "nytimes", "reuters", "wsj", "ft", "ap", "nikkei"}
+    src_lower = source_name.lower()
+    if any(k in src_lower for k in high_priority):
+        return 1
+    if any(k in src_lower for k in think_tank):
+        return 2
+    if any(k in src_lower for k in news):
+        return 3
+    return 4
 
 # ================= 配置加载 =================
 def load_sources_config() -> List[Dict]:
@@ -309,7 +313,24 @@ def get_nitter_instances() -> List[str]:
 def get_rsshub_instances() -> List[str]:
     return load_healthy_instances(HEALTHY_RSSHUB_FILE, FALLBACK_RSSHUB_INSTANCES)
 
-# ================= 网络请求重试封装 =================
+# ================= 网络请求重试 =================
+def retry_on_exception(max_retries=3, delay=1, backoff=2):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            _delay = delay
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    logger.debug(f"重试 {func.__name__} (尝试 {attempt+1}/{max_retries}): {e}")
+                    time.sleep(_delay)
+                    _delay *= backoff
+            return None
+        return wrapper
+    return decorator
+
 @retry_on_exception(max_retries=3, delay=1, backoff=2)
 def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> requests.Response:
     headers = headers or {"User-Agent": random.choice(USER_AGENTS)}
@@ -320,7 +341,6 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances)
-    # 新闻网站
     if "voachinese.com" in url:
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
@@ -332,14 +352,11 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     if "cn.nytimes.com" in url:
         return "https://cn.nytimes.com/rss/news.xml"
     if "ntdtv.com" in url:
-        # 新唐人：支持多个备选 RSS
         return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
     if "epochtimes.com" in url:
-        # 大纪元：支持多个备选 RSS
         return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
     if "x.com/" in url:
         return None
-    # 新增信源
     if "reuters.com/world/china" in url:
         return f"{rsshub}/reuters/world/china"
     if "wsj.com/news/china" in url:
@@ -413,8 +430,7 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
                 break
         return items
     except Exception as e:
-        # 网络异常降级为 WARNING，避免控制台刷屏
-        logger.warning(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
+        logger.error(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
         return []
 
 def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
@@ -432,7 +448,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                 return items
             logger.debug(f"X {username} 失败 via {nitter}")
             time.sleep(0.5)
-        logger.warning(f"X {username} 所有实例均失败")
+        logger.debug(f"X {username} 所有实例均失败")
         return []
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if not rss_candidates:
@@ -447,7 +463,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
             return items
         logger.debug(f"{original_url} 失败 via {rss_url}")
         time.sleep(0.5)
-    logger.warning(f"{original_url} 所有 RSS 地址均失败")
+    logger.debug(f"{original_url} 所有 RSS 地址均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
@@ -559,39 +575,8 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= 相似度去重 =================
-_normalized_cache = {}
-def normalize_event_text(text: str) -> str:
-    if text in _normalized_cache:
-        return _normalized_cache[text]
-    text = re.sub(r'[^\w\u4e00-\u9fff]', ' ', text)
-    stopwords = {'的', '了', '是', '在', '和', '与', '或', '一个', '这个', '那个', '有', '被', '把', '让', '给', '从', '到', '对', '向', '在', '于', '就', '都', '也', '还', '要', '会', '能', '可以', '可能', '已经', '还', '更', '最', '很', '太', '非常', '特别', '十分', '有点', '一些', '这些', '那些', '这样', '那样', '如何', '为何', '什么', '哪里', '哪个', '谁', '为什么', '怎么', '怎样'}
-    words = text.split()
-    words = [w for w in words if w not in stopwords]
-    result = ' '.join(words)
-    _normalized_cache[text] = result
-    return result
-
-def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
-    a_norm = normalize_event_text(a)
-    b_norm = normalize_event_text(b)
-    return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
-
-def get_source_priority(source_name: str) -> int:
-    high_priority = {"uscc", "cecc", "chinaselect", "odni", "state", "gov"}
-    think_tank = {"brookings", "csis", "merics", "aspi", "jamestown", "hrw", "amnesty", "freedomhouse"}
-    news = {"bbc", "dw", "rfi", "nytimes", "reuters", "wsj", "ft", "ap", "nikkei"}
-    src_lower = source_name.lower()
-    if any(k in src_lower for k in high_priority):
-        return 1
-    if any(k in src_lower for k in think_tank):
-        return 2
-    if any(k in src_lower for k in news):
-        return 3
-    return 4
-
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
-    events_data = []  # (event, source, link, risk, time_ago, pub_dt, row)
+    events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 5:
@@ -856,17 +841,17 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
             cells = [c.strip() for c in line.split("|")[1:-1]]
             if len(cells) != 5:
                 continue
-            html_table += "<tr>\n"
+            html_table += "<table>\n"
             for cell in cells:
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
                 if link_match:
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_table += f"<td>{cell}</td>\n"
-            html_table += "<tr>\n"
+            html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></tr>\n"
+                html_table += "</thead><tbody></tbody></table>\n"
                 in_table = False
     if in_table:
         html_table += "</thead><tbody></tbody></table>\n"
@@ -919,8 +904,12 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    # 为 report.md 添加时间戳（修复前端显示“未知”的问题）
+    timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
+    final_content = timestamp_str + report_text
+
     with open("report.md", "w", encoding="utf-8") as f:
-        f.write(report_text)
+        f.write(final_content)
     html_content = generate_html_report(report_text, all_articles)
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
