@@ -337,7 +337,7 @@
 
 <script>
     // ---------- 登录验证 ----------
-    const PASSWORD = 'dzx12123';
+    const PASSWORD = 'dzx12123';   // 修改为你的密码
     const SESSION_KEY = 'logged_in';
 
     function checkLogin() {
@@ -382,7 +382,7 @@
 
     // ---------- 应用初始化 ----------
     function initApp() {
-        // 主题管理（保持原有功能）
+        // 主题管理（保留原有功能）
         let currentTheme = localStorage.getItem('theme') || 'auto';
         function setDarkModeVariables() {
             const root = document.documentElement.style;
@@ -496,6 +496,29 @@
         });
         backBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 
+        // ---------- 工具函数：UTC 转北京时间 ----------
+        function convertUtcToBeijing(utcTimeStr) {
+            // 尝试解析 "2026-04-24 06:20:33 UTC" 或 "2026-04-24 06:20:33"
+            let cleaned = utcTimeStr.replace(' UTC', '').trim();
+            let parts = cleaned.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+            if (!parts) return utcTimeStr;
+            let year = parseInt(parts[1], 10);
+            let month = parseInt(parts[2], 10) - 1;
+            let day = parseInt(parts[3], 10);
+            let hour = parseInt(parts[4], 10);
+            let minute = parseInt(parts[5], 10);
+            let second = parseInt(parts[6], 10);
+            let utcDate = new Date(Date.UTC(year, month, day, hour, minute, second));
+            let beijingDate = new Date(utcDate.getTime() + 8 * 3600 * 1000);
+            let y = beijingDate.getUTCFullYear();
+            let m = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
+            let d = String(beijingDate.getUTCDate()).padStart(2, '0');
+            let h = String(beijingDate.getUTCHours()).padStart(2, '0');
+            let min = String(beijingDate.getUTCMinutes()).padStart(2, '0');
+            let sec = String(beijingDate.getUTCSeconds()).padStart(2, '0');
+            return `${y}-${m}-${d} ${h}:${min}:${sec}`;
+        }
+
         // ---------- 报告加载与统计 ----------
         let lastReportTime = localStorage.getItem('lastReportTime') || '';
         let lastReportHash = localStorage.getItem('lastReportHash') || '';
@@ -533,12 +556,12 @@
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const text = await response.text();
                 const currentHash = simpleHash(text);
-                const reportTime = extractReportTime(text);
-                if (reportTime) {
-                    document.getElementById('report-time').textContent = reportTime;
-                } else {
-                    document.getElementById('report-time').textContent = '未知';
+                let rawTime = extractReportTime(text);
+                let displayTime = '未知';
+                if (rawTime) {
+                    displayTime = convertUtcToBeijing(rawTime);
                 }
+                document.getElementById('report-time').textContent = displayTime;
 
                 let html = marked.parse(text);
                 const tempDiv = document.createElement('div');
@@ -565,15 +588,15 @@
 
                 if (currentHash !== lastReportHash) {
                     if (showAlertIfChanged) alert('✅ 报告已刷新！');
-                    localStorage.setItem('lastReportTime', reportTime || '');
+                    localStorage.setItem('lastReportTime', displayTime);
                     localStorage.setItem('lastReportHash', currentHash);
-                    lastReportTime = reportTime || '';
+                    lastReportTime = displayTime;
                     lastReportHash = currentHash;
-                    if (reportTime && lastReportTime !== reportTime && lastReportTime !== '') {
+                    if (rawTime && lastReportTime !== displayTime && lastReportTime !== '') {
                         if (!document.querySelector('.new-report-banner')) {
                             const banner = document.createElement('div');
                             banner.className = 'new-report-banner';
-                            banner.innerHTML = `<span>📢 新舆情报告已生成！（${reportTime}）</span><button onclick="this.parentElement.remove()">关闭</button>`;
+                            banner.innerHTML = `<span>📢 新舆情报告已生成！（${displayTime}）</span><button onclick="this.parentElement.remove()">关闭</button>`;
                             document.querySelector('.container').insertBefore(banner, document.querySelector('.card'));
                         }
                     }
@@ -666,7 +689,6 @@
                     setLastTriggerTime();
                     alert('✅ 已触发爬虫任务！\n请稍等几分钟，然后点击“刷新报告”查看结果。');
                     updateTriggerButtonState();
-                    // 启动倒计时更新
                     startCountdown();
                 } else {
                     const error = await response.json();
