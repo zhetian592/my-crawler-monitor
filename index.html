@@ -30,6 +30,9 @@
             --login-overlay-bg: rgba(0,0,0,0.7);
             --login-card-bg: #fff;
             --login-input-border: #ccc;
+            --card-padding: 24px 28px;
+            --card-radius: 20px;
+            --table-cell-padding: 12px 16px;
         }
         @media (prefers-color-scheme: dark) {
             :root:not(.light-mode):not(.dark-mode) {
@@ -60,28 +63,29 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 24px 20px;
             background: var(--bg-body);
             color: var(--text-primary);
             line-height: 1.5;
             transition: background 0.2s, color 0.2s;
         }
         .container {
-            max-width: 1300px;
+            max-width: 1400px;
             margin: 0 auto;
             position: relative;
         }
         .card {
             background: var(--bg-card);
-            border-radius: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            padding: 20px 24px;
-            margin-bottom: 20px;
+            border-radius: var(--card-radius);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+            padding: var(--card-padding);
+            margin-bottom: 28px;
             border: 1px solid var(--border);
         }
         h1 {
-            font-size: 1.8rem;
+            font-size: 1.9rem;
             margin-top: 0;
+            margin-bottom: 0.5rem;
             color: var(--link);
         }
         .info-bar {
@@ -89,29 +93,36 @@
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 12px;
-            margin-bottom: 20px;
+            gap: 16px;
+            margin-bottom: 28px;
+            margin-top: 8px;
         }
         .update-time {
             color: var(--text-secondary);
-            font-size: 0.9rem;
+            font-size: 0.95rem;
+            background: var(--bg-body);
+            padding: 4px 12px;
+            border-radius: 30px;
         }
         button {
             background: var(--btn-primary);
             color: white;
             border: none;
-            padding: 6px 14px;
-            border-radius: 30px;
+            padding: 8px 18px;
+            border-radius: 40px;
             cursor: pointer;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
+            font-weight: 500;
             transition: 0.2s;
         }
         button:hover {
             background: var(--btn-primary-hover);
+            transform: translateY(-1px);
         }
         button:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+            transform: none;
         }
         .history-btn {
             background: var(--btn-history);
@@ -131,13 +142,14 @@
         .new-report-banner {
             background: var(--banner-bg);
             color: var(--banner-text);
-            padding: 12px 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
+            padding: 14px 20px;
+            border-radius: 16px;
+            margin-bottom: 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-weight: bold;
+            font-size: 0.95rem;
         }
         .new-report-banner button {
             background: rgba(0,0,0,0.2);
@@ -146,6 +158,7 @@
         .report {
             overflow-x: auto;
             position: relative;
+            margin-top: 8px;
         }
         .report table {
             border-collapse: collapse;
@@ -155,13 +168,14 @@
         }
         .report th, .report td {
             border: 1px solid var(--border);
-            padding: 8px 10px;
+            padding: var(--table-cell-padding);
             text-align: left;
             vertical-align: top;
         }
         .report th {
             background-color: var(--table-header-bg);
             font-weight: 600;
+            font-size: 0.9rem;
         }
         .report a {
             color: var(--link);
@@ -175,17 +189,17 @@
             text-align: right;
             font-size: 0.7rem;
             color: var(--text-secondary);
-            margin-top: -10px;
-            margin-bottom: 10px;
+            margin-top: -8px;
+            margin-bottom: 12px;
         }
         .loader {
             border: 3px solid var(--border);
             border-top: 3px solid var(--link);
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
+            width: 40px;
+            height: 40px;
             animation: spin 1s linear infinite;
-            margin: 20px auto;
+            margin: 40px auto;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
@@ -193,27 +207,28 @@
         }
         .stats {
             background: var(--bg-card);
-            border-radius: 12px;
-            padding: 10px 16px;
-            margin-bottom: 20px;
+            border-radius: 16px;
+            padding: 12px 20px;
+            margin-bottom: 24px;
             border: 1px solid var(--border);
             font-size: 0.9rem;
             display: flex;
-            gap: 20px;
+            gap: 24px;
             flex-wrap: wrap;
+            font-weight: 500;
         }
         .stats span {
             color: var(--link);
-            font-weight: bold;
+            font-weight: 600;
         }
         .footer-links {
-            margin-top: 20px;
+            margin-top: 24px;
             text-align: center;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             color: var(--text-secondary);
             display: flex;
             justify-content: center;
-            gap: 20px;
+            gap: 24px;
             flex-wrap: wrap;
         }
         .back-to-top {
@@ -257,23 +272,24 @@
         }
         .login-card {
             background: var(--login-card-bg);
-            padding: 30px;
-            border-radius: 20px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            padding: 32px;
+            border-radius: 28px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.3);
             text-align: center;
-            width: 300px;
+            width: 340px;
             border: 1px solid var(--border);
         }
         .login-card h2 {
             margin-top: 0;
+            margin-bottom: 20px;
             color: var(--link);
         }
         .login-card input {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             margin: 15px 0;
             border: 1px solid var(--login-input-border);
-            border-radius: 8px;
+            border-radius: 12px;
             background: var(--bg-card);
             color: var(--text-primary);
             font-size: 1rem;
@@ -283,22 +299,24 @@
             background: var(--btn-primary);
             color: white;
             border: none;
-            padding: 10px;
-            border-radius: 30px;
+            padding: 12px;
+            border-radius: 40px;
             cursor: pointer;
             font-size: 1rem;
         }
         .error-msg {
             color: var(--error-text);
-            margin-top: 10px;
+            margin-top: 12px;
             font-size: 0.9rem;
         }
         @media (max-width: 700px) {
-            body { padding: 12px; }
-            .card { padding: 16px; }
-            .report td, .report th { font-size: 12px; padding: 6px; }
+            body { padding: 16px; }
+            .card { padding: 20px; }
+            .report td, .report th { padding: 8px 10px; font-size: 12px; }
             .back-to-top { width: 36px; height: 36px; font-size: 20px; bottom: 20px; right: 20px; }
             .stats { flex-direction: column; gap: 8px; }
+            .info-bar button { padding: 6px 14px; font-size: 0.8rem; }
+            .update-time { font-size: 0.85rem; }
         }
     </style>
 </head>
@@ -306,19 +324,19 @@
 <div id="app" style="display: none;">
     <div class="container">
         <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
                 <h1>🛡️ 内容安全行业舆情监控系统</h1>
                 <div>
-                    <button id="themeToggleBtn" class="theme-toggle" style="margin-right: 8px;">🌓 深色/浅色</button>
-                    <button id="logoutBtn" class="secondary-btn" style="margin-left: 8px;">🚪 退出登录</button>
+                    <button id="themeToggleBtn" class="theme-toggle" style="margin-right: 10px;">🌓 深色/浅色</button>
+                    <button id="logoutBtn" class="secondary-btn">🚪 退出登录</button>
                 </div>
             </div>
             <div class="info-bar">
                 <div class="update-time">📅 报告时间：<span id="report-time">--</span></div>
                 <div>
                     <button id="refresh-btn">🔄 刷新报告</button>
-                    <button id="trigger-action-btn" class="danger-btn" style="margin-left: 8px;">🚀 立即更新</button>
-                    <button id="history-btn" class="history-btn" style="margin-left: 8px;">📚 历史报告</button>
+                    <button id="trigger-action-btn" class="danger-btn" style="margin-left: 12px;">🚀 立即更新</button>
+                    <button id="history-btn" class="history-btn" style="margin-left: 12px;">📚 历史报告</button>
                 </div>
             </div>
             <div id="stats" class="stats" style="display: none;"></div>
@@ -326,7 +344,6 @@
                 <div class="loader"></div>
             </div>
             <div class="footer-links">
-                <span id="trigger-limit-info"></span>
                 <span>⚡ 数据来自定期爬取 | 自动生成涉华负面报告</span>
             </div>
         </div>
@@ -517,7 +534,7 @@
             return `${y}-${m}-${d} ${h}:${min}:${sec}`;
         }
 
-        // ---------- 报告加载（直接使用 report.html）----------
+        // ---------- 报告加载（直接使用 report.html，快速）----------
         let lastReportHash = localStorage.getItem('lastReportHash') || '';
         let lastReportTime = localStorage.getItem('lastReportTime') || '';
 
@@ -532,7 +549,7 @@
                 const htmlText = await response.text();
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(htmlText, 'text/html');
-                // 提取报告时间（<p>生成时间：... UTC</p>）
+                // 提取报告时间
                 const timeElem = doc.querySelector('body > p');
                 let rawTime = null;
                 if (timeElem && timeElem.textContent) {
@@ -540,18 +557,15 @@
                     if (match) rawTime = match[1];
                 }
                 let displayTime = '未知';
-                if (rawTime) {
-                    displayTime = convertUtcToBeijing(rawTime);
-                }
+                if (rawTime) displayTime = convertUtcToBeijing(rawTime);
                 document.getElementById('report-time').textContent = displayTime;
 
-                // 提取报告内容（id="report" 的 div 内部）
+                // 提取报告内容
                 const reportContentElem = doc.getElementById('report');
                 if (!reportContentElem) throw new Error('未找到报告内容');
-                // 将报告内容插入到页面中
                 reportDiv.innerHTML = reportContentElem.innerHTML;
 
-                // 统计表格行数和新增数
+                // 统计表格行数
                 const tableRows = reportDiv.querySelectorAll('table tbody tr');
                 const total = tableRows.length;
                 let newCount = 0;
@@ -563,7 +577,7 @@
                     statsDiv.innerHTML = `<span>📊 本次报告共 ${total} 条涉华事件</span><span>🆕 其中新增 ${newCount} 条</span>`;
                 }
 
-                // 检测报告是否有更新（基于内容哈希）
+                // 检测更新
                 const currentHash = htmlText.slice(0, 200) + htmlText.length;
                 if (currentHash !== lastReportHash) {
                     if (showAlertIfChanged) alert('✅ 报告已刷新！');
@@ -603,7 +617,7 @@
             }
         }
 
-        // ---------- 基于 GitHub API 的冷却时间（跨用户同步）----------
+        // ---------- 冷却同步（基于 GitHub API）----------
         const REPO_OWNER = 'zhetian592';
         const REPO_NAME = 'my-crawler-monitor';
         const WORKFLOW_ID = 'crawler-tier1.yml';
@@ -663,7 +677,7 @@
             }
             let token = localStorage.getItem(GITHUB_TOKEN_KEY);
             if (!token) {
-                token = prompt('为了提高体验，请先填写你的 GitHub Personal Access Token（只需填写一次）。\n\n如果你还没有令牌，请访问 https://github.com/settings/tokens 生成一个（需要勾选 repo 权限）。\n\n令牌将保存在浏览器本地，不会上传。');
+                token = prompt('请填写你的 GitHub Personal Access Token（需要 repo 权限）。\n生成地址：https://github.com/settings/tokens\n令牌将保存在浏览器本地。');
                 if (!token) return;
                 localStorage.setItem(GITHUB_TOKEN_KEY, token);
             }
@@ -684,7 +698,6 @@
                 if (response.ok) {
                     alert('✅ 已触发爬虫任务！\n请稍等几分钟，然后点击“刷新报告”查看结果。');
                     await updateButtonState();
-                    // 主动刷新一次报告
                     setTimeout(() => loadReport(false), 30000);
                 } else {
                     const error = await response.json();
@@ -732,13 +745,11 @@
         document.getElementById('trigger-action-btn').addEventListener('click', triggerWorkflow);
         document.getElementById('history-btn').addEventListener('click', openHistory);
 
-        // 初始化冷却状态
+        // 初始化
         updateButtonState();
-
-        // 首次加载报告（不弹窗）
         loadReport(false);
 
-        // 主动提示填写令牌（若无）
+        // 主动提示令牌
         if (!localStorage.getItem(GITHUB_TOKEN_KEY)) {
             setTimeout(() => {
                 if (!localStorage.getItem(GITHUB_TOKEN_KEY)) {
