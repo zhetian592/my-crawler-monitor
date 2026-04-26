@@ -18,6 +18,33 @@ import feedparser
 import openai
 from bs4 import BeautifulSoup
 import difflib
+# ========== 添加重试装饰器 ==========
+import functools
+import time
+from typing import Callable, Any
+
+def retry_on_exception(max_retries: int = 3, delay: float = 1, backoff: float = 2):
+    """
+    重试装饰器，捕获异常后按指数退避重试
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            current_delay = delay
+            last_exception = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt == max_retries:
+                        break
+                    print(f"[重试] {func.__name__} 失败 ({e})，{current_delay:.1f}秒后第{attempt+1}次重试...")
+                    time.sleep(current_delay)
+                    current_delay *= backoff
+            raise last_exception
+        return wrapper
+    return decorator
 
 # 尝试导入 tiktoken
 try:
