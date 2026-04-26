@@ -11,19 +11,22 @@
     "VOAChinese": "美国之音中文",
     "CaoChangqing": "曹长青",
     "FDD": "FDD智库",
+
     "bbc.com": "BBC中文",
     "dw.com": "德国之声",
     "rfi.fr": "法国国际广播电台",
     "cn.nytimes.com": "纽约时报中文网",
-    "ntdtv.com": "新唐人",
-    "epochtimes.com": "大纪元",
+
     "uscc.gov": "美中经济安全审查委员会",
-    "hrw.org": "人权观察",
-    "freedomhouse.org": "自由之家",
-    "aspistrategist.org.au": "澳大利亚战略政策研究所",
-    "amnesty.org": "国际特赦组织",
     "chinapower.csis.org": "CSIS中国力量项目",
     "carnegieendowment.org": "卡内基国际和平基金会",
-    "chathamhouse.org": "查塔姆研究所",
-    "rsf.org": "无国界记者"
+    "rsf.org": "无国界记者",
+
+    "hrw_chinese": "人权观察（中文）",
+    "hrw": "人权观察",
+    "freedomhouse": "自由之家",
+    "ASPI_org": "澳大利亚战略政策研究所",
+    "amnesty": "国际特赦组织",
+    "ChathamHouse": "查塔姆研究所",
+    "SophieDRich": "苏菲·理查德"
 }
