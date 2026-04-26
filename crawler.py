@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 稳定版（已添加报告生成时间，修复 Union 导入）
+# crawler.py - 稳定版（保留最近2天数据/报告）
 import os
 import json
 import re
@@ -57,7 +57,7 @@ PROXIES = None
 if os.environ.get("HTTP_PROXY"):
     PROXIES = {"http": os.environ["HTTP_PROXY"], "https": os.environ.get("HTTPS_PROXY", os.environ["HTTP_PROXY"])}
 
-KEEP_DAYS = 7
+KEEP_DAYS = 2                    # 改为保留最近2天
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
@@ -381,6 +381,20 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return "https://rsf.org/en/rss.xml"
     if "uscc.gov" in url:
         return "https://www.uscc.gov/rss.xml"
+    if "hrw.org" in url:
+        return "https://www.hrw.org/rss/news"
+    if "freedomhouse.org" in url:
+        return "https://freedomhouse.org/rss.xml"
+    if "aspistrategist.org.au" in url:
+        return "https://www.aspistrategist.org.au/feed/"
+    if "amnesty.org" in url:
+        return "https://www.amnesty.org/en/feed/"
+    if "chinapower.csis.org" in url:
+        return "https://chinapower.csis.org/feed/"
+    if "carnegieendowment.org" in url:
+        return "https://carnegieendowment.org/rss"
+    if "chathamhouse.org" in url:
+        return "https://www.chathamhouse.org/rss-feeds"
     return url
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
@@ -851,10 +865,10 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
             html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></table>\n"
+                html_table += "</thead><tbody></tbody></td>\n"
                 in_table = False
     if in_table:
-        html_table += "</thead><tbody></tbody></table>\n"
+        html_table += "</thead><tbody></tbody><table>\n"
 
     login_script = f'''
 <script>
@@ -947,22 +961,37 @@ def generate_index_page():
     with open(os.path.join(reports_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(index_html)
 
+# 基于文件名时间戳的清理函数（保留最近2天）
 def cleanup_old_files(days: int = KEEP_DAYS):
     cutoff = datetime.utcnow() - timedelta(days=days)
-    for dir_name in ["reports", "data"]:
-        if not os.path.exists(dir_name):
-            continue
-        for f in os.listdir(dir_name):
-            filepath = os.path.join(dir_name, f)
-            try:
-                mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
-                if mtime < cutoff:
-                    os.remove(filepath)
-                    logger.info(f"已删除旧文件: {filepath}")
-            except Exception as e:
-                logger.warning(f"删除文件 {filepath} 失败: {e}")
+    # 清理 data/ 下的 raw_*.json
+    data_dir = "data"
+    if os.path.exists(data_dir):
+        for f in os.listdir(data_dir):
+            if f.startswith("raw_") and f.endswith(".json"):
+                # 提取时间戳 raw_20260426_115431.json -> 20260426_115431
+                ts_part = f.replace("raw_", "").replace(".json", "")
+                try:
+                    file_time = datetime.strptime(ts_part, "%Y%m%d_%H%M%S")
+                    if file_time < cutoff:
+                        os.remove(os.path.join(data_dir, f))
+                        logger.info(f"已删除旧数据文件: {f}")
+                except ValueError:
+                    continue
+    # 清理 reports/ 下的 report_*.html
+    reports_dir = "reports"
+    if os.path.exists(reports_dir):
+        for f in os.listdir(reports_dir):
+            if f.startswith("report_") and f.endswith(".html"):
+                ts_part = f.replace("report_", "").replace(".html", "")
+                try:
+                    file_time = datetime.strptime(ts_part, "%Y%m%d_%H%M%S")
+                    if file_time < cutoff:
+                        os.remove(os.path.join(reports_dir, f))
+                        logger.info(f"已删除旧报告: {f}")
+                except ValueError:
+                    continue
 
-# ================= 主函数 =================
 def main():
     start = time.time()
     logger.info("=== 开始抓取信源（过去24小时） ===")
