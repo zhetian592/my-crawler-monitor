@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - RSS优先 + Nitter降级 + X Guest Token 直抓（无需账号/Token）
+# crawler.py - RSS优先 + Nitter降级 + X Guest Token 直抓（含调试日志）
 import os
 import json
 import re
@@ -305,12 +305,13 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= X Guest Token 直接抓取（无需账号/Token） =================
+# ================= X Guest Token 直接抓取 =================
 def fetch_x_guest_tweets(username: str, time_window_hours: int = 24) -> List[Dict]:
     """
     使用 X 访客令牌（Guest Token）直接调用 X API 获取用户最新推文。
     返回统一格式的 items 列表，与 RSS 抓取兼容。
     """
+    logger.debug(f"Guest Token 开始抓取 @{username}")
     # 1. 获取 Guest Token
     guest_token_url = "https://api.x.com/1.1/guest/activate.json"
     headers = {
@@ -332,7 +333,6 @@ def fetch_x_guest_tweets(username: str, time_window_hours: int = 24) -> List[Dic
         return []
 
     # 2. 使用 Guest Token 请求用户推文数据
-    # 注意：该接口需要携带 x-guest-token 头，且部分参数固定
     user_tweets_url = f"https://api.x.com/2/timeline/profile/{username}.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&simple_quoted_tweet=true&count=20&ext=mediaStats,highlightedLabel,voiceInfo"
     headers["x-guest-token"] = guest_token
     try:
@@ -350,7 +350,7 @@ def fetch_x_guest_tweets(username: str, time_window_hours: int = 24) -> List[Dic
     cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
     items = []
     for tweet_id, tweet in tweets.items():
-        if len(items) >= 12:   # 与 RSS 抓取一致，最多12条
+        if len(items) >= 12:
             break
         full_text = tweet.get("full_text", "")
         if not full_text:
@@ -364,7 +364,6 @@ def fetch_x_guest_tweets(username: str, time_window_hours: int = 24) -> List[Dic
             except:
                 pass
         if pub_dt and pub_dt < cutoff:
-            # 超出时间窗口的推文跳过
             continue
         title = full_text[:50]
         summary = full_text[:300]
@@ -485,16 +484,22 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                      rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         return []
+    
+    # 调试：打印信源类型
+    logger.debug(f"fetch_with_retry 处理: {original_url}")
+    
     # 1. 如果是 X 信源，优先使用 Guest Token 直接抓取
     if "x.com/" in original_url or "twitter.com/" in original_url:
         username = extract_username_from_x_url(original_url)
+        logger.info(f"DEBUG: 检测到 X 信源 {original_url}, 提取用户名 = {username}")
         if username:
-            # 直接调用 Guest Token 抓取（带时间窗口）
+            logger.info(f"尝试 Guest Token 抓取 @{username}")
             items = fetch_x_guest_tweets(username, time_window_hours)
             if items:
-                logger.debug(f"X {username} Guest Token 抓取成功，{len(items)} 条")
+                logger.info(f"X {username} Guest Token 抓取成功，{len(items)} 条")
                 return items
-            logger.debug(f"X {username} Guest Token 抓取失败，尝试备用方案")
+            else:
+                logger.debug(f"X {username} Guest Token 抓取失败，尝试备用方案")
             # 备用：Nitter 实例
             for nitter in nitter_instances:
                 test_url = f"{nitter}/{username}/rss"
@@ -503,6 +508,8 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                     logger.debug(f"X {username} 成功 via Nitter: {nitter}")
                     return items
                 time.sleep(0.5)
+        else:
+            logger.warning(f"无法从 X URL 提取用户名: {original_url}")
     else:
         # 2. 非 X 信源：优先 RSS
         rss_candidates = url_to_rss(original_url, rsshub_instances)
@@ -515,6 +522,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                     logger.debug(f"{original_url} 成功 via RSS: {rss_url}")
                     return items
                 time.sleep(0.5)
+    
     logger.debug(f"{original_url} 所有抓取方式均失败")
     return []
 
