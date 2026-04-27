@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 稳定版（已添加报告生成时间，修复 Union 导入）
+# crawler.py - 集成 Firecrawl AI 降级抓取
 import os
 import json
 import re
@@ -8,6 +8,7 @@ import random
 import hashlib
 import logging
 import sys
+import urllib.parse
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -18,15 +19,24 @@ import feedparser
 import openai
 from bs4 import BeautifulSoup
 import difflib
+from dotenv import load_dotenv
 
-# 尝试导入 tiktoken
+load_dotenv()
+
+try:
+    from firecrawl import FirecrawlApp
+    FIRECRAWL_AVAILABLE = True
+except ImportError:
+    FIRECRAWL_AVAILABLE = False
+    print("Warning: firecrawl not installed. AI fallback disabled.")
+
 try:
     import tiktoken
     TIKTOKEN_AVAILABLE = True
 except ImportError:
     TIKTOKEN_AVAILABLE = False
 
-# ================= 日志配置（轮转） =================
+# ================= 日志配置 =================
 LOG_FILE = "crawler.log"
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
@@ -73,20 +83,14 @@ HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 
+FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
+
 FALLBACK_NITTER_INSTANCES = [
-    "https://nitter.net",
-    "https://nitter.poast.org",
-    "https://nitter.privacyredirect.com",
-    "https://lightbrd.com",
-    "https://nitter.space",
-    "https://nitter.tiekoetter.com",
-    "https://nitter.catsarch.com",
-    "https://xcancel.com"
+    "https://nitter.net", "https://nitter.poast.org", "https://nitter.privacyredirect.com",
+    "https://lightbrd.com", "https://nitter.space", "https://nitter.tiekoetter.com",
+    "https://nitter.catsarch.com", "https://xcancel.com"
 ]
-FALLBACK_RSSHUB_INSTANCES = [
-    "https://rsshub.app",
-    "https://rsshub.ktachibana.party"
-]
+FALLBACK_RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.ktachibana.party"]
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
@@ -105,11 +109,8 @@ def parse_published_strict(published_str: Optional[str]) -> Optional[datetime]:
     if not published_str:
         return None
     formats = [
-        "%a, %d %b %Y %H:%M:%S %Z",
-        "%Y-%m-%dT%H:%M:%S%z",
-        "%Y-%m-%dT%H:%M:%SZ",
-        "%Y-%m-%d %H:%M:%S",
-        "%a, %d %b %Y %H:%M:%S %z",
+        "%a, %d %b %Y %H:%M:%S %Z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%d %H:%M:%S", "%a, %d %b %Y %H:%M:%S %z",
     ]
     for fmt in formats:
         try:
@@ -145,11 +146,8 @@ def convert_to_official_x_link(link: str) -> str:
     if not link:
         return link
     replacements = [
-        ("nitter.net", "x.com"),
-        ("twitter.net", "x.com"),
-        ("nitter.poast.org", "x.com"),
-        ("nitter.private.coffee", "x.com"),
-        ("nitter.42l.fr", "x.com"),
+        ("nitter.net", "x.com"), ("twitter.net", "x.com"), ("nitter.poast.org", "x.com"),
+        ("nitter.private.coffee", "x.com"), ("nitter.42l.fr", "x.com"),
     ]
     for old, new in replacements:
         link = link.replace(old, new)
@@ -162,7 +160,7 @@ def normalize_event_text(text: str) -> str:
     words = [w for w in words if w not in stopwords]
     return ' '.join(words)
 
-def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
+def is_similar(a: str, b: str, threshold: float = 0.6) -> bool:
     a_norm = normalize_event_text(a)
     b_norm = normalize_event_text(b)
     return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
@@ -180,27 +178,26 @@ def get_source_priority(source_name: str) -> int:
         return 3
     return 4
 
+def extract_username_from_x_url(url: str) -> Optional[str]:
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path.rstrip('/')
+    parts = path.split('/')
+    if len(parts) >= 2 and parts[1]:
+        return parts[1]
+    return None
+
 # ================= 配置加载 =================
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
-    default = [
-        {"url": "https://www.bbc.com/zhongwen/simp", "time_window_hours": 24},
-        {"url": "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058", "time_window_hours": 24},
-        {"url": "https://www.rfi.fr/cn/", "time_window_hours": 24},
-        {"url": "https://cn.nytimes.com/", "time_window_hours": 24},
-        {"url": "https://www.ntdtv.com/gb/instant-news.html", "time_window_hours": 24},
-        {"url": "https://www.epochtimes.com/gb/instant-news.htm", "time_window_hours": 24},
-        {"url": "https://x.com/whyyoutouzhele", "time_window_hours": 24},
-    ]
     if not os.path.exists(sources_file):
         logger.warning(f"{sources_file} 不存在，使用默认信源")
-        return default
+        return []
     try:
         with open(sources_file, 'r', encoding='utf-8') as f:
             raw = json.load(f)
         if not isinstance(raw, list):
-            logger.warning(f"{sources_file} 格式错误，应为数组，使用默认信源")
-            return default
+            logger.warning(f"{sources_file} 格式错误，应为数组")
+            return []
         configs = []
         for item in raw:
             if isinstance(item, str):
@@ -210,14 +207,10 @@ def load_sources_config() -> List[Dict]:
                     "url": item["url"],
                     "time_window_hours": item.get("time_window_hours", 24)
                 })
-            else:
-                logger.warning(f"跳过无效信源配置: {item}")
-        if not configs:
-            return default
         return configs
     except Exception as e:
-        logger.error(f"加载 {sources_file} 失败: {e}，使用默认信源")
-        return default
+        logger.error(f"加载 {sources_file} 失败: {e}")
+        return []
 
 def load_source_map() -> Dict[str, str]:
     map_file = "source_map.json"
@@ -245,55 +238,20 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================= 失败信源自动禁用与恢复 =================
-def load_disabled_sources() -> Dict[str, dict]:
-    if os.path.exists(DISABLED_SOURCES_FILE):
-        try:
-            with open(DISABLED_SOURCES_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    new_data = {}
-                    for k, v in data.items():
-                        if isinstance(v, int):
-                            new_data[k] = {"fail_count": v, "disabled_at": None}
-                        else:
-                            new_data[k] = v
-                    return new_data
-        except:
-            pass
+# ================= 失败信源禁用（已禁用） =================
+def load_disabled_sources() -> Dict:
     return {}
 
-def save_disabled_sources(disabled: Dict[str, dict]):
-    with open(DISABLED_SOURCES_FILE, 'w', encoding='utf-8') as f:
-        json.dump(disabled, f, indent=2, ensure_ascii=False)
+def save_disabled_sources(disabled):
+    pass
 
-def update_disabled_sources(failed_sources: List[Tuple[str, str]]):
-    disabled = load_disabled_sources()
-    today = datetime.utcnow().date().isoformat()
-    for url, _ in failed_sources:
-        if url not in disabled:
-            disabled[url] = {"fail_count": 0, "disabled_at": None}
-        disabled[url]["fail_count"] += 1
-        if disabled[url]["fail_count"] >= DISABLE_FAILED_THRESHOLD and disabled[url]["disabled_at"] is None:
-            disabled[url]["disabled_at"] = today
-            logger.warning(f"信源 {url} 已连续失败 {disabled[url]['fail_count']} 次，禁用（禁用时间 {today}）")
-    success_urls = set(RAW_SOURCES) - {u for u, _ in failed_sources}
-    for url in success_urls:
-        if url in disabled:
-            del disabled[url]
-    recover_cutoff = (datetime.utcnow().date() - timedelta(days=DISABLE_AUTO_RECOVER_DAYS)).isoformat()
-    to_remove = []
-    for url, info in disabled.items():
-        if info.get("disabled_at") and info["disabled_at"] < recover_cutoff:
-            to_remove.append(url)
-    for url in to_remove:
-        logger.info(f"信源 {url} 已禁用超过 {DISABLE_AUTO_RECOVER_DAYS} 天，自动恢复")
-        del disabled[url]
-    save_disabled_sources(disabled)
+def update_disabled_sources(failed_sources):
+    if failed_sources:
+        logger.info(f"本次有 {len(failed_sources)} 个信源失败，但不会禁用")
+    pass
 
-def is_source_disabled(url: str) -> bool:
-    disabled = load_disabled_sources()
-    return url in disabled
+def is_source_disabled(url):
+    return False
 
 # ================= 健康实例获取 =================
 def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
@@ -338,9 +296,54 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
+# ================= AI 降级抓取 (Firecrawl) =================
+def fetch_ai_fallback(url: str, original_url: str) -> List[Dict]:
+    if not FIRECRAWL_AVAILABLE or not FIRECRAWL_API_KEY:
+        logger.debug("Firecrawl 不可用，跳过 AI 降级")
+        return []
+    try:
+        logger.info(f"[AI Fallback] 正在使用 Firecrawl 分析: {url}")
+        app = FirecrawlApp(api_key=FIRECRAWL_API_KEY)
+        params = {
+            "formats": ["extract"],
+            "extract": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "published": {"type": "string"},
+                    },
+                    "required": ["title", "summary"]
+                }
+            }
+        }
+        result = app.scrape_url(url, params=params)
+        if result and 'extract' in result and result['extract']:
+            extracted = result['extract']
+            title = extracted.get('title', '无标题')
+            summary = extracted.get('summary', '无摘要')
+            published_str = extracted.get('published', '未知时间')
+            items = [{
+                "title": title,
+                "summary": summary,
+                "link": url,
+                "source": original_url,
+                "source_name": "ai_fallback",
+                "published_str": published_str,
+                "pub_dt": None,
+                "time_ago": f"AI 抓取于 {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}",
+                "fetched_at": datetime.utcnow().isoformat()
+            }]
+            logger.info(f"[AI Fallback] 成功提取内容: {title[:50]}...")
+            return items
+    except Exception as e:
+        logger.error(f"[AI Fallback] 调用异常: {e}")
+    return []
+
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    rsshub = random.choice(rsshub_instances)
+    rsshub = random.choice(rsshub_instances) if rsshub_instances else "https://rsshub.app"
     if "voachinese.com" in url:
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
@@ -356,6 +359,9 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     if "epochtimes.com" in url:
         return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
     if "x.com/" in url:
+        username = extract_username_from_x_url(url)
+        if username:
+            return f"{rsshub}/twitter/user/{username}"
         return None
     if "reuters.com/world/china" in url:
         return f"{rsshub}/reuters/world/china"
@@ -407,9 +413,8 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
             if "x.com/" in original_url:
-                parts = original_url.split("/")
-                raw_name = parts[3] if len(parts) > 3 else original_url
-                source_name = "@" + raw_name
+                username = extract_username_from_x_url(original_url) or original_url
+                source_name = "@" + username
             else:
                 domain_match = re.search(r'https?://([^/]+)', original_url)
                 raw_domain = domain_match.group(1) if domain_match else original_url
@@ -433,41 +438,47 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
         logger.error(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
         return []
 
-def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
+def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str],
+                     rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
-        logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
-    if "x.com/" in original_url:
-        username = original_url.split("/")[-1]
-        for nitter in nitter_instances:
-            test_url = f"{nitter}/{username}/rss"
-            logger.debug(f"尝试 X {username} 使用 {nitter}")
-            items = fetch_single_rss(test_url, original_url, processed_hashes, time_window_hours)
-            if items:
-                logger.debug(f"X {username} 成功 via {nitter} (条数: {len(items)})")
-                return items
-            logger.debug(f"X {username} 失败 via {nitter}")
-            time.sleep(0.5)
-        logger.debug(f"X {username} 所有实例均失败")
-        return []
+    
+    # 1. 获取 RSS 候选
     rss_candidates = url_to_rss(original_url, rsshub_instances)
-    if not rss_candidates:
-        logger.debug(f"无法生成 RSS 地址: {original_url}")
-        return []
-    if isinstance(rss_candidates, str):
-        rss_candidates = [rss_candidates]
-    for rss_url in rss_candidates:
-        items = fetch_single_rss(rss_url, original_url, processed_hashes, time_window_hours)
-        if items:
-            logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {rss_url}")
-            return items
-        logger.debug(f"{original_url} 失败 via {rss_url}")
-        time.sleep(0.5)
-    logger.debug(f"{original_url} 所有 RSS 地址均失败")
+    if rss_candidates:
+        if isinstance(rss_candidates, str):
+            rss_candidates = [rss_candidates]
+        for rss_url in rss_candidates:
+            items = fetch_single_rss(rss_url, original_url, processed_hashes, time_window_hours)
+            if items:
+                logger.debug(f"{original_url} 成功 via {rss_url}")
+                return items
+            time.sleep(0.5)
+    
+    # 2. 如果是 X 信源且 RSS 失败，尝试 Nitter
+    if "x.com/" in original_url:
+        username = extract_username_from_x_url(original_url)
+        if username:
+            for nitter in nitter_instances:
+                test_url = f"{nitter}/{username}/rss"
+                items = fetch_single_rss(test_url, original_url, processed_hashes, time_window_hours)
+                if items:
+                    logger.debug(f"X {username} 成功 via {nitter}")
+                    return items
+                time.sleep(0.5)
+    
+    # 3. 最终降级：AI 抓取
+    logger.info(f"所有常规方式失败，尝试 AI 降级: {original_url}")
+    ai_items = fetch_ai_fallback(original_url, original_url)
+    if ai_items:
+        logger.info(f"AI 降级抓取成功: {original_url}")
+        return ai_items
+    
+    logger.debug(f"{original_url} 所有抓取方式均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
-    logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源（时间窗口各异）")
+    logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源")
     all_items = []
     processed_hashes = set()
     failed_sources = []
@@ -475,7 +486,8 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     rsshub_instances = get_rsshub_instances()
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
-            executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances, rsshub_instances, TIME_WINDOW_MAP.get(url, 24)): url
+            executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances,
+                            rsshub_instances, TIME_WINDOW_MAP.get(url, 24)): url
             for url in RAW_SOURCES
         }
         for future in as_completed(future_to_url):
@@ -487,11 +499,10 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
                     logger.debug(f"✓ {url} -> {len(items)} 条")
                 else:
                     failed_sources.append((url, "抓取返回0条"))
-                    logger.debug(f"✗ {url} -> 0 条")
             except Exception as e:
                 failed_sources.append((url, str(e)))
                 logger.error(f"✗ {url} 异常: {e}")
-    logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希去重）")
+    logger.info(f"去重后共 {len(all_items)} 条")
     return all_items, failed_sources
 
 # ================= 持久化失败记录 =================
@@ -512,7 +523,7 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         json.dump(data, f, ensure_ascii=False, indent=2)
     update_disabled_sources(failed_sources)
 
-# ================= 历史事件加载 =================
+# ================= 历史事件加载（保持原有逻辑） =================
 def load_previous_events() -> List[str]:
     events = []
     if not os.path.exists("report.md"):
@@ -538,7 +549,6 @@ def load_previous_events() -> List[str]:
         logger.error(f"加载上次报告失败: {e}")
     return events
 
-# ================= 跨天重复隐藏 =================
 def load_event_counts() -> Dict:
     if os.path.exists(EVENT_COUNTS_FILE):
         try:
@@ -755,13 +765,13 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
 - 纯转发（RT/转发）且无新增实质性评论。
 - 仅包含链接，无任何文字说明或文字少于10个字符。
-- 仅含表情符号、无意义的感叹或口号（如“太可怕了”“支持”等）。
+- 仅含表情符号、无意义的感叹或口号（如"太可怕了""支持"等）。
 - 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
 - 与涉华负面舆情无关的个人生活、娱乐、广告等。
 
 **二、必须保留的内容（不得忽略）**：
 - 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
-- 即使内容没有直接提及“中国”或“中共”，但事件发生在中国境内或涉及中国公民，也应保留。
+- 即使内容没有直接提及"中国"或"中共"，但事件发生在中国境内或涉及中国公民，也应保留。
 - 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
 
 **三、输出格式要求**：
@@ -770,13 +780,13 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
   1. 来自官方机构、智库、政府部门的报告类内容。
   2. 其他有实质分析的负面新闻或推文。
 - 原文链接列使用 `[查看](URL)` 格式。
-- “信息来源”列使用输入中提供的“来源”名称（已转换为中文）。
-- “发布多久前”列直接使用输入中的“发布时间”。
-- 如果没有任何符合要求的涉华负面内容，只输出一行“无”。
+- "信息来源"列使用输入中提供的"来源"名称（已转换为中文）。
+- "发布多久前"列直接使用输入中的"发布时间"。
+- 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
 - 不要添加任何额外解释、标题或总结。
 
 **四、风险点要求**：
-- 每条风险点应包含类别（如“社会维稳”“教育管控”“文化冲突”“执法争议”等）和简要说明，总字数不超过30字。
+- 每条风险点应包含类别（如"社会维稳""教育管控""文化冲突""执法争议"等）和简要说明，总字数不超过30字。
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
@@ -834,7 +844,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<table>\n<thead>\n'
+                html_table += '<tr>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -851,7 +861,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
             html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></table>\n"
+                html_table += "</thead><tbody></tbody><tr>\n"
                 in_table = False
     if in_table:
         html_table += "</thead><tbody></tbody></table>\n"
@@ -904,7 +914,6 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    # 为 report.md 添加时间戳
     timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
     final_content = timestamp_str + report_text
 
@@ -965,7 +974,7 @@ def cleanup_old_files(days: int = KEEP_DAYS):
 # ================= 主函数 =================
 def main():
     start = time.time()
-    logger.info("=== 开始抓取信源（过去24小时） ===")
+    logger.info("=== 开始抓取信源 ===")
     all_articles, failed_sources = fetch_all_sources()
     logger.info(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
 
@@ -984,7 +993,7 @@ def main():
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    logger.info("=== 调用 AI 分析（统一分析，AI 自动识别报告并优先展示） ===")
+    logger.info("=== 调用 AI 分析 ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
 
     if report_table != "无相关内容。\n":
