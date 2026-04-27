@@ -1,12 +1,43 @@
-      - name: Commit and push reports (调试)
+name: Crawl Tier1
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}   # 使用 PAT 确保推送权限
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run crawler
+        env:
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+          REPORT_PASSWORD: ${{ secrets.REPORT_PASSWORD }}
+        run: python crawler.py
+
+      - name: Debug & Commit and push reports
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Actions"
-          echo "======== 当前目录 ========"
+          echo "======== 当前工作目录 ========"
           pwd
+          echo "======== 目录文件列表 ========"
           ls -la
-          echo "======== 检查关键文件 ========"
-          ls -lh report.md report.html 2>/dev/null || echo "report files not found"
+          echo "======== 检查报告文件 ========"
+          ls -lh report.md report.html 2>/dev/null || echo "⚠️ report.md 或 report.html 不存在"
+          echo "======== 检查 reports/ 和 data/ ========"
           ls -lhd reports data 2>/dev/null || true
           echo "======== Git 添加前状态 ========"
           git status
@@ -16,8 +47,9 @@
           git status
           echo "======== 尝试提交 ========"
           if git diff --cached --quiet; then
-            echo "暂存区无变化，无法提交"
+            echo "⚠️ 暂存区无任何变更，无需提交"
           else
             git commit -m "自动更新报告 $(date +'%Y-%m-%d %H:%M')"
-            git push
+            git push || (echo "❌ 推送失败，请检查 PAT 权限或分支保护" && exit 1)
+            echo "✅ 推送成功"
           fi
