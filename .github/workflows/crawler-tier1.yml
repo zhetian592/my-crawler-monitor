@@ -19,11 +19,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install requests feedparser beautifulsoup4 openai
+          pip install -r requirements.txt
 
       - name: Run crawler
         env:
           GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
         run: python crawler.py
 
       - name: Commit and push changes
