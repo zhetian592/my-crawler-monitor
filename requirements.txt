@@ -1,2 +1,7 @@
-python-dotenv>=1.0.0
-firecrawl-py>=0.0.2
+requests
+feedparser
+openai
+beautifulsoup4
+tiktoken
+python-dotenv
+firecrawl-py
