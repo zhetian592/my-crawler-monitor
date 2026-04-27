@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - RSS优先 + Nitter降级 + Firecrawl AI降级（修复版，更新RSSHub实例）
+# crawler.py - RSS优先 + Nitter降级 + X Guest Token 直抓（无需账号/Token）
 import os
 import json
 import re
@@ -22,18 +22,6 @@ import difflib
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# Firecrawl 导入（兼容不同版本）
-try:
-    from firecrawl.firecrawl import FirecrawlApp
-    FIRECRAWL_AVAILABLE = True
-except ImportError:
-    try:
-        from firecrawl import FirecrawlApp
-        FIRECRAWL_AVAILABLE = True
-    except ImportError:
-        FIRECRAWL_AVAILABLE = False
-        print("Warning: Firecrawl SDK not installed. AI fallback disabled.")
 
 try:
     import tiktoken
@@ -88,21 +76,14 @@ HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 
-# Firecrawl API Key
-FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
-
-# 更新后的公共 RSSHub 实例列表（来自 rsshub-never-die 等项目，更可靠）
+# 公共 RSSHub 实例列表（备用）
 FALLBACK_RSSHUB_INSTANCES = [
     "https://rsshub.rssforever.com",
     "https://hub.slarker.me",
     "https://rsshub.pseudoyu.com",
-    "https://rsshub.ktachibana.party",
     "https://rsshub.woodland.cafe",
     "https://rss.owo.nz",
-    "https://yangzhi.app",
-    "https://rsshub.henry.wang",
-    "https://rss.peachyjoy.top",
-    "https://rsshub.speednet.icu"
+    "https://yangzhi.app"
 ]
 
 FALLBACK_NITTER_INSTANCES = [
@@ -270,55 +251,16 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================= 失败信源自动禁用与恢复 =================
+# ================= 失败信源自动禁用与恢复（已取消禁用） =================
 def load_disabled_sources() -> Dict[str, dict]:
-    if os.path.exists(DISABLED_SOURCES_FILE):
-        try:
-            with open(DISABLED_SOURCES_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    new_data = {}
-                    for k, v in data.items():
-                        if isinstance(v, int):
-                            new_data[k] = {"fail_count": v, "disabled_at": None}
-                        else:
-                            new_data[k] = v
-                    return new_data
-        except:
-            pass
     return {}
-
-def save_disabled_sources(disabled: Dict[str, dict]):
-    with open(DISABLED_SOURCES_FILE, 'w', encoding='utf-8') as f:
-        json.dump(disabled, f, indent=2, ensure_ascii=False)
-
-def update_disabled_sources(failed_sources: List[Tuple[str, str]]):
-    disabled = load_disabled_sources()
-    today = datetime.utcnow().date().isoformat()
-    for url, _ in failed_sources:
-        if url not in disabled:
-            disabled[url] = {"fail_count": 0, "disabled_at": None}
-        disabled[url]["fail_count"] += 1
-        if disabled[url]["fail_count"] >= DISABLE_FAILED_THRESHOLD and disabled[url]["disabled_at"] is None:
-            disabled[url]["disabled_at"] = today
-            logger.warning(f"信源 {url} 已连续失败 {disabled[url]['fail_count']} 次，禁用（禁用时间 {today}）")
-    success_urls = set(RAW_SOURCES) - {u for u, _ in failed_sources}
-    for url in success_urls:
-        if url in disabled:
-            del disabled[url]
-    recover_cutoff = (datetime.utcnow().date() - timedelta(days=DISABLE_AUTO_RECOVER_DAYS)).isoformat()
-    to_remove = []
-    for url, info in disabled.items():
-        if info.get("disabled_at") and info["disabled_at"] < recover_cutoff:
-            to_remove.append(url)
-    for url in to_remove:
-        logger.info(f"信源 {url} 已禁用超过 {DISABLE_AUTO_RECOVER_DAYS} 天，自动恢复")
-        del disabled[url]
-    save_disabled_sources(disabled)
-
-def is_source_disabled(url: str) -> bool:
-    disabled = load_disabled_sources()
-    return url in disabled
+def save_disabled_sources(disabled):
+    pass
+def update_disabled_sources(failed_sources):
+    if failed_sources:
+        logger.info(f"本次有 {len(failed_sources)} 个信源失败，但不会禁用")
+def is_source_disabled(url):
+    return False
 
 # ================= 健康实例获取 =================
 def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
@@ -363,57 +305,87 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= AI 降级抓取 (Firecrawl) =================
-def fetch_ai_fallback(url: str, original_url: str) -> List[Dict]:
-    if not FIRECRAWL_AVAILABLE or not FIRECRAWL_API_KEY:
-        logger.debug("Firecrawl 不可用，跳过 AI 降级")
-        return []
+# ================= X Guest Token 直接抓取（无需账号/Token） =================
+def fetch_x_guest_tweets(username: str, time_window_hours: int = 24) -> List[Dict]:
+    """
+    使用 X 访客令牌（Guest Token）直接调用 X API 获取用户最新推文。
+    返回统一格式的 items 列表，与 RSS 抓取兼容。
+    """
+    # 1. 获取 Guest Token
+    guest_token_url = "https://api.x.com/1.1/guest/activate.json"
+    headers = {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8DGZz4HIw%3D%3D",
+        "Content-Type": "application/json",
+    }
     try:
-        logger.info(f"[AI Fallback] 正在使用 Firecrawl 分析: {url}")
-        app = FirecrawlApp(api_key=FIRECRAWL_API_KEY)
-        params = {
-            "formats": ["extract"],
-            "extract": {
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string"},
-                        "summary": {"type": "string"},
-                        "published": {"type": "string"},
-                    },
-                    "required": ["title", "summary"]
-                }
-            }
-        }
-        result = app.scrape_url(url, params=params)
-        if result and isinstance(result, dict) and result.get('extract'):
-            extracted = result['extract']
-            title = extracted.get('title', '无标题')[:200]
-            summary = extracted.get('summary', '无摘要')[:500]
-            published_str = extracted.get('published', '未知时间')
-            items = [{
-                "title": title,
-                "summary": summary,
-                "link": url,
-                "source": original_url,
-                "source_name": "ai_fallback",
-                "published_str": published_str,
-                "pub_dt": None,
-                "time_ago": f"AI 抓取于 {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}",
-                "fetched_at": datetime.utcnow().isoformat()
-            }]
-            logger.info(f"[AI Fallback] 成功提取内容: {title[:50]}...")
-            return items
-        else:
-            logger.warning(f"[AI Fallback] 未提取到有效内容: {result}")
+        resp = requests.post(guest_token_url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            logger.debug(f"获取 Guest Token 失败: HTTP {resp.status_code}")
+            return []
+        guest_token = resp.json().get("guest_token")
+        if not guest_token:
+            logger.debug("响应中无 guest_token")
             return []
     except Exception as e:
-        logger.error(f"[AI Fallback] 调用异常: {e}")
+        logger.debug(f"获取 Guest Token 异常: {e}")
         return []
+
+    # 2. 使用 Guest Token 请求用户推文数据
+    # 注意：该接口需要携带 x-guest-token 头，且部分参数固定
+    user_tweets_url = f"https://api.x.com/2/timeline/profile/{username}.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&simple_quoted_tweet=true&count=20&ext=mediaStats,highlightedLabel,voiceInfo"
+    headers["x-guest-token"] = guest_token
+    try:
+        resp = requests.get(user_tweets_url, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            logger.debug(f"X API 请求失败: HTTP {resp.status_code}")
+            return []
+        data = resp.json()
+    except Exception as e:
+        logger.debug(f"X API 请求异常: {e}")
+        return []
+
+    # 3. 解析 tweets
+    tweets = data.get("globalObjects", {}).get("tweets", {})
+    cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
+    items = []
+    for tweet_id, tweet in tweets.items():
+        if len(items) >= 12:   # 与 RSS 抓取一致，最多12条
+            break
+        full_text = tweet.get("full_text", "")
+        if not full_text:
+            continue
+        created_at = tweet.get("created_at", "")
+        pub_dt = None
+        if created_at:
+            try:
+                pub_dt = datetime.strptime(created_at, "%a %b %d %H:%M:%S +0000 %Y")
+                pub_dt = pub_dt.replace(tzinfo=None)
+            except:
+                pass
+        if pub_dt and pub_dt < cutoff:
+            # 超出时间窗口的推文跳过
+            continue
+        title = full_text[:50]
+        summary = full_text[:300]
+        link = f"https://x.com/{username}/status/{tweet.get('id_str', tweet_id)}"
+        time_ago = format_time_ago(pub_dt) if pub_dt else "时间未知"
+        items.append({
+            "title": title,
+            "link": link,
+            "summary": summary,
+            "source": f"https://x.com/{username}",
+            "source_name": f"@{username}",
+            "published_str": created_at or "未知时间",
+            "pub_dt": pub_dt.isoformat() if pub_dt else None,
+            "time_ago": time_ago,
+            "fetched_at": datetime.utcnow().isoformat()
+        })
+    logger.debug(f"Guest Token 抓取 @{username} 获得 {len(items)} 条推文")
+    return items
 
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    # 优先使用传入的实例列表（随机选择一个）
     rsshub = random.choice(rsshub_instances) if rsshub_instances else FALLBACK_RSSHUB_INSTANCES[0]
     # 常规网站的官方RSS
     if "bbc.com/zhongwen/simp" in url:
@@ -454,11 +426,8 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return "https://rsf.org/en/rss.xml"
     if "uscc.gov" in url:
         return "https://www.uscc.gov/rss.xml"
-    # X 平台通过 RSSHub 路由
+    # X 平台：交给外部处理（这里返回 None，由调用方处理）
     if "x.com/" in url or "twitter.com/" in url:
-        username = extract_username_from_x_url(url)
-        if username:
-            return f"{rsshub}/twitter/user/{username}"
         return None
     # 其他网址直接作为 RSS 尝试
     return url
@@ -516,21 +485,17 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                      rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         return []
-    # 1. RSS 候选
-    rss_candidates = url_to_rss(original_url, rsshub_instances)
-    if rss_candidates:
-        if isinstance(rss_candidates, str):
-            rss_candidates = [rss_candidates]
-        for rss_url in rss_candidates:
-            items = fetch_single_rss(rss_url, original_url, processed_hashes, time_window_hours)
-            if items:
-                logger.debug(f"{original_url} 成功 via RSS: {rss_url}")
-                return items
-            time.sleep(0.5)
-    # 2. X 信源尝试 Nitter
-    if "x.com/" in original_url:
+    # 1. 如果是 X 信源，优先使用 Guest Token 直接抓取
+    if "x.com/" in original_url or "twitter.com/" in original_url:
         username = extract_username_from_x_url(original_url)
         if username:
+            # 直接调用 Guest Token 抓取（带时间窗口）
+            items = fetch_x_guest_tweets(username, time_window_hours)
+            if items:
+                logger.debug(f"X {username} Guest Token 抓取成功，{len(items)} 条")
+                return items
+            logger.debug(f"X {username} Guest Token 抓取失败，尝试备用方案")
+            # 备用：Nitter 实例
             for nitter in nitter_instances:
                 test_url = f"{nitter}/{username}/rss"
                 items = fetch_single_rss(test_url, original_url, processed_hashes, time_window_hours)
@@ -538,13 +503,19 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                     logger.debug(f"X {username} 成功 via Nitter: {nitter}")
                     return items
                 time.sleep(0.5)
-    # 3. AI 降级（仅对 X 或可能重要的源尝试，但Firecrawl不支持X）
-    if "x.com/" in original_url:
-        ai_items = fetch_ai_fallback(original_url, original_url)
-        if ai_items:
-            logger.info(f"AI 降级成功: {original_url}")
-            return ai_items
-    logger.debug(f"{original_url} 所有方式均失败")
+    else:
+        # 2. 非 X 信源：优先 RSS
+        rss_candidates = url_to_rss(original_url, rsshub_instances)
+        if rss_candidates:
+            if isinstance(rss_candidates, str):
+                rss_candidates = [rss_candidates]
+            for rss_url in rss_candidates:
+                items = fetch_single_rss(rss_url, original_url, processed_hashes, time_window_hours)
+                if items:
+                    logger.debug(f"{original_url} 成功 via RSS: {rss_url}")
+                    return items
+                time.sleep(0.5)
+    logger.debug(f"{original_url} 所有抓取方式均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
@@ -619,7 +590,6 @@ def load_previous_events() -> List[str]:
         logger.error(f"加载上次报告失败: {e}")
     return events
 
-# ================= 跨天重复隐藏 =================
 def load_event_counts() -> Dict:
     if os.path.exists(EVENT_COUNTS_FILE):
         try:
@@ -929,7 +899,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_table += f"<td>{cell}</td>\n"
-            html_table += "</tr>\n"
+            html_table += "<tr>\n"
         else:
             if in_table:
                 html_table += "</thead><tbody></tbody></table>\n"
