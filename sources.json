@@ -23,12 +23,26 @@
     "https://x.com/FDD",
     "https://x.com/SophieDRich",
     "https://x.com/amnesty",
-    // 以下低频官方账号放宽到 48 小时
-    {"url": "https://x.com/ChinaSelect", "time_window_hours": 48},
-    {"url": "https://x.com/USCC_GOV", "time_window_hours": 48},
-    {"url": "https://x.com/ODNIgov", "time_window_hours": 48},
-    {"url": "https://x.com/CECCgov", "time_window_hours": 48},
-    {"url": "https://x.com/CNASdc", "time_window_hours": 48},
+    {
+        "url": "https://x.com/ChinaSelect",
+        "time_window_hours": 48
+    },
+    {
+        "url": "https://x.com/USCC_GOV",
+        "time_window_hours": 48
+    },
+    {
+        "url": "https://x.com/ODNIgov",
+        "time_window_hours": 48
+    },
+    {
+        "url": "https://x.com/CECCgov",
+        "time_window_hours": 48
+    },
+    {
+        "url": "https://x.com/CNASdc",
+        "time_window_hours": 48
+    },
     "https://www.uscc.gov/rss.xml",
     "https://www.brookings.edu/feed/?topic=china",
     "https://merics.org/en/rss.xml",
