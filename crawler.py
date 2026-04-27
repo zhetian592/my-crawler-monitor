@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - RSSHub 集成版（支持 X 信源通过 RSSHub + Nitter 降级）
+# crawler.py - 稳定优化版（持久化URL缓存、自动切换Nitter实例、降低并发）
 import os
 import json
 import re
@@ -10,6 +10,7 @@ import logging
 import sys
 import threading
 import urllib.parse
+import sqlite3
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -63,7 +64,8 @@ KEEP_DAYS = 7
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 6
+MAX_WORKERS = 3                      # 降低并发，减少对Nitter实例的压力
+REQUEST_DELAY = 1                    # 每次请求后延迟（秒）
 AI_REQUEST_DELAY = 2
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -74,6 +76,14 @@ HEALTHY_NITTER_FILE = "healthy_nitter.json"
 HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
+URL_CACHE_DB = "url_cache.db"        # 持久化URL缓存
+
+# 内置Nitter实例备选列表（自动切换用）
+NITTER_FALLBACK_INSTANCES = [
+    "xcancel.com",
+    "nitter.net",
+    "nitter.space",
+]
 
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net",
@@ -95,6 +105,50 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
+
+# ================= 持久化 URL 缓存（SQLite） =================
+class URLCache:
+    def __init__(self, db_path=URL_CACHE_DB):
+        self.db_path = db_path
+        self._init_db()
+        self._local = threading.local()
+
+    def _get_conn(self):
+        if not hasattr(self._local, 'conn'):
+            self._local.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._local.conn.execute("PRAGMA journal_mode=WAL")
+        return self._local.conn
+
+    def _init_db(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS url_cache (
+                url TEXT PRIMARY KEY,
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_url ON url_cache(url)")
+        conn.close()
+
+    def seen(self, url: str) -> bool:
+        conn = self._get_conn()
+        cur = conn.execute("SELECT 1 FROM url_cache WHERE url = ?", (url,))
+        return cur.fetchone() is not None
+
+    def add(self, url: str):
+        conn = self._get_conn()
+        try:
+            conn.execute("INSERT INTO url_cache (url) VALUES (?)", (url,))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            pass
+
+    def close(self):
+        if hasattr(self._local, 'conn'):
+            self._local.conn.close()
+            del self._local.conn
+
+url_cache = URLCache()
 
 # ================= 辅助函数 =================
 def clean_html(text: Optional[str]) -> str:
@@ -152,6 +206,8 @@ def convert_to_official_x_link(link: str) -> str:
         ("nitter.poast.org", "x.com"),
         ("nitter.private.coffee", "x.com"),
         ("nitter.42l.fr", "x.com"),
+        ("xcancel.com", "x.com"),
+        ("nitter.space", "x.com"),
     ]
     for old, new in replacements:
         link = link.replace(old, new)
@@ -190,8 +246,6 @@ def load_sources_config() -> List[Dict]:
         {"url": "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058", "time_window_hours": 24},
         {"url": "https://www.rfi.fr/cn/", "time_window_hours": 24},
         {"url": "https://cn.nytimes.com/", "time_window_hours": 24},
-        {"url": "https://www.ntdtv.com/gb/instant-news.html", "time_window_hours": 24},
-        {"url": "https://www.epochtimes.com/gb/instant-news.htm", "time_window_hours": 24},
         {"url": "https://x.com/whyyoutouzhele", "time_window_hours": 24},
     ]
     if not os.path.exists(sources_file):
@@ -340,9 +394,8 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心（RSSHub 集成） =================
+# ================= 抓取核心 =================
 def extract_username_from_x_url(url: str) -> Optional[str]:
-    """从 X/Twitter URL 中提取用户名，处理末尾斜杠和查询参数"""
     parsed = urllib.parse.urlparse(url)
     path = parsed.path.rstrip('/')
     parts = path.split('/')
@@ -351,10 +404,9 @@ def extract_username_from_x_url(url: str) -> Optional[str]:
     return None
 
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    """返回 RSS 地址（字符串或列表），对于 X 信源优先返回 RSSHub 路由"""
     rsshub_base = random.choice(rsshub_instances) if rsshub_instances else "https://rsshub.app"
     
-    # 已有映射（保持不变）
+    # 已有映射
     if "voachinese.com" in url:
         return [f"{rsshub_base}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
@@ -394,25 +446,18 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     if "uscc.gov" in url:
         return "https://www.uscc.gov/rss.xml"
     
-    # 新增：X / Twitter 信源 -> 通过 RSSHub
+    # X/Twitter 原始链接返回 None，让后续逻辑处理
     if "x.com/" in url or "twitter.com/" in url:
-        username = extract_username_from_x_url(url)
-        if username:
-            rsshub_twitter_url = f"{rsshub_base}/twitter/user/{username}"
-            # 返回列表，第一个是 RSSHub 地址，第二个是 None 占位（后续会尝试 Nitter）
-            return [rsshub_twitter_url, None]
-        else:
-            logger.warning(f"无法从 X URL 提取用户名: {url}")
-            return None
+        return None
     
-    return url
+    # 普通链接直接返回（可能是官方RSS或已配置的Nitter链接）
+    if url.startswith("http"):
+        return url
+    
+    return None
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, hash_lock: threading.Lock, time_window_hours: int) -> List[Dict]:
-    """抓取单个 RSS 源，线程安全地更新 processed_hashes"""
     try:
-        # 如果 rss_url 为 None，直接返回空（用于占位）
-        if rss_url is None:
-            return []
         resp = fetch_url(rss_url, timeout=25)
         feed = feedparser.parse(resp.content)
         cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
@@ -429,14 +474,17 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, has
             if not summary:
                 summary = title
             h = content_hash(title, summary)
-            # 线程安全检查
             with hash_lock:
                 if h in processed_hashes:
                     continue
                 processed_hashes.add(h)
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
-            # 来源名称处理
+            # 持久化URL去重
+            if url_cache.seen(link):
+                continue
+            url_cache.add(link)
+            # 确定来源名称
             if "x.com/" in original_url or "twitter.com/" in original_url:
                 username = extract_username_from_x_url(original_url) or original_url
                 source_name = "@" + username
@@ -468,52 +516,54 @@ def fetch_with_retry(original_url: str, processed_hashes: set, hash_lock: thread
     if is_source_disabled(original_url):
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
-    
-    # 1. 获取候选 RSS 地址（优先 RSSHub）
+
+    # 1. 通过 url_to_rss 获得候选（非X信源）
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if rss_candidates:
         if isinstance(rss_candidates, str):
             rss_candidates = [rss_candidates]
-        # 遍历候选（RSSHub 地址优先，若包含 None 则后续尝试 Nitter）
         for cand in rss_candidates:
             items = fetch_single_rss(cand, original_url, processed_hashes, hash_lock, time_window_hours)
             if items:
                 logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {cand}")
                 return items
-            # 短暂延迟避免过快重试
-            time.sleep(0.5)
-    
-    # 2. 如果是 X 信源且上述 RSS 候选（RSSHub）失败，回退到 Nitter 实例
+            time.sleep(REQUEST_DELAY)
+
+    # 2. 如果是 X 信源，尝试多个 Nitter 实例
     if "x.com/" in original_url or "twitter.com/" in original_url:
         username = extract_username_from_x_url(original_url)
         if username:
-            for nitter in nitter_instances:
-                test_url = f"{nitter}/{username}/rss"
-                logger.debug(f"尝试 X {username} 使用 Nitter: {nitter}")
-                items = fetch_single_rss(test_url, original_url, processed_hashes, hash_lock, time_window_hours)
+            for instance in NITTER_FALLBACK_INSTANCES:
+                rss_url = f"https://{instance}/{username}/rss"
+                items = fetch_single_rss(rss_url, original_url, processed_hashes, hash_lock, time_window_hours)
                 if items:
-                    logger.debug(f"X {username} 成功 via Nitter {nitter} (条数: {len(items)})")
+                    logger.debug(f"X {username} 成功 via {rss_url}")
                     return items
-                logger.debug(f"X {username} 失败 via {nitter}")
-                time.sleep(0.5)
-            logger.debug(f"X {username} 所有 Nitter 实例均失败")
+                time.sleep(REQUEST_DELAY)
+            logger.debug(f"X {username} 所有Nitter实例均失败")
         else:
             logger.warning(f"无法从 X URL 提取用户名: {original_url}")
         return []
-    
-    # 非 X 信源且所有 RSS 候选均失败
-    logger.debug(f"{original_url} 所有 RSS 地址均失败")
+
+    # 3. 如果原URL本身就是RSS链接（例如官方RSS），直接尝试
+    if original_url.startswith("http"):
+        items = fetch_single_rss(original_url, original_url, processed_hashes, hash_lock, time_window_hours)
+        if items:
+            logger.debug(f"{original_url} 成功（直接使用URL）")
+            return items
+
+    logger.debug(f"{original_url} 所有尝试均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源（时间窗口各异）")
     all_items = []
     processed_hashes = set()
-    hash_lock = threading.Lock()          # 线程锁保护 processed_hashes
+    hash_lock = threading.Lock()
     failed_sources = []
     nitter_instances = get_nitter_instances()
     rsshub_instances = get_rsshub_instances()
-    
+
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
             executor.submit(fetch_with_retry, url, processed_hashes, hash_lock,
@@ -533,8 +583,8 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
             except Exception as e:
                 failed_sources.append((url, str(e)))
                 logger.error(f"✗ {url} 异常: {e}")
-    
-    logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希去重）")
+
+    logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希+URL持久化去重）")
     return all_items, failed_sources
 
 # ================= 持久化失败记录 =================
@@ -877,7 +927,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<table>\n<thead>\n'
+                html_table += '<tr>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -897,7 +947,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 html_table += "</thead><tbody></tbody></table>\n"
                 in_table = False
     if in_table:
-        html_table += "</thead><tbody></tbody><table>\n"
+        html_table += "</thead><tbody></tbody></table>\n"
 
     login_script = f'''
 <script>
