@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 多 RSSHub 实例故障转移 + 完整 AI 分析/报告生成
+# crawler.py - 加速版（完整功能，保留成功抓取）
 import os
 import json
 import re
@@ -64,7 +64,7 @@ KEEP_DAYS = 7
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 4
+MAX_WORKERS = 3                      # 降低并发，减少限流
 AI_REQUEST_DELAY = 2
 EVENT_EXPIRE_DAYS = 60
 
@@ -72,14 +72,10 @@ EVENT_COUNTS_FILE = "event_counts.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 
-# 多实例备用列表（按优先级排序，第一个是最优的）
+# 只保留响应最快的 2 个实例（按优先级排序）
 RSSHUB_INSTANCES = [
     "https://rsshub.pseudoyu.com",
-    "https://hub.slarker.me",
-    "https://rsshub.rssforever.com",
-    "https://rsshub.woodland.cafe",
-    "https://rss.owo.nz",
-    "https://yangzhi.app"
+    "https://hub.slarker.me"
 ]
 
 USER_AGENTS = [
@@ -135,11 +131,10 @@ def content_hash(title: str, summary: str) -> str:
 def convert_to_official_x_link(link: str) -> str:
     if not link:
         return link
-    # 替换所有 RSSHub 实例域名为 x.com
     for inst in RSSHUB_INSTANCES:
         domain = inst.replace("https://", "")
         link = link.replace(domain, "x.com")
-    # 替换 Nitter 等
+    # 替换其他可能的域名
     replacements = [
         ("nitter.net", "x.com"), ("twitter.net", "x.com"), ("nitter.poast.org", "x.com"),
         ("nitter.private.coffee", "x.com"), ("nitter.42l.fr", "x.com"),
@@ -147,7 +142,7 @@ def convert_to_official_x_link(link: str) -> str:
     ]
     for old, new in replacements:
         link = link.replace(old, new)
-    # 从 URL 中提取推文真实链接
+    # 提取推文真实链接
     match = re.search(r'/twitter/user/([^/]+)/status/(\d+)', link)
     if match:
         username = match.group(1)
@@ -242,7 +237,7 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================= 禁用机制（永不禁用） =================
+# ================= 禁用机制（已取消） =================
 def load_disabled_sources():
     return {}
 def save_disabled_sources(disabled):
@@ -254,7 +249,7 @@ def is_source_disabled(url):
     return False
 
 # ================= 网络请求重试 =================
-def retry_on_exception(max_retries=3, delay=1, backoff=2):
+def retry_on_exception(max_retries=2, delay=1, backoff=2):
     def decorator(func):
         def wrapper(*args, **kwargs):
             _delay = delay
@@ -271,17 +266,17 @@ def retry_on_exception(max_retries=3, delay=1, backoff=2):
         return wrapper
     return decorator
 
-@retry_on_exception(max_retries=3, delay=1, backoff=2)
-def fetch_url(url: str, timeout: int = 30, headers: Optional[Dict] = None) -> requests.Response:
+@retry_on_exception(max_retries=2, delay=1, backoff=2)
+def fetch_url(url: str, timeout: int = 12, headers: Optional[Dict] = None) -> requests.Response:
     headers = headers or {"User-Agent": random.choice(USER_AGENTS), "Accept": "*/*"}
     resp = requests.get(url, headers=headers, timeout=timeout, proxies=PROXIES)
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心（多实例降级，支持 ?limit 参数）=================
+# ================= 抓取核心（多实例故障转移，快速超时）=================
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
     try:
-        resp = fetch_url(rss_url, timeout=25)
+        resp = fetch_url(rss_url, timeout=12)
         feed = feedparser.parse(resp.content)
         cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
         items = []
@@ -349,7 +344,6 @@ def fetch_with_failover(original_url: str, processed_hashes: set, time_window_ho
             if items:
                 logger.info(f"实例 {inst} 成功抓取 @{username}")
                 return items
-            time.sleep(1)
         logger.warning(f"所有 RSSHub 实例均无法抓取 @{username}")
         return []
     else:
@@ -719,7 +713,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<td>\n<thead>\n'
+                html_table += '<table>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -732,11 +726,11 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 if link_match:
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
-                html_table += f"<td>{cell}</td>\n"
-            html_table += "</tr>\n"
+                html_table += f"<td>{cell}</tr>\n"
+            html_table += "</table>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody><tr>\n"
+                html_table += "</thead><tbody></tbody></table>\n"
                 in_table = False
     if in_table:
         html_table += "</thead><tbody></tbody></table>\n"
