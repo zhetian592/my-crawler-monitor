@@ -1,7 +1,7 @@
-name: Crawler Tier1
+name: Crawl Tier1
 on:
   schedule:
-    - cron: '0 */6 * * *'   # 每6小时
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -9,14 +9,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
+        with:
+          token: ${{ secrets.PAT_TOKEN }}   # 如果使用 PAT 认证推送
+
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+
       - name: Run crawler
         env:
           GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+          REPORT_PASSWORD: ${{ secrets.REPORT_PASSWORD }}
         run: python crawler.py
+
+      - name: Commit and push reports
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Actions"
+          git add report.md report.html reports/ data/ crawler.log event_counts.json failed_sources.json url_dedup.json 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "自动更新报告 $(date +'%Y-%m-%d %H:%M')"
+          git push
