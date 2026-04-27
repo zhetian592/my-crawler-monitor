@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - RSS优先 + Nitter降级 + X Guest Token 直抓（含调试日志）
+# crawler.py - 纯净版，通过 RSSHub 抓取 X 内容，无第三方 AI 降级
 import os
 import json
 import re
@@ -66,31 +66,11 @@ MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
 AI_REQUEST_DELAY = 2
-DISABLE_FAILED_THRESHOLD = 3
-DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
 
 EVENT_COUNTS_FILE = "event_counts.json"
-HEALTHY_NITTER_FILE = "healthy_nitter.json"
-HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
-
-# 公共 RSSHub 实例列表（备用）
-FALLBACK_RSSHUB_INSTANCES = [
-    "https://rsshub.rssforever.com",
-    "https://hub.slarker.me",
-    "https://rsshub.pseudoyu.com",
-    "https://rsshub.woodland.cafe",
-    "https://rss.owo.nz",
-    "https://yangzhi.app"
-]
-
-FALLBACK_NITTER_INSTANCES = [
-    "https://nitter.net", "https://nitter.poast.org", "https://nitter.privacyredirect.com",
-    "https://lightbrd.com", "https://nitter.space", "https://nitter.tiekoetter.com",
-    "https://nitter.catsarch.com", "https://xcancel.com"
-]
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
@@ -145,12 +125,20 @@ def content_hash(title: str, summary: str) -> str:
 def convert_to_official_x_link(link: str) -> str:
     if not link:
         return link
+    # 将 nitter 等替换为 x.com
     replacements = [
         ("nitter.net", "x.com"), ("twitter.net", "x.com"), ("nitter.poast.org", "x.com"),
         ("nitter.private.coffee", "x.com"), ("nitter.42l.fr", "x.com"),
+        ("rsshub.rssforever.com", "x.com"), ("hub.slarker.me", "x.com"),
     ]
     for old, new in replacements:
-        link = link.replace(old, new)
+        if old in link:
+            link = link.replace(old, new)
+    # 提取 /twitter/user/ 后面的部分，构造真正的 x 链接
+    match = re.search(r'/twitter/user/([^/]+)', link)
+    if match:
+        username = match.group(1)
+        link = f"https://x.com/{username}/status/" + link.split("/")[-1] if "/status/" in link else f"https://x.com/{username}"
     return link
 
 def normalize_event_text(text: str) -> str:
@@ -178,35 +166,18 @@ def get_source_priority(source_name: str) -> int:
         return 3
     return 4
 
-def extract_username_from_x_url(url: str) -> Optional[str]:
-    parsed = urllib.parse.urlparse(url)
-    path = parsed.path.rstrip('/')
-    parts = path.split('/')
-    if len(parts) >= 2 and parts[1]:
-        return parts[1]
-    return None
-
 # ================= 配置加载 =================
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
-    default = [
-        {"url": "https://www.bbc.com/zhongwen/simp", "time_window_hours": 24},
-        {"url": "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058", "time_window_hours": 24},
-        {"url": "https://www.rfi.fr/cn/", "time_window_hours": 24},
-        {"url": "https://cn.nytimes.com/", "time_window_hours": 24},
-        {"url": "https://www.ntdtv.com/gb/instant-news.html", "time_window_hours": 24},
-        {"url": "https://www.epochtimes.com/gb/instant-news.htm", "time_window_hours": 24},
-        {"url": "https://x.com/whyyoutouzhele", "time_window_hours": 24},
-    ]
     if not os.path.exists(sources_file):
-        logger.warning(f"{sources_file} 不存在，使用默认信源")
-        return default
+        logger.error(f"{sources_file} 不存在，退出")
+        sys.exit(1)
     try:
         with open(sources_file, 'r', encoding='utf-8') as f:
             raw = json.load(f)
         if not isinstance(raw, list):
-            logger.warning(f"{sources_file} 格式错误，应为数组，使用默认信源")
-            return default
+            logger.error(f"{sources_file} 不是数组，退出")
+            sys.exit(1)
         configs = []
         for item in raw:
             if isinstance(item, str):
@@ -219,11 +190,12 @@ def load_sources_config() -> List[Dict]:
             else:
                 logger.warning(f"跳过无效信源配置: {item}")
         if not configs:
-            return default
+            logger.error("无有效信源配置，退出")
+            sys.exit(1)
         return configs
     except Exception as e:
-        logger.error(f"加载 {sources_file} 失败: {e}，使用默认信源")
-        return default
+        logger.error(f"加载 {sources_file} 失败: {e}")
+        sys.exit(1)
 
 def load_source_map() -> Dict[str, str]:
     map_file = "source_map.json"
@@ -251,8 +223,8 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================= 失败信源自动禁用与恢复（已取消禁用） =================
-def load_disabled_sources() -> Dict[str, dict]:
+# ================= 禁用机制（已取消） =================
+def load_disabled_sources():
     return {}
 def save_disabled_sources(disabled):
     pass
@@ -261,24 +233,6 @@ def update_disabled_sources(failed_sources):
         logger.info(f"本次有 {len(failed_sources)} 个信源失败，但不会禁用")
 def is_source_disabled(url):
     return False
-
-# ================= 健康实例获取 =================
-def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                instances = json.load(f)
-                if isinstance(instances, list) and instances:
-                    return instances
-        except Exception as e:
-            logger.warning(f"读取 {file_path} 失败: {e}")
-    return fallback
-
-def get_nitter_instances() -> List[str]:
-    return load_healthy_instances(HEALTHY_NITTER_FILE, FALLBACK_NITTER_INSTANCES)
-
-def get_rsshub_instances() -> List[str]:
-    return load_healthy_instances(HEALTHY_RSSHUB_FILE, FALLBACK_RSSHUB_INSTANCES)
 
 # ================= 网络请求重试 =================
 def retry_on_exception(max_retries=3, delay=1, backoff=2):
@@ -305,132 +259,7 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= X Guest Token 直接抓取 =================
-def fetch_x_guest_tweets(username: str, time_window_hours: int = 24) -> List[Dict]:
-    """
-    使用 X 访客令牌（Guest Token）直接调用 X API 获取用户最新推文。
-    返回统一格式的 items 列表，与 RSS 抓取兼容。
-    """
-    logger.debug(f"Guest Token 开始抓取 @{username}")
-    # 1. 获取 Guest Token
-    guest_token_url = "https://api.x.com/1.1/guest/activate.json"
-    headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8DGZz4HIw%3D%3D",
-        "Content-Type": "application/json",
-    }
-    try:
-        resp = requests.post(guest_token_url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            logger.debug(f"获取 Guest Token 失败: HTTP {resp.status_code}")
-            return []
-        guest_token = resp.json().get("guest_token")
-        if not guest_token:
-            logger.debug("响应中无 guest_token")
-            return []
-    except Exception as e:
-        logger.debug(f"获取 Guest Token 异常: {e}")
-        return []
-
-    # 2. 使用 Guest Token 请求用户推文数据
-    user_tweets_url = f"https://api.x.com/2/timeline/profile/{username}.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_ext_alt_text=true&include_quote_count=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&simple_quoted_tweet=true&count=20&ext=mediaStats,highlightedLabel,voiceInfo"
-    headers["x-guest-token"] = guest_token
-    try:
-        resp = requests.get(user_tweets_url, headers=headers, timeout=15)
-        if resp.status_code != 200:
-            logger.debug(f"X API 请求失败: HTTP {resp.status_code}")
-            return []
-        data = resp.json()
-    except Exception as e:
-        logger.debug(f"X API 请求异常: {e}")
-        return []
-
-    # 3. 解析 tweets
-    tweets = data.get("globalObjects", {}).get("tweets", {})
-    cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
-    items = []
-    for tweet_id, tweet in tweets.items():
-        if len(items) >= 12:
-            break
-        full_text = tweet.get("full_text", "")
-        if not full_text:
-            continue
-        created_at = tweet.get("created_at", "")
-        pub_dt = None
-        if created_at:
-            try:
-                pub_dt = datetime.strptime(created_at, "%a %b %d %H:%M:%S +0000 %Y")
-                pub_dt = pub_dt.replace(tzinfo=None)
-            except:
-                pass
-        if pub_dt and pub_dt < cutoff:
-            continue
-        title = full_text[:50]
-        summary = full_text[:300]
-        link = f"https://x.com/{username}/status/{tweet.get('id_str', tweet_id)}"
-        time_ago = format_time_ago(pub_dt) if pub_dt else "时间未知"
-        items.append({
-            "title": title,
-            "link": link,
-            "summary": summary,
-            "source": f"https://x.com/{username}",
-            "source_name": f"@{username}",
-            "published_str": created_at or "未知时间",
-            "pub_dt": pub_dt.isoformat() if pub_dt else None,
-            "time_ago": time_ago,
-            "fetched_at": datetime.utcnow().isoformat()
-        })
-    logger.debug(f"Guest Token 抓取 @{username} 获得 {len(items)} 条推文")
-    return items
-
 # ================= 抓取核心 =================
-def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    rsshub = random.choice(rsshub_instances) if rsshub_instances else FALLBACK_RSSHUB_INSTANCES[0]
-    # 常规网站的官方RSS
-    if "bbc.com/zhongwen/simp" in url:
-        return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
-    if "dw.com/zh" in url:
-        return "https://rss.dw.com/rdf/rss-chi-all"
-    if "rfi.fr/cn" in url:
-        return "https://www.rfi.fr/cn/general/rss"
-    if "cn.nytimes.com" in url:
-        return "https://cn.nytimes.com/rss/news.xml"
-    if "ntdtv.com" in url:
-        return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
-    if "epochtimes.com" in url:
-        return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
-    if "voachinese.com" in url:
-        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
-    if "reuters.com/world/china" in url:
-        return f"{rsshub}/reuters/world/china"
-    if "wsj.com/news/china" in url:
-        return f"{rsshub}/wsj/china"
-    if "ft.com/china" in url:
-        return f"{rsshub}/ft/china"
-    if "apnews.com/hub/china" in url:
-        return f"{rsshub}/apnews/topics/china"
-    if "asia.nikkei.com" in url:
-        return "https://asia.nikkei.com/rss.xml"
-    if "brookings.edu/topics/china" in url:
-        return "https://www.brookings.edu/feed/?topic=china"
-    if "csis.org/regions/asia/china" in url:
-        return f"{rsshub}/csis/asia/china"
-    if "pewresearch.org/topic/international-affairs/global-image-of-countries/china-global-image" in url:
-        return "https://www.pewresearch.org/feed/?post_type=publication&topic=china"
-    if "merics.org" in url:
-        return "https://merics.org/en/rss.xml"
-    if "asiasociety.org/policy-institute/center-china-analysis" in url:
-        return f"{rsshub}/asiasociety/center-china-analysis"
-    if "rsf.org/en/country/china" in url:
-        return "https://rsf.org/en/rss.xml"
-    if "uscc.gov" in url:
-        return "https://www.uscc.gov/rss.xml"
-    # X 平台：交给外部处理（这里返回 None，由调用方处理）
-    if "x.com/" in url or "twitter.com/" in url:
-        return None
-    # 其他网址直接作为 RSS 尝试
-    return url
-
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
     try:
         resp = fetch_url(rss_url, timeout=25)
@@ -454,13 +283,15 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
             processed_hashes.add(h)
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
-            if "x.com/" in original_url:
-                username = extract_username_from_x_url(original_url) or original_url
-                source_name = "@" + username
-            else:
-                domain_match = re.search(r'https?://([^/]+)', original_url)
-                raw_domain = domain_match.group(1) if domain_match else original_url
-                source_name = raw_domain
+            # 确定来源名称
+            domain_match = re.search(r'https?://([^/]+)', original_url)
+            raw_domain = domain_match.group(1) if domain_match else original_url
+            source_name = raw_domain
+            # 如果链接是 X 推文，提取用户名
+            if "x.com/" in link:
+                user_match = re.search(r'x\.com/([^/]+)', link)
+                if user_match:
+                    source_name = "@" + user_match.group(1)
             time_ago = format_time_ago(pub_dt)
             items.append({
                 "title": title,
@@ -480,63 +311,26 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
         logger.error(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
         return []
 
-def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str],
-                     rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
+def fetch_with_retry(original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         return []
-    
-    # 调试：打印信源类型
-    logger.debug(f"fetch_with_retry 处理: {original_url}")
-    
-    # 1. 如果是 X 信源，优先使用 Guest Token 直接抓取
-    if "x.com/" in original_url or "twitter.com/" in original_url:
-        username = extract_username_from_x_url(original_url)
-        logger.info(f"DEBUG: 检测到 X 信源 {original_url}, 提取用户名 = {username}")
-        if username:
-            logger.info(f"尝试 Guest Token 抓取 @{username}")
-            items = fetch_x_guest_tweets(username, time_window_hours)
-            if items:
-                logger.info(f"X {username} Guest Token 抓取成功，{len(items)} 条")
-                return items
-            else:
-                logger.debug(f"X {username} Guest Token 抓取失败，尝试备用方案")
-            # 备用：Nitter 实例
-            for nitter in nitter_instances:
-                test_url = f"{nitter}/{username}/rss"
-                items = fetch_single_rss(test_url, original_url, processed_hashes, time_window_hours)
-                if items:
-                    logger.debug(f"X {username} 成功 via Nitter: {nitter}")
-                    return items
-                time.sleep(0.5)
-        else:
-            logger.warning(f"无法从 X URL 提取用户名: {original_url}")
+    # 直接当作 RSS 抓取
+    items = fetch_single_rss(original_url, original_url, processed_hashes, time_window_hours)
+    if items:
+        logger.debug(f"{original_url} 成功 (条数: {len(items)})")
+        return items
     else:
-        # 2. 非 X 信源：优先 RSS
-        rss_candidates = url_to_rss(original_url, rsshub_instances)
-        if rss_candidates:
-            if isinstance(rss_candidates, str):
-                rss_candidates = [rss_candidates]
-            for rss_url in rss_candidates:
-                items = fetch_single_rss(rss_url, original_url, processed_hashes, time_window_hours)
-                if items:
-                    logger.debug(f"{original_url} 成功 via RSS: {rss_url}")
-                    return items
-                time.sleep(0.5)
-    
-    logger.debug(f"{original_url} 所有抓取方式均失败")
-    return []
+        logger.debug(f"{original_url} 抓取失败")
+        return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源")
     all_items = []
     processed_hashes = set()
     failed_sources = []
-    nitter_instances = get_nitter_instances()
-    rsshub_instances = get_rsshub_instances()
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
-            executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances,
-                            rsshub_instances, TIME_WINDOW_MAP.get(url, 24)): url
+            executor.submit(fetch_with_retry, url, processed_hashes, TIME_WINDOW_MAP.get(url, 24)): url
             for url in RAW_SOURCES
         }
         for future in as_completed(future_to_url):
@@ -814,13 +608,13 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
 - 纯转发（RT/转发）且无新增实质性评论。
 - 仅包含链接，无任何文字说明或文字少于10个字符。
-- 仅含表情符号、无意义的感叹或口号（如"太可怕了""支持"等）。
+- 仅含表情符号、无意义的感叹或口号（如“太可怕了”“支持”等）。
 - 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
 - 与涉华负面舆情无关的个人生活、娱乐、广告等。
 
 **二、必须保留的内容（不得忽略）**：
 - 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
-- 即使内容没有直接提及"中国"或"中共"，但事件发生在中国境内或涉及中国公民，也应保留。
+- 即使内容没有直接提及“中国”或“中共”，但事件发生在中国境内或涉及中国公民，也应保留。
 - 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
 
 **三、输出格式要求**：
@@ -829,13 +623,13 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
   1. 来自官方机构、智库、政府部门的报告类内容。
   2. 其他有实质分析的负面新闻或推文。
 - 原文链接列使用 `[查看](URL)` 格式。
-- "信息来源"列使用输入中提供的"来源"名称（已转换为中文）。
-- "发布多久前"列直接使用输入中的"发布时间"。
-- 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
+- “信息来源”列使用输入中提供的“来源”名称（已转换为中文）。
+- “发布多久前”列直接使用输入中的“发布时间”。
+- 如果没有任何符合要求的涉华负面内容，只输出一行“无”。
 - 不要添加任何额外解释、标题或总结。
 
 **四、风险点要求**：
-- 每条风险点应包含类别（如"社会维稳""教育管控""文化冲突""执法争议"等）和简要说明，总字数不超过30字。
+- 每条风险点应包含类别（如“社会维稳”“教育管控”“文化冲突”“执法争议”等）和简要说明，总字数不超过30字。
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
@@ -893,7 +687,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<table>\n<thead>\n'
+                html_table += '<tr>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -913,7 +707,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 html_table += "</thead><tbody></tbody></table>\n"
                 in_table = False
     if in_table:
-        html_table += "</thead><tbody></tbody></table>\n"
+        html_table += "</thead><tbody></tbody><table>\n"
 
     login_script = f'''
 <script>
