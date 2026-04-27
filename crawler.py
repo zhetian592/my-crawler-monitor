@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 使用公共 RSSHub 实例抓取 X (Twitter) 信源，无自动禁用
+# crawler.py - 稳定版（已添加报告生成时间，修复 Union 导入）
 import os
 import json
 import re
@@ -8,7 +8,6 @@ import random
 import hashlib
 import logging
 import sys
-import urllib.parse
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -74,14 +73,20 @@ HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 
-# 公共 RSSHub 实例列表（用于 X 信源和部分其它信源）
+FALLBACK_NITTER_INSTANCES = [
+    "https://nitter.net",
+    "https://nitter.poast.org",
+    "https://nitter.privacyredirect.com",
+    "https://lightbrd.com",
+    "https://nitter.space",
+    "https://nitter.tiekoetter.com",
+    "https://nitter.catsarch.com",
+    "https://xcancel.com"
+]
 FALLBACK_RSSHUB_INSTANCES = [
     "https://rsshub.app",
-    "https://rsshub.ktachibana.party",
-    "https://rsshub.duan2.xyz"
+    "https://rsshub.ktachibana.party"
 ]
-
-FALLBACK_NITTER_INSTANCES = []  # 不再使用 Nitter，保留为空
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
@@ -145,8 +150,6 @@ def convert_to_official_x_link(link: str) -> str:
         ("nitter.poast.org", "x.com"),
         ("nitter.private.coffee", "x.com"),
         ("nitter.42l.fr", "x.com"),
-        ("xcancel.com", "x.com"),
-        ("nitter.space", "x.com"),
     ]
     for old, new in replacements:
         link = link.replace(old, new)
@@ -177,15 +180,6 @@ def get_source_priority(source_name: str) -> int:
         return 3
     return 4
 
-def extract_username_from_x_url(url: str) -> Optional[str]:
-    """从 X/Twitter URL 中提取用户名"""
-    parsed = urllib.parse.urlparse(url)
-    path = parsed.path.rstrip('/')
-    parts = path.split('/')
-    if len(parts) >= 2 and parts[1]:
-        return parts[1]
-    return None
-
 # ================= 配置加载 =================
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
@@ -194,6 +188,8 @@ def load_sources_config() -> List[Dict]:
         {"url": "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058", "time_window_hours": 24},
         {"url": "https://www.rfi.fr/cn/", "time_window_hours": 24},
         {"url": "https://cn.nytimes.com/", "time_window_hours": 24},
+        {"url": "https://www.ntdtv.com/gb/instant-news.html", "time_window_hours": 24},
+        {"url": "https://www.epochtimes.com/gb/instant-news.htm", "time_window_hours": 24},
         {"url": "https://x.com/whyyoutouzhele", "time_window_hours": 24},
     ]
     if not os.path.exists(sources_file):
@@ -249,24 +245,55 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================= 失败信源自动禁用与恢复（已禁用） =================
+# ================= 失败信源自动禁用与恢复 =================
 def load_disabled_sources() -> Dict[str, dict]:
-    # 返回空字典，相当于没有禁用记录
+    if os.path.exists(DISABLED_SOURCES_FILE):
+        try:
+            with open(DISABLED_SOURCES_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    new_data = {}
+                    for k, v in data.items():
+                        if isinstance(v, int):
+                            new_data[k] = {"fail_count": v, "disabled_at": None}
+                        else:
+                            new_data[k] = v
+                    return new_data
+        except:
+            pass
     return {}
 
 def save_disabled_sources(disabled: Dict[str, dict]):
-    # 不再保存禁用信息
-    pass
+    with open(DISABLED_SOURCES_FILE, 'w', encoding='utf-8') as f:
+        json.dump(disabled, f, indent=2, ensure_ascii=False)
 
 def update_disabled_sources(failed_sources: List[Tuple[str, str]]):
-    # 不禁用任何信源，只记录日志
-    if failed_sources:
-        logger.info(f"本次有 {len(failed_sources)} 个信源失败，但不会禁用它们，下次会继续尝试。")
-    return
+    disabled = load_disabled_sources()
+    today = datetime.utcnow().date().isoformat()
+    for url, _ in failed_sources:
+        if url not in disabled:
+            disabled[url] = {"fail_count": 0, "disabled_at": None}
+        disabled[url]["fail_count"] += 1
+        if disabled[url]["fail_count"] >= DISABLE_FAILED_THRESHOLD and disabled[url]["disabled_at"] is None:
+            disabled[url]["disabled_at"] = today
+            logger.warning(f"信源 {url} 已连续失败 {disabled[url]['fail_count']} 次，禁用（禁用时间 {today}）")
+    success_urls = set(RAW_SOURCES) - {u for u, _ in failed_sources}
+    for url in success_urls:
+        if url in disabled:
+            del disabled[url]
+    recover_cutoff = (datetime.utcnow().date() - timedelta(days=DISABLE_AUTO_RECOVER_DAYS)).isoformat()
+    to_remove = []
+    for url, info in disabled.items():
+        if info.get("disabled_at") and info["disabled_at"] < recover_cutoff:
+            to_remove.append(url)
+    for url in to_remove:
+        logger.info(f"信源 {url} 已禁用超过 {DISABLE_AUTO_RECOVER_DAYS} 天，自动恢复")
+        del disabled[url]
+    save_disabled_sources(disabled)
 
 def is_source_disabled(url: str) -> bool:
-    # 永远不禁用信源
-    return False
+    disabled = load_disabled_sources()
+    return url in disabled
 
 # ================= 健康实例获取 =================
 def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
@@ -281,8 +308,7 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
     return fallback
 
 def get_nitter_instances() -> List[str]:
-    # 不再使用 Nitter
-    return []
+    return load_healthy_instances(HEALTHY_NITTER_FILE, FALLBACK_NITTER_INSTANCES)
 
 def get_rsshub_instances() -> List[str]:
     return load_healthy_instances(HEALTHY_RSSHUB_FILE, FALLBACK_RSSHUB_INSTANCES)
@@ -312,14 +338,11 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心（使用 RSSHub 公共实例） =================
+# ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    """将原始信源URL转换为RSS地址，对于X链接返回RSSHub的Twitter路由"""
-    rsshub_base = random.choice(rsshub_instances) if rsshub_instances else "https://rsshub.app"
-    
-    # 已有映射（保持不变）
+    rsshub = random.choice(rsshub_instances)
     if "voachinese.com" in url:
-        return [f"{rsshub_base}/voachinese/china", "http://feeds.feedburner.com/voacn"]
+        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
     if "dw.com/zh" in url:
@@ -329,52 +352,38 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     if "cn.nytimes.com" in url:
         return "https://cn.nytimes.com/rss/news.xml"
     if "ntdtv.com" in url:
-        return [f"{rsshub_base}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
+        return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
     if "epochtimes.com" in url:
-        return [f"{rsshub_base}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
+        return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
+    if "x.com/" in url:
+        return None
     if "reuters.com/world/china" in url:
-        return f"{rsshub_base}/reuters/world/china"
+        return f"{rsshub}/reuters/world/china"
     if "wsj.com/news/china" in url:
-        return f"{rsshub_base}/wsj/china"
+        return f"{rsshub}/wsj/china"
     if "ft.com/china" in url:
-        return f"{rsshub_base}/ft/china"
+        return f"{rsshub}/ft/china"
     if "apnews.com/hub/china" in url:
-        return f"{rsshub_base}/apnews/topics/china"
+        return f"{rsshub}/apnews/topics/china"
     if "asia.nikkei.com" in url:
         return "https://asia.nikkei.com/rss.xml"
     if "brookings.edu/topics/china" in url:
         return "https://www.brookings.edu/feed/?topic=china"
     if "csis.org/regions/asia/china" in url:
-        return f"{rsshub_base}/csis/asia/china"
+        return f"{rsshub}/csis/asia/china"
     if "pewresearch.org/topic/international-affairs/global-image-of-countries/china-global-image" in url:
         return "https://www.pewresearch.org/feed/?post_type=publication&topic=china"
     if "merics.org" in url:
         return "https://merics.org/en/rss.xml"
     if "asiasociety.org/policy-institute/center-china-analysis" in url:
-        return f"{rsshub_base}/asiasociety/center-china-analysis"
+        return f"{rsshub}/asiasociety/center-china-analysis"
     if "rsf.org/en/country/china" in url:
         return "https://rsf.org/en/rss.xml"
     if "uscc.gov" in url:
         return "https://www.uscc.gov/rss.xml"
-    
-    # 处理 X/Twitter 链接：通过 RSSHub 的 Twitter 用户路由
-    if "x.com/" in url or "twitter.com/" in url:
-        username = extract_username_from_x_url(url)
-        if username:
-            rss_url = f"{rsshub_base}/twitter/user/{username}"
-            return rss_url
-        else:
-            logger.warning(f"无法从 X URL 提取用户名: {url}")
-            return None
-    
-    # 普通链接直接返回（可能是官方RSS）
-    if url.startswith("http"):
-        return url
-    
-    return None
+    return url
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
-    """抓取单个RSS源"""
     try:
         resp = fetch_url(rss_url, timeout=25)
         feed = feedparser.parse(resp.content)
@@ -397,10 +406,10 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
             processed_hashes.add(h)
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
-            # 确定来源名称
-            if "x.com/" in original_url or "twitter.com/" in original_url:
-                username = extract_username_from_x_url(original_url) or original_url
-                source_name = "@" + username
+            if "x.com/" in original_url:
+                parts = original_url.split("/")
+                raw_name = parts[3] if len(parts) > 3 else original_url
+                source_name = "@" + raw_name
             else:
                 domain_match = re.search(r'https?://([^/]+)', original_url)
                 raw_domain = domain_match.group(1) if domain_match else original_url
@@ -424,26 +433,37 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
         logger.error(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
         return []
 
-def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], 
-                     rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
-    """带重试的抓取，支持X信源通过RSSHub"""
+def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances: List[str], rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
-    
-    # 1. 获取候选 RSS 地址（通过 url_to_rss）
-    rss_candidates = url_to_rss(original_url, rsshub_instances)
-    if rss_candidates:
-        if isinstance(rss_candidates, str):
-            rss_candidates = [rss_candidates]
-        for cand in rss_candidates:
-            items = fetch_single_rss(cand, original_url, processed_hashes, time_window_hours)
+    if "x.com/" in original_url:
+        username = original_url.split("/")[-1]
+        for nitter in nitter_instances:
+            test_url = f"{nitter}/{username}/rss"
+            logger.debug(f"尝试 X {username} 使用 {nitter}")
+            items = fetch_single_rss(test_url, original_url, processed_hashes, time_window_hours)
             if items:
-                logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {cand}")
+                logger.debug(f"X {username} 成功 via {nitter} (条数: {len(items)})")
                 return items
+            logger.debug(f"X {username} 失败 via {nitter}")
             time.sleep(0.5)
-    
-    logger.debug(f"{original_url} 所有候选 RSS 均失败")
+        logger.debug(f"X {username} 所有实例均失败")
+        return []
+    rss_candidates = url_to_rss(original_url, rsshub_instances)
+    if not rss_candidates:
+        logger.debug(f"无法生成 RSS 地址: {original_url}")
+        return []
+    if isinstance(rss_candidates, str):
+        rss_candidates = [rss_candidates]
+    for rss_url in rss_candidates:
+        items = fetch_single_rss(rss_url, original_url, processed_hashes, time_window_hours)
+        if items:
+            logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {rss_url}")
+            return items
+        logger.debug(f"{original_url} 失败 via {rss_url}")
+        time.sleep(0.5)
+    logger.debug(f"{original_url} 所有 RSS 地址均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
@@ -453,11 +473,9 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     failed_sources = []
     nitter_instances = get_nitter_instances()
     rsshub_instances = get_rsshub_instances()
-    
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
-            executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances, 
-                            rsshub_instances, TIME_WINDOW_MAP.get(url, 24)): url
+            executor.submit(fetch_with_retry, url, processed_hashes, nitter_instances, rsshub_instances, TIME_WINDOW_MAP.get(url, 24)): url
             for url in RAW_SOURCES
         }
         for future in as_completed(future_to_url):
@@ -473,7 +491,6 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
             except Exception as e:
                 failed_sources.append((url, str(e)))
                 logger.error(f"✗ {url} 异常: {e}")
-    
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希去重）")
     return all_items, failed_sources
 
@@ -493,7 +510,7 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         data[today].append({"url": url, "reason": reason, "timestamp": datetime.utcnow().isoformat()})
     with open(FAILED_SOURCES_LOG, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    update_disabled_sources(failed_sources)   # 只记录不禁用
+    update_disabled_sources(failed_sources)
 
 # ================= 历史事件加载 =================
 def load_previous_events() -> List[str]:
@@ -817,7 +834,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<tr>\n<thead>\n'
+                html_table += '<table>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -887,6 +904,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    # 为 report.md 添加时间戳
     timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
     final_content = timestamp_str + report_text
 
