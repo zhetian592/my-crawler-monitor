@@ -1,1 +1,2 @@
-pip freeze > requirements.txt
+python-dotenv>=1.0.0
+firecrawl-py>=0.0.2
