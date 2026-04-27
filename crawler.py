@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 集成 Firecrawl AI 降级抓取
+# crawler.py - RSS优先 + Nitter降级 + Firecrawl AI降级（修复版，更新RSSHub实例）
 import os
 import json
 import re
@@ -23,12 +23,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Firecrawl 导入（兼容不同版本）
 try:
-    from firecrawl import FirecrawlApp
+    from firecrawl.firecrawl import FirecrawlApp
     FIRECRAWL_AVAILABLE = True
 except ImportError:
-    FIRECRAWL_AVAILABLE = False
-    print("Warning: firecrawl not installed. AI fallback disabled.")
+    try:
+        from firecrawl import FirecrawlApp
+        FIRECRAWL_AVAILABLE = True
+    except ImportError:
+        FIRECRAWL_AVAILABLE = False
+        print("Warning: Firecrawl SDK not installed. AI fallback disabled.")
 
 try:
     import tiktoken
@@ -83,14 +88,28 @@ HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 
+# Firecrawl API Key
 FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
+
+# 更新后的公共 RSSHub 实例列表（来自 rsshub-never-die 等项目，更可靠）
+FALLBACK_RSSHUB_INSTANCES = [
+    "https://rsshub.rssforever.com",
+    "https://hub.slarker.me",
+    "https://rsshub.pseudoyu.com",
+    "https://rsshub.ktachibana.party",
+    "https://rsshub.woodland.cafe",
+    "https://rss.owo.nz",
+    "https://yangzhi.app",
+    "https://rsshub.henry.wang",
+    "https://rss.peachyjoy.top",
+    "https://rsshub.speednet.icu"
+]
 
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net", "https://nitter.poast.org", "https://nitter.privacyredirect.com",
     "https://lightbrd.com", "https://nitter.space", "https://nitter.tiekoetter.com",
     "https://nitter.catsarch.com", "https://xcancel.com"
 ]
-FALLBACK_RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.ktachibana.party"]
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
@@ -160,7 +179,7 @@ def normalize_event_text(text: str) -> str:
     words = [w for w in words if w not in stopwords]
     return ' '.join(words)
 
-def is_similar(a: str, b: str, threshold: float = 0.6) -> bool:
+def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
     a_norm = normalize_event_text(a)
     b_norm = normalize_event_text(b)
     return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
@@ -189,15 +208,24 @@ def extract_username_from_x_url(url: str) -> Optional[str]:
 # ================= 配置加载 =================
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
+    default = [
+        {"url": "https://www.bbc.com/zhongwen/simp", "time_window_hours": 24},
+        {"url": "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058", "time_window_hours": 24},
+        {"url": "https://www.rfi.fr/cn/", "time_window_hours": 24},
+        {"url": "https://cn.nytimes.com/", "time_window_hours": 24},
+        {"url": "https://www.ntdtv.com/gb/instant-news.html", "time_window_hours": 24},
+        {"url": "https://www.epochtimes.com/gb/instant-news.htm", "time_window_hours": 24},
+        {"url": "https://x.com/whyyoutouzhele", "time_window_hours": 24},
+    ]
     if not os.path.exists(sources_file):
         logger.warning(f"{sources_file} 不存在，使用默认信源")
-        return []
+        return default
     try:
         with open(sources_file, 'r', encoding='utf-8') as f:
             raw = json.load(f)
         if not isinstance(raw, list):
-            logger.warning(f"{sources_file} 格式错误，应为数组")
-            return []
+            logger.warning(f"{sources_file} 格式错误，应为数组，使用默认信源")
+            return default
         configs = []
         for item in raw:
             if isinstance(item, str):
@@ -207,10 +235,14 @@ def load_sources_config() -> List[Dict]:
                     "url": item["url"],
                     "time_window_hours": item.get("time_window_hours", 24)
                 })
+            else:
+                logger.warning(f"跳过无效信源配置: {item}")
+        if not configs:
+            return default
         return configs
     except Exception as e:
-        logger.error(f"加载 {sources_file} 失败: {e}")
-        return []
+        logger.error(f"加载 {sources_file} 失败: {e}，使用默认信源")
+        return default
 
 def load_source_map() -> Dict[str, str]:
     map_file = "source_map.json"
@@ -238,20 +270,55 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================= 失败信源禁用（已禁用） =================
-def load_disabled_sources() -> Dict:
+# ================= 失败信源自动禁用与恢复 =================
+def load_disabled_sources() -> Dict[str, dict]:
+    if os.path.exists(DISABLED_SOURCES_FILE):
+        try:
+            with open(DISABLED_SOURCES_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    new_data = {}
+                    for k, v in data.items():
+                        if isinstance(v, int):
+                            new_data[k] = {"fail_count": v, "disabled_at": None}
+                        else:
+                            new_data[k] = v
+                    return new_data
+        except:
+            pass
     return {}
 
-def save_disabled_sources(disabled):
-    pass
+def save_disabled_sources(disabled: Dict[str, dict]):
+    with open(DISABLED_SOURCES_FILE, 'w', encoding='utf-8') as f:
+        json.dump(disabled, f, indent=2, ensure_ascii=False)
 
-def update_disabled_sources(failed_sources):
-    if failed_sources:
-        logger.info(f"本次有 {len(failed_sources)} 个信源失败，但不会禁用")
-    pass
+def update_disabled_sources(failed_sources: List[Tuple[str, str]]):
+    disabled = load_disabled_sources()
+    today = datetime.utcnow().date().isoformat()
+    for url, _ in failed_sources:
+        if url not in disabled:
+            disabled[url] = {"fail_count": 0, "disabled_at": None}
+        disabled[url]["fail_count"] += 1
+        if disabled[url]["fail_count"] >= DISABLE_FAILED_THRESHOLD and disabled[url]["disabled_at"] is None:
+            disabled[url]["disabled_at"] = today
+            logger.warning(f"信源 {url} 已连续失败 {disabled[url]['fail_count']} 次，禁用（禁用时间 {today}）")
+    success_urls = set(RAW_SOURCES) - {u for u, _ in failed_sources}
+    for url in success_urls:
+        if url in disabled:
+            del disabled[url]
+    recover_cutoff = (datetime.utcnow().date() - timedelta(days=DISABLE_AUTO_RECOVER_DAYS)).isoformat()
+    to_remove = []
+    for url, info in disabled.items():
+        if info.get("disabled_at") and info["disabled_at"] < recover_cutoff:
+            to_remove.append(url)
+    for url in to_remove:
+        logger.info(f"信源 {url} 已禁用超过 {DISABLE_AUTO_RECOVER_DAYS} 天，自动恢复")
+        del disabled[url]
+    save_disabled_sources(disabled)
 
-def is_source_disabled(url):
-    return False
+def is_source_disabled(url: str) -> bool:
+    disabled = load_disabled_sources()
+    return url in disabled
 
 # ================= 健康实例获取 =================
 def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
@@ -319,10 +386,10 @@ def fetch_ai_fallback(url: str, original_url: str) -> List[Dict]:
             }
         }
         result = app.scrape_url(url, params=params)
-        if result and 'extract' in result and result['extract']:
+        if result and isinstance(result, dict) and result.get('extract'):
             extracted = result['extract']
-            title = extracted.get('title', '无标题')
-            summary = extracted.get('summary', '无摘要')
+            title = extracted.get('title', '无标题')[:200]
+            summary = extracted.get('summary', '无摘要')[:500]
             published_str = extracted.get('published', '未知时间')
             items = [{
                 "title": title,
@@ -337,15 +404,18 @@ def fetch_ai_fallback(url: str, original_url: str) -> List[Dict]:
             }]
             logger.info(f"[AI Fallback] 成功提取内容: {title[:50]}...")
             return items
+        else:
+            logger.warning(f"[AI Fallback] 未提取到有效内容: {result}")
+            return []
     except Exception as e:
         logger.error(f"[AI Fallback] 调用异常: {e}")
-    return []
+        return []
 
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    rsshub = random.choice(rsshub_instances) if rsshub_instances else "https://rsshub.app"
-    if "voachinese.com" in url:
-        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
+    # 优先使用传入的实例列表（随机选择一个）
+    rsshub = random.choice(rsshub_instances) if rsshub_instances else FALLBACK_RSSHUB_INSTANCES[0]
+    # 常规网站的官方RSS
     if "bbc.com/zhongwen/simp" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
     if "dw.com/zh" in url:
@@ -358,11 +428,8 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
     if "epochtimes.com" in url:
         return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
-    if "x.com/" in url:
-        username = extract_username_from_x_url(url)
-        if username:
-            return f"{rsshub}/twitter/user/{username}"
-        return None
+    if "voachinese.com" in url:
+        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "reuters.com/world/china" in url:
         return f"{rsshub}/reuters/world/china"
     if "wsj.com/news/china" in url:
@@ -387,6 +454,13 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return "https://rsf.org/en/rss.xml"
     if "uscc.gov" in url:
         return "https://www.uscc.gov/rss.xml"
+    # X 平台通过 RSSHub 路由
+    if "x.com/" in url or "twitter.com/" in url:
+        username = extract_username_from_x_url(url)
+        if username:
+            return f"{rsshub}/twitter/user/{username}"
+        return None
+    # 其他网址直接作为 RSS 尝试
     return url
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
@@ -442,8 +516,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                      rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         return []
-    
-    # 1. 获取 RSS 候选
+    # 1. RSS 候选
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if rss_candidates:
         if isinstance(rss_candidates, str):
@@ -451,11 +524,10 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
         for rss_url in rss_candidates:
             items = fetch_single_rss(rss_url, original_url, processed_hashes, time_window_hours)
             if items:
-                logger.debug(f"{original_url} 成功 via {rss_url}")
+                logger.debug(f"{original_url} 成功 via RSS: {rss_url}")
                 return items
             time.sleep(0.5)
-    
-    # 2. 如果是 X 信源且 RSS 失败，尝试 Nitter
+    # 2. X 信源尝试 Nitter
     if "x.com/" in original_url:
         username = extract_username_from_x_url(original_url)
         if username:
@@ -463,18 +535,16 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                 test_url = f"{nitter}/{username}/rss"
                 items = fetch_single_rss(test_url, original_url, processed_hashes, time_window_hours)
                 if items:
-                    logger.debug(f"X {username} 成功 via {nitter}")
+                    logger.debug(f"X {username} 成功 via Nitter: {nitter}")
                     return items
                 time.sleep(0.5)
-    
-    # 3. 最终降级：AI 抓取
-    logger.info(f"所有常规方式失败，尝试 AI 降级: {original_url}")
-    ai_items = fetch_ai_fallback(original_url, original_url)
-    if ai_items:
-        logger.info(f"AI 降级抓取成功: {original_url}")
-        return ai_items
-    
-    logger.debug(f"{original_url} 所有抓取方式均失败")
+    # 3. AI 降级（仅对 X 或可能重要的源尝试，但Firecrawl不支持X）
+    if "x.com/" in original_url:
+        ai_items = fetch_ai_fallback(original_url, original_url)
+        if ai_items:
+            logger.info(f"AI 降级成功: {original_url}")
+            return ai_items
+    logger.debug(f"{original_url} 所有方式均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
@@ -523,7 +593,7 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         json.dump(data, f, ensure_ascii=False, indent=2)
     update_disabled_sources(failed_sources)
 
-# ================= 历史事件加载（保持原有逻辑） =================
+# ================= 历史事件加载 =================
 def load_previous_events() -> List[str]:
     events = []
     if not os.path.exists("report.md"):
@@ -549,6 +619,7 @@ def load_previous_events() -> List[str]:
         logger.error(f"加载上次报告失败: {e}")
     return events
 
+# ================= 跨天重复隐藏 =================
 def load_event_counts() -> Dict:
     if os.path.exists(EVENT_COUNTS_FILE):
         try:
@@ -844,7 +915,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<tr>\n<thead>\n'
+                html_table += '<table>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -861,7 +932,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
             html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody><tr>\n"
+                html_table += "</thead><tbody></tbody></table>\n"
                 in_table = False
     if in_table:
         html_table += "</thead><tbody></tbody></table>\n"
