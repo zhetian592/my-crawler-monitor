@@ -64,7 +64,7 @@ KEEP_DAYS = 7
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 4          # 降低并发
+MAX_WORKERS = 4
 AI_REQUEST_DELAY = 2
 EVENT_EXPIRE_DAYS = 60
 
@@ -72,10 +72,10 @@ EVENT_COUNTS_FILE = "event_counts.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 
-# 稳定的 RSSHub 实例列表（按优先级排序）
+# 多实例备用列表（按优先级排序，第一个是最优的）
 RSSHUB_INSTANCES = [
-    "https://hub.slarker.me",
     "https://rsshub.pseudoyu.com",
+    "https://hub.slarker.me",
     "https://rsshub.rssforever.com",
     "https://rsshub.woodland.cafe",
     "https://rss.owo.nz",
@@ -135,7 +135,7 @@ def content_hash(title: str, summary: str) -> str:
 def convert_to_official_x_link(link: str) -> str:
     if not link:
         return link
-    # 替换各种 RSSHub 实例域名为 x.com
+    # 替换所有 RSSHub 实例域名为 x.com
     for inst in RSSHUB_INSTANCES:
         domain = inst.replace("https://", "")
         link = link.replace(domain, "x.com")
@@ -147,7 +147,7 @@ def convert_to_official_x_link(link: str) -> str:
     ]
     for old, new in replacements:
         link = link.replace(old, new)
-    # 提取推文真实链接
+    # 从 URL 中提取推文真实链接
     match = re.search(r'/twitter/user/([^/]+)/status/(\d+)', link)
     if match:
         username = match.group(1)
@@ -278,7 +278,7 @@ def fetch_url(url: str, timeout: int = 30, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心（多实例降级）=================
+# ================= 抓取核心（多实例降级，支持 ?limit 参数）=================
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
     try:
         resp = fetch_url(rss_url, timeout=25)
@@ -331,24 +331,25 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
 def fetch_with_failover(original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         return []
-    # 如果是 RSSHub 的 Twitter 路由，尝试多实例
+    # 判断是否是 RSSHub 的 Twitter 路由（包含 /twitter/user/）
     if "/twitter/user/" in original_url:
-        match = re.search(r'/twitter/user/([^/?]+)', original_url)
+        parsed = urllib.parse.urlparse(original_url)
+        path = parsed.path
+        query = parsed.query
+        match = re.search(r'/twitter/user/([^/?]+)', path)
         if not match:
             return fetch_single_rss(original_url, original_url, processed_hashes, time_window_hours)
         username = match.group(1)
-        # 提取查询参数
-        query = ""
-        if "?" in original_url:
-            query = "?" + original_url.split("?", 1)[1]
         for inst in RSSHUB_INSTANCES:
-            test_url = f"{inst}/twitter/user/{username}{query}"
+            test_url = f"{inst}{path}"
+            if query:
+                test_url += f"?{query}"
             logger.debug(f"尝试 RSSHub 实例: {test_url}")
             items = fetch_single_rss(test_url, original_url, processed_hashes, time_window_hours)
             if items:
                 logger.info(f"实例 {inst} 成功抓取 @{username}")
                 return items
-            time.sleep(1)  # 避免过快重试
+            time.sleep(1)
         logger.warning(f"所有 RSSHub 实例均无法抓取 @{username}")
         return []
     else:
@@ -718,7 +719,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<tr>\n<thead>\n'
+                html_table += '<td>\n<thead>\n'
                 in_table = True
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
@@ -732,10 +733,10 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_table += f"<td>{cell}</td>\n"
-            html_table += "<tr>\n"
+            html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></tr>\n"
+                html_table += "</thead><tbody></tbody><tr>\n"
                 in_table = False
     if in_table:
         html_table += "</thead><tbody></tbody></table>\n"
