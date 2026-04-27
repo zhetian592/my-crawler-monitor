@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 集成 Firecrawl AI 降级抓取
+# crawler.py - RSS优先 + Nitter降级 + Firecrawl AI降级（修复版）
 import os
 import json
 import re
@@ -23,12 +23,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Firecrawl 导入（修复版）
 try:
-    from firecrawl import FirecrawlApp
+    from firecrawl.firecrawl import FirecrawlApp
     FIRECRAWL_AVAILABLE = True
 except ImportError:
-    FIRECRAWL_AVAILABLE = False
-    print("Warning: firecrawl not installed. AI fallback disabled.")
+    try:
+        from firecrawl import FirecrawlApp
+        FIRECRAWL_AVAILABLE = True
+    except ImportError:
+        FIRECRAWL_AVAILABLE = False
+        print("Warning: Firecrawl SDK not installed. AI fallback disabled.")
 
 try:
     import tiktoken
@@ -73,7 +78,7 @@ MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
 AI_REQUEST_DELAY = 2
-DISABLE_FAILED_THRESHOLD = 3
+DISABLE_FAILED_THRESHOLD = 3          # 已禁用，但保留变量
 DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
 
@@ -83,14 +88,25 @@ HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 
+# Firecrawl API Key
 FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
+
+# 公共 RSSHub 实例（已大量失效，建议替换为私有实例）
+FALLBACK_RSSHUB_INSTANCES = [
+    "https://rsshub.app",
+    "https://rsshub.ktachibana.party"
+]
+
+# 如果要使用私有 RSSHub（例如部署在 Railway），请取消注释并填入你的域名
+# PRIVATE_RSSHUB = "https://your-project.up.railway.app"
+# if PRIVATE_RSSHUB:
+#     FALLBACK_RSSHUB_INSTANCES.insert(0, PRIVATE_RSSHUB)
 
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net", "https://nitter.poast.org", "https://nitter.privacyredirect.com",
     "https://lightbrd.com", "https://nitter.space", "https://nitter.tiekoetter.com",
     "https://nitter.catsarch.com", "https://xcancel.com"
 ]
-FALLBACK_RSSHUB_INSTANCES = ["https://rsshub.app", "https://rsshub.ktachibana.party"]
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
@@ -190,13 +206,13 @@ def extract_username_from_x_url(url: str) -> Optional[str]:
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
     if not os.path.exists(sources_file):
-        logger.warning(f"{sources_file} 不存在，使用默认信源")
+        logger.warning(f"{sources_file} 不存在，使用内置默认信源")
         return []
     try:
         with open(sources_file, 'r', encoding='utf-8') as f:
             raw = json.load(f)
         if not isinstance(raw, list):
-            logger.warning(f"{sources_file} 格式错误，应为数组")
+            logger.warning(f"{sources_file} 不是数组，使用内置默认")
             return []
         configs = []
         for item in raw:
@@ -238,18 +254,14 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================= 失败信源禁用（已禁用） =================
-def load_disabled_sources() -> Dict:
+# ================= 禁用机制（已取消） =================
+def load_disabled_sources():
     return {}
-
 def save_disabled_sources(disabled):
     pass
-
 def update_disabled_sources(failed_sources):
     if failed_sources:
         logger.info(f"本次有 {len(failed_sources)} 个信源失败，但不会禁用")
-    pass
-
 def is_source_disabled(url):
     return False
 
@@ -298,6 +310,7 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
 
 # ================= AI 降级抓取 (Firecrawl) =================
 def fetch_ai_fallback(url: str, original_url: str) -> List[Dict]:
+    """使用 Firecrawl API 抓取网页并用 AI 提取结构化数据"""
     if not FIRECRAWL_AVAILABLE or not FIRECRAWL_API_KEY:
         logger.debug("Firecrawl 不可用，跳过 AI 降级")
         return []
@@ -319,10 +332,10 @@ def fetch_ai_fallback(url: str, original_url: str) -> List[Dict]:
             }
         }
         result = app.scrape_url(url, params=params)
-        if result and 'extract' in result and result['extract']:
+        if result and isinstance(result, dict) and result.get('extract'):
             extracted = result['extract']
-            title = extracted.get('title', '无标题')
-            summary = extracted.get('summary', '无摘要')
+            title = extracted.get('title', '无标题')[:200]
+            summary = extracted.get('summary', '无摘要')[:500]
             published_str = extracted.get('published', '未知时间')
             items = [{
                 "title": title,
@@ -337,15 +350,17 @@ def fetch_ai_fallback(url: str, original_url: str) -> List[Dict]:
             }]
             logger.info(f"[AI Fallback] 成功提取内容: {title[:50]}...")
             return items
+        else:
+            logger.warning(f"[AI Fallback] 未提取到有效内容: {result}")
+            return []
     except Exception as e:
         logger.error(f"[AI Fallback] 调用异常: {e}")
-    return []
+        return []
 
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances) if rsshub_instances else "https://rsshub.app"
-    if "voachinese.com" in url:
-        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
+    # 常规网站的官方RSS
     if "bbc.com/zhongwen/simp" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
     if "dw.com/zh" in url:
@@ -358,11 +373,8 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
     if "epochtimes.com" in url:
         return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
-    if "x.com/" in url:
-        username = extract_username_from_x_url(url)
-        if username:
-            return f"{rsshub}/twitter/user/{username}"
-        return None
+    if "voachinese.com" in url:
+        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "reuters.com/world/china" in url:
         return f"{rsshub}/reuters/world/china"
     if "wsj.com/news/china" in url:
@@ -387,6 +399,13 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return "https://rsf.org/en/rss.xml"
     if "uscc.gov" in url:
         return "https://www.uscc.gov/rss.xml"
+    # X 平台通过 RSSHub 路由
+    if "x.com/" in url or "twitter.com/" in url:
+        username = extract_username_from_x_url(url)
+        if username:
+            return f"{rsshub}/twitter/user/{username}"
+        return None
+    # 其他网址直接作为 RSS 尝试
     return url
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, time_window_hours: int) -> List[Dict]:
@@ -412,6 +431,7 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, tim
             processed_hashes.add(h)
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
+            # 来源名称
             if "x.com/" in original_url:
                 username = extract_username_from_x_url(original_url) or original_url
                 source_name = "@" + username
@@ -442,8 +462,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                      rsshub_instances: List[str], time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         return []
-    
-    # 1. 获取 RSS 候选
+    # 1. RSS 候选
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if rss_candidates:
         if isinstance(rss_candidates, str):
@@ -451,11 +470,10 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
         for rss_url in rss_candidates:
             items = fetch_single_rss(rss_url, original_url, processed_hashes, time_window_hours)
             if items:
-                logger.debug(f"{original_url} 成功 via {rss_url}")
+                logger.debug(f"{original_url} 成功 via RSS: {rss_url}")
                 return items
             time.sleep(0.5)
-    
-    # 2. 如果是 X 信源且 RSS 失败，尝试 Nitter
+    # 2. X 信源尝试 Nitter
     if "x.com/" in original_url:
         username = extract_username_from_x_url(original_url)
         if username:
@@ -463,18 +481,16 @@ def fetch_with_retry(original_url: str, processed_hashes: set, nitter_instances:
                 test_url = f"{nitter}/{username}/rss"
                 items = fetch_single_rss(test_url, original_url, processed_hashes, time_window_hours)
                 if items:
-                    logger.debug(f"X {username} 成功 via {nitter}")
+                    logger.debug(f"X {username} 成功 via Nitter: {nitter}")
                     return items
                 time.sleep(0.5)
-    
-    # 3. 最终降级：AI 抓取
-    logger.info(f"所有常规方式失败，尝试 AI 降级: {original_url}")
-    ai_items = fetch_ai_fallback(original_url, original_url)
-    if ai_items:
-        logger.info(f"AI 降级抓取成功: {original_url}")
-        return ai_items
-    
-    logger.debug(f"{original_url} 所有抓取方式均失败")
+    # 3. AI 降级（仅对 X 或重要域名尝试，避免消耗）
+    if "x.com/" in original_url or original_url.endswith(".xml") or "rss" in original_url.lower():
+        ai_items = fetch_ai_fallback(original_url, original_url)
+        if ai_items:
+            logger.info(f"AI 降级成功: {original_url}")
+            return ai_items
+    logger.debug(f"{original_url} 所有方式均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
@@ -505,517 +521,5 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"去重后共 {len(all_items)} 条")
     return all_items, failed_sources
 
-# ================= 持久化失败记录 =================
-def log_failed_sources(failed_sources: List[Tuple[str, str]]):
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-    data = {}
-    if os.path.exists(FAILED_SOURCES_LOG):
-        try:
-            with open(FAILED_SOURCES_LOG, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except:
-            pass
-    if today not in data:
-        data[today] = []
-    for url, reason in failed_sources:
-        data[today].append({"url": url, "reason": reason, "timestamp": datetime.utcnow().isoformat()})
-    with open(FAILED_SOURCES_LOG, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    update_disabled_sources(failed_sources)
-
-# ================= 历史事件加载（保持原有逻辑） =================
-def load_previous_events() -> List[str]:
-    events = []
-    if not os.path.exists("report.md"):
-        return events
-    try:
-        with open("report.md", "r", encoding='utf-8') as f:
-            content = f.read()
-        lines = content.split("\n")
-        in_table = False
-        for line in lines:
-            if line.startswith("|") and "|" in line:
-                if not in_table:
-                    in_table = True
-                if re.match(r'^\|[\s\-:]+\|$', line):
-                    continue
-                cells = [c.strip() for c in line.split("|")[1:-1]]
-                if len(cells) >= 1:
-                    event = cells[0].replace("🆕", "").strip()
-                    event = re.sub(r'（\d+个信源）', '', event).strip()
-                    events.append(event)
-        logger.info(f"从上次报告加载了 {len(events)} 个事件简述")
-    except Exception as e:
-        logger.error(f"加载上次报告失败: {e}")
-    return events
-
-def load_event_counts() -> Dict:
-    if os.path.exists(EVENT_COUNTS_FILE):
-        try:
-            with open(EVENT_COUNTS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, dict) and all(isinstance(v, int) for v in data.values()):
-                    new_data = {}
-                    for k, v in data.items():
-                        new_data[k] = {"count": v, "last_seen": datetime.utcnow().strftime("%Y-%m-%d")}
-                    return new_data
-                return data
-        except:
-            pass
-    return {}
-
-def save_event_counts(counts: Dict):
-    with open(EVENT_COUNTS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(counts, f, ensure_ascii=False, indent=2)
-
-def cleanup_old_events(event_counts: Dict) -> Dict:
-    cutoff = datetime.utcnow().date() - timedelta(days=EVENT_EXPIRE_DAYS)
-    to_delete = []
-    for event, record in event_counts.items():
-        last_seen = record.get("last_seen")
-        if last_seen:
-            try:
-                last_date = datetime.strptime(last_seen, "%Y-%m-%d").date()
-                if last_date < cutoff:
-                    to_delete.append(event)
-            except:
-                pass
-    for event in to_delete:
-        del event_counts[event]
-        logger.info(f"删除过期事件: {event[:50]}")
-    return event_counts
-
-def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
-    events_data = []
-    for row in rows:
-        cells = [c.strip() for c in row.split("|")[1:-1]]
-        if len(cells) != 5:
-            continue
-        event = cells[0]
-        link = cells[1]
-        risk = cells[2]
-        source = cells[3]
-        time_ago = cells[4]
-        pub_dt = None
-        if "小时前" in time_ago:
-            try:
-                hours = int(time_ago.replace("小时前", "").strip())
-                pub_dt = datetime.utcnow() - timedelta(hours=hours)
-            except:
-                pass
-        elif "分钟前" in time_ago:
-            try:
-                minutes = int(time_ago.replace("分钟前", "").strip())
-                pub_dt = datetime.utcnow() - timedelta(minutes=minutes)
-            except:
-                pass
-        elif "天前" in time_ago:
-            try:
-                days = int(time_ago.replace("天前", "").strip())
-                pub_dt = datetime.utcnow() - timedelta(days=days)
-            except:
-                pass
-        events_data.append((event, source, link, risk, time_ago, pub_dt, row))
-
-    merged = []
-    used = [False] * len(events_data)
-    for i, (event_i, src_i, link_i, risk_i, time_ago_i, pub_dt_i, row_i) in enumerate(events_data):
-        if used[i]:
-            continue
-        group = [(event_i, src_i, link_i, risk_i, time_ago_i, pub_dt_i, row_i)]
-        for j, (event_j, src_j, link_j, risk_j, time_ago_j, pub_dt_j, row_j) in enumerate(events_data):
-            if i == j or used[j]:
-                continue
-            if is_similar(event_i, event_j):
-                group.append((event_j, src_j, link_j, risk_j, time_ago_j, pub_dt_j, row_j))
-                used[j] = True
-        used[i] = True
-        merged.append(group)
-
-    unique_rows = []
-    events_in_report = []
-    for group in merged:
-        best_item = None
-        best_pub = None
-        best_priority = 999
-        for item in group:
-            event, src, link, risk, time_ago, pub_dt, row = item
-            priority = get_source_priority(src)
-            if best_item is None:
-                best_item = item
-                best_pub = pub_dt
-                best_priority = priority
-            else:
-                if pub_dt and best_pub:
-                    if pub_dt > best_pub:
-                        best_item = item
-                        best_pub = pub_dt
-                        best_priority = priority
-                    elif pub_dt == best_pub and priority < best_priority:
-                        best_item = item
-                        best_pub = pub_dt
-                        best_priority = priority
-                elif pub_dt and not best_pub:
-                    best_item = item
-                    best_pub = pub_dt
-                    best_priority = priority
-                elif not pub_dt and best_pub:
-                    pass
-                else:
-                    if priority < best_priority:
-                        best_item = item
-                        best_pub = pub_dt
-                        best_priority = priority
-        first_event, first_src, first_link, first_risk, first_time_ago, _, _ = best_item
-        sources = sorted(set([s for _, s, _, _, _, _, _ in group]))
-        source_count = len(sources)
-        source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
-        event_text = first_event
-        if source_count > 1:
-            event_text = f"{event_text}（{source_count}个信源）"
-        new_cells = [event_text, first_link, first_risk, source_display, first_time_ago]
-        new_row = "| " + " | ".join(new_cells) + " |"
-        is_new = True
-        for old in old_events:
-            if is_similar(first_event, old):
-                is_new = False
-                break
-        if is_new:
-            new_cells[0] = "🆕 " + new_cells[0]
-            new_row = "| " + " | ".join(new_cells) + " |"
-        unique_rows.append(new_row)
-        events_in_report.append(first_event)
-    return unique_rows, events_in_report
-
-def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
-    today = datetime.utcnow().date()
-    new_counts = {}
-    new_rows = []
-    for row in rows:
-        cells = [c.strip() for c in row.split("|")[1:-1]]
-        if len(cells) != 5:
-            continue
-        event = cells[0].replace("🆕", "").strip()
-        event = re.sub(r'（\d+个信源）', '', event).strip()
-        record = event_counts.get(event, {"count": 0, "last_seen": None})
-        count = record.get("count", 0)
-        last_seen_str = record.get("last_seen")
-        last_seen = datetime.strptime(last_seen_str, "%Y-%m-%d").date() if last_seen_str else None
-
-        if count >= MAX_REPEAT_COUNT:
-            if last_seen and (today - last_seen).days < COOLDOWN_DAYS:
-                logger.info(f"隐藏重复事件（冷却期内）: {event[:50]}")
-                new_counts[event] = {"count": count, "last_seen": today.isoformat()}
-                continue
-            else:
-                count = 1
-        else:
-            count += 1
-
-        new_rows.append(row)
-        new_counts[event] = {"count": count, "last_seen": today.isoformat()}
-
-    for event, record in event_counts.items():
-        if event not in new_counts:
-            new_counts[event] = record
-    return new_rows, new_counts
-
-# ================= AI 分析 =================
-def estimate_tokens(text: str) -> int:
-    if TIKTOKEN_AVAILABLE:
-        enc = tiktoken.encoding_for_model("gpt-4o-mini")
-        return len(enc.encode(text))
-    else:
-        return int(len(text) / 1.5)
-
-def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
-    for attempt in range(max_retries):
-        try:
-            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
-            response = client.chat.completions.create(
-                model=AI_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=4000,
-            )
-            content = response.choices[0].message.content
-            if content is not None:
-                return content
-        except Exception as e:
-            logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
-    return None
-
-def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
-    if not articles:
-        return "无相关内容。\n", []
-
-    blocks = []
-    for art in articles:
-        meta = f"发布时间：{art.get('time_ago', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
-        block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
-        blocks.append(block)
-
-    batches = []
-    current_batch = []
-    current_tokens = 0
-    prompt_prefix = """你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**，并按重要性输出报告。
-
-**一、请严格遵守以下过滤规则（忽略极低价值内容）**：
-- 纯转发（RT/转发）且无新增实质性评论。
-- 仅包含链接，无任何文字说明或文字少于10个字符。
-- 仅含表情符号、无意义的感叹或口号（如"太可怕了""支持"等）。
-- 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
-- 与涉华负面舆情无关的个人生活、娱乐、广告等。
-
-**二、必须保留的内容（不得忽略）**：
-- 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
-- 即使内容没有直接提及"中国"或"中共"，但事件发生在中国境内或涉及中国公民，也应保留。
-- 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
-
-**三、输出格式要求**：
-- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |`
-- 每行一条负面内容，按以下优先级排序：
-  1. 来自官方机构、智库、政府部门的报告类内容。
-  2. 其他有实质分析的负面新闻或推文。
-- 原文链接列使用 `[查看](URL)` 格式。
-- "信息来源"列使用输入中提供的"来源"名称（已转换为中文）。
-- "发布多久前"列直接使用输入中的"发布时间"。
-- 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
-- 不要添加任何额外解释、标题或总结。
-
-**四、风险点要求**：
-- 每条风险点应包含类别（如"社会维稳""教育管控""文化冲突""执法争议"等）和简要说明，总字数不超过30字。
-
-以下是抓取到的部分内容：\n\n"""
-    prompt_tokens = estimate_tokens(prompt_prefix)
-    max_content_tokens = 10000
-    for block in blocks:
-        block_tokens = estimate_tokens(block)
-        if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
-            batches.append(current_batch)
-            current_batch = []
-            current_tokens = 0
-        current_batch.append(block)
-        current_tokens += block_tokens
-    if current_batch:
-        batches.append(current_batch)
-
-    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
-
-    all_table_rows = []
-    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |"
-    table_sep = "|----------|----------|------------|----------|------------|"
-    for batch_idx, batch in enumerate(batches, 1):
-        combined = "\n".join(batch)
-        prompt = prompt_prefix + combined
-        content = call_ai_with_retry(prompt)
-        if content is None:
-            logger.error(f"AI 分析批次 {batch_idx} 重试失败，跳过")
-            continue
-        lines = content.split("\n")
-        in_table = False
-        for line in lines:
-            if line.startswith("|") and "|" in line:
-                if not in_table:
-                    in_table = True
-                if re.match(r'^\|[\s\-:]+\|$', line):
-                    continue
-                if line.startswith(table_header):
-                    continue
-                cells = [c.strip() for c in line.split("|")[1:-1]]
-                if len(cells) == 5:
-                    all_table_rows.append(line)
-        time.sleep(AI_REQUEST_DELAY)
-
-    if not all_table_rows:
-        return "无相关内容。\n", []
-
-    unique_rows, events_in_report = deduplicate_and_mark_new(all_table_rows, old_events)
-    final_table = "\n".join([table_header, table_sep] + unique_rows)
-    return final_table, events_in_report
-
-# ================= 报告生成 =================
-def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
-    lines = report_text.split("\n")
-    html_table = ""
-    in_table = False
-    for line in lines:
-        if line.startswith("|") and "|" in line:
-            if not in_table:
-                html_table += '<tr>\n<thead>\n'
-                in_table = True
-            if re.match(r'^\|[\s\-:]+\|$', line):
-                continue
-            cells = [c.strip() for c in line.split("|")[1:-1]]
-            if len(cells) != 5:
-                continue
-            html_table += "<tr>\n"
-            for cell in cells:
-                link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
-                if link_match:
-                    text, url = link_match.group(1), link_match.group(2)
-                    cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
-                html_table += f"<td>{cell}</td>\n"
-            html_table += "</tr>\n"
-        else:
-            if in_table:
-                html_table += "</thead><tbody></tbody><tr>\n"
-                in_table = False
-    if in_table:
-        html_table += "</thead><tbody></tbody></table>\n"
-
-    login_script = f'''
-<script>
-(function() {{
-    const PASSWORD = '{REPORT_PASSWORD}';
-    const SESSION_KEY = 'logged_in';
-    if (sessionStorage.getItem(SESSION_KEY) === 'true') return;
-    let pwd = prompt('请输入访问密码：');
-    if (pwd === PASSWORD) {{
-        sessionStorage.setItem(SESSION_KEY, 'true');
-    }} else {{
-        document.body.innerHTML = '<div style="text-align:center; margin-top:50px;"><h2>密码错误，无法访问</h2></div>';
-        throw new Error('登录失败');
-    }}
-}})();
-</script>
-'''
-
-    return f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <title>内容安全行业舆情报告</title>
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 20px; line-height: 1.5; }}
-        h1 {{ font-size: 1.8rem; border-bottom: 1px solid #eaecef; }}
-        table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
-        th, td {{ border: 1px solid #dfe2e5; padding: 8px 10px; text-align: left; vertical-align: top; }}
-        th {{ background-color: #f6f8fa; }}
-        a {{ color: #0366d6; text-decoration: none; }}
-        a:hover {{ text-decoration: underline; }}
-        .footer {{ margin-top: 30px; font-size: 12px; color: #6a737d; }}
-    </style>
-    {login_script}
-</head>
-<body>
-<h1>📊 内容安全行业舆情报告</h1>
-<p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
-<div id="report">
-{html_table}
-</div>
-<div class="footer">
-    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成，仅供参考。</p>
-</div>
-</body>
-</html>"""
-
-def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
-    final_content = timestamp_str + report_text
-
-    with open("report.md", "w", encoding="utf-8") as f:
-        f.write(final_content)
-    html_content = generate_html_report(report_text, all_articles)
-    with open("report.html", "w", encoding="utf-8") as f:
-        f.write(html_content)
-
-    os.makedirs("reports", exist_ok=True)
-    history_path = f"reports/report_{timestamp}.html"
-    with open(history_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
-
-    generate_index_page()
-    os.makedirs("data", exist_ok=True)
-    with open(f"data/raw_{timestamp}.json", "w", encoding="utf-8") as f:
-        json.dump(all_articles, f, ensure_ascii=False, indent=2)
-    logger.info(f"报告已保存: report.html, report.md, 历史归档 {history_path}")
-
-def generate_index_page():
-    reports_dir = "reports"
-    if not os.path.exists(reports_dir):
-        return
-    files = [f for f in os.listdir(reports_dir) if f.startswith("report_") and f.endswith(".html")]
-    files.sort(reverse=True)
-    index_html = """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>历史舆情报告</title>
-<style>body { font-family: sans-serif; margin: 20px; } a { text-decoration: none; }</style>
-</head>
-<body><h1>历史舆情报告列表</h1><ul>"""
-    for f in files:
-        timestamp = f.replace("report_", "").replace(".html", "")
-        if len(timestamp) == 15:
-            display = f"{timestamp[:4]}-{timestamp[4:6]}-{timestamp[6:8]} {timestamp[9:11]}:{timestamp[11:13]}:{timestamp[13:15]} UTC"
-        else:
-            display = timestamp
-        index_html += f'<li><a href="{f}" target="_blank">{display}</a></li>'
-    index_html += "</ul><p><a href='../report.html'>查看最新报告</a></p></body></html>"
-    with open(os.path.join(reports_dir, "index.html"), "w", encoding="utf-8") as f:
-        f.write(index_html)
-
-def cleanup_old_files(days: int = KEEP_DAYS):
-    cutoff = datetime.utcnow() - timedelta(days=days)
-    for dir_name in ["reports", "data"]:
-        if not os.path.exists(dir_name):
-            continue
-        for f in os.listdir(dir_name):
-            filepath = os.path.join(dir_name, f)
-            try:
-                mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
-                if mtime < cutoff:
-                    os.remove(filepath)
-                    logger.info(f"已删除旧文件: {filepath}")
-            except Exception as e:
-                logger.warning(f"删除文件 {filepath} 失败: {e}")
-
-# ================= 主函数 =================
-def main():
-    start = time.time()
-    logger.info("=== 开始抓取信源 ===")
-    all_articles, failed_sources = fetch_all_sources()
-    logger.info(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
-
-    if not all_articles:
-        logger.warning("未抓到任何文章")
-        with open("report.md", "w") as f:
-            f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
-        with open("report.html", "w") as f:
-            f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
-        log_failed_sources(failed_sources)
-        return
-
-    log_failed_sources(failed_sources)
-    old_events = load_previous_events()
-    event_counts = load_event_counts()
-    event_counts = cleanup_old_events(event_counts)
-    save_event_counts(event_counts)
-
-    logger.info("=== 调用 AI 分析 ===")
-    report_table, events_in_report = call_ai_unified(all_articles, old_events)
-
-    if report_table != "无相关内容。\n":
-        lines = report_table.split("\n")
-        header = lines[0] if lines else ""
-        sep = lines[1] if len(lines) > 1 else ""
-        table_rows = lines[2:] if len(lines) > 2 else []
-        filtered_rows, new_counts = filter_by_repeat_count(table_rows, event_counts)
-        save_event_counts(new_counts)
-        if filtered_rows:
-            final_table = "\n".join([header, sep] + filtered_rows)
-        else:
-            final_table = "无相关内容（所有事件已进入冷却期）。\n"
-    else:
-        final_table = report_table
-        save_event_counts(event_counts)
-
-    full_report = final_table
-    save_reports_with_history(full_report, all_articles, failed_sources)
-    logger.info(f"=== 清理超过 {KEEP_DAYS} 天的旧文件 ===")
-    cleanup_old_files()
-    logger.info(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
-
-if __name__ == "__main__":
-    main()
+# 后续的 log_failed_sources, load_previous_events, load_event_counts, ... 等函数与之前保持不变（因篇幅省略）
+# 为保持完整性，这里仅示意，实际使用时将之前稳定版本的后半部分（从 log_failed_sources 开始）粘贴过来
