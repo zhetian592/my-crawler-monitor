@@ -295,6 +295,258 @@ def is_source_disabled(url: str) -> bool:
     disabled = load_disabled_sources()
     return url in disabled
 
+# ================= 实例健康管理器 =================
+class InstanceHealthManager:
+    """管理 Nitter 和 RSSHub 实例的健康状态"""
+
+    def __init__(self):
+        self.health_data = self._load_health_data()
+        self._session = None
+
+    def _load_health_data(self) -> Dict:
+        """加载实例健康数据"""
+        if os.path.exists(INSTANCE_HEALTH_FILE):
+            try:
+                with open(INSTANCE_HEALTH_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        return data
+            except Exception as e:
+                logger.warning(f"加载实例健康数据失败: {e}")
+        return {"nitter": {}, "rsshub": {}, "last_full_check": None}
+
+    def _save_health_data(self):
+        """保存实例健康数据"""
+        try:
+            with open(INSTANCE_HEALTH_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.health_data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"保存实例健康数据失败: {e}")
+
+    def _get_session(self) -> requests.Session:
+        """获取或创建 Session"""
+        if self._session is None:
+            self._session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(
+                pool_connections=10,
+                pool_maxsize=20,
+                max_retries=1
+            )
+            self._session.mount('http://', adapter)
+            self._session.mount('https://', adapter)
+        return self._session
+
+    def check_nitter_instance(self, instance_url: str) -> Tuple[bool, int]:
+        """检测单个 Nitter 实例是否健康，返回 (是否健康, 响应时间ms)"""
+        test_url = f"{instance_url}/{INSTANCE_CHECK_USER}/rss"
+        headers = {"User-Agent": random.choice(USER_AGENTS)}
+        start_time = time.time()
+        try:
+            session = self._get_session()
+            resp = session.get(test_url, headers=headers, timeout=INSTANCE_CHECK_TIMEOUT, proxies=PROXIES)
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            if resp.status_code == 200:
+                feed = feedparser.parse(resp.content)
+                if feed.entries and len(feed.entries) > 0:
+                    return True, elapsed_ms
+            return False, elapsed_ms
+        except Exception as e:
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            logger.debug(f"Nitter 实例检测失败 {instance_url}: {e}")
+            return False, elapsed_ms
+
+    def check_rsshub_instance(self, instance_url: str) -> Tuple[bool, int]:
+        """检测单个 RSSHub 实例是否健康，返回 (是否健康, 响应时间ms)"""
+        test_url = f"{instance_url}/bbc/zhongwen/simp"
+        headers = {"User-Agent": random.choice(USER_AGENTS)}
+        start_time = time.time()
+        try:
+            session = self._get_session()
+            resp = session.get(test_url, headers=headers, timeout=INSTANCE_CHECK_TIMEOUT, proxies=PROXIES)
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            if resp.status_code == 200:
+                feed = feedparser.parse(resp.content)
+                if feed.entries:
+                    return True, elapsed_ms
+            return False, elapsed_ms
+        except Exception as e:
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            logger.debug(f"RSSHub 实例检测失败 {instance_url}: {e}")
+            return False, elapsed_ms
+
+    def update_instance_status(self, instance_type: str, instance_url: str,
+                                success: bool, response_time: int = None):
+        """更新实例状态"""
+        if instance_type not in self.health_data:
+            self.health_data[instance_type] = {}
+
+        if instance_url not in self.health_data[instance_type]:
+            self.health_data[instance_type][instance_url] = {
+                "avg_response_ms": 0,
+                "success_count": 0,
+                "fail_count": 0,
+                "consecutive_failures": 0,
+                "last_check": None,
+                "disabled_until": None,
+                "score": 50
+            }
+
+        data = self.health_data[instance_type][instance_url]
+        data["last_check"] = datetime.utcnow().isoformat()
+
+        if success:
+            data["success_count"] += 1
+            data["consecutive_failures"] = 0
+            data["disabled_until"] = None
+            if response_time:
+                # 更新平均响应时间（指数移动平均）
+                if data["avg_response_ms"] == 0:
+                    data["avg_response_ms"] = response_time
+                else:
+                    data["avg_response_ms"] = int(0.7 * data["avg_response_ms"] + 0.3 * response_time)
+        else:
+            data["fail_count"] += 1
+            data["consecutive_failures"] += 1
+            if data["consecutive_failures"] >= CONSECUTIVE_FAIL_THRESHOLD:
+                # 临时禁用
+                disabled_until = datetime.utcnow() + timedelta(minutes=TEMP_DISABLE_MINUTES)
+                data["disabled_until"] = disabled_until.isoformat()
+                logger.warning(f"实例 {instance_url} 连续失败 {data['consecutive_failures']} 次，临时禁用至 {data['disabled_until']}")
+
+        # 计算健康分数
+        total = data["success_count"] + data["fail_count"]
+        if total > 0:
+            success_rate = data["success_count"] / total
+            # 分数 = 成功率 * 50 + 响应速度分 * 30 + 连续成功奖励 * 20
+            speed_score = max(0, 50 - data["avg_response_ms"] / 100) if data["avg_response_ms"] > 0 else 25
+            streak_bonus = min(20, data["success_count"] * 2) if data["consecutive_failures"] == 0 else 0
+            data["score"] = int(success_rate * 50 + speed_score * 0.6 + streak_bonus)
+
+        self._save_health_data()
+
+    def get_best_instance(self, instance_type: str, fallback_list: List[str]) -> Optional[str]:
+        """获取最佳可用实例"""
+        now = datetime.utcnow()
+
+        # 收集所有可用实例
+        candidates = []
+        for url in fallback_list:
+            health_info = self.health_data.get(instance_type, {}).get(url, {})
+
+            # 检查是否被临时禁用
+            disabled_until = health_info.get("disabled_until")
+            if disabled_until:
+                try:
+                    disable_time = datetime.fromisoformat(disabled_until)
+                    if now < disable_time:
+                        continue  # 仍在禁用期
+                except:
+                    pass
+
+            score = health_info.get("score", 50)
+            candidates.append((url, score))
+
+        if not candidates:
+            # 所有实例都被禁用，尝试重置并使用第一个
+            logger.warning(f"所有 {instance_type} 实例都被禁用，尝试使用默认实例")
+            return fallback_list[0] if fallback_list else None
+
+        # 按分数排序，选择最高分
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[0][0]
+
+    def get_sorted_instances(self, instance_type: str, fallback_list: List[str]) -> List[str]:
+        """获取按健康分数排序的实例列表"""
+        now = datetime.utcnow()
+
+        # 重置过期的禁用状态
+        for url in fallback_list:
+            health_info = self.health_data.get(instance_type, {}).get(url, {})
+            disabled_until = health_info.get("disabled_until")
+            if disabled_until:
+                try:
+                    disable_time = datetime.fromisoformat(disabled_until)
+                    if now >= disable_time:
+                        health_info["disabled_until"] = None
+                        health_info["consecutive_failures"] = 0
+                        logger.info(f"实例 {url} 禁用期已过，重新启用")
+                except:
+                    pass
+
+        # 收集并排序
+        candidates = []
+        for url in fallback_list:
+            health_info = self.health_data.get(instance_type, {}).get(url, {})
+            disabled_until = health_info.get("disabled_until")
+            if disabled_until:
+                try:
+                    disable_time = datetime.fromisoformat(disabled_until)
+                    if now < disable_time:
+                        continue
+                except:
+                    pass
+            score = health_info.get("score", 50)
+            candidates.append((url, score))
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return [url for url, _ in candidates]
+
+    def run_health_check(self, instance_type: str = None):
+        """运行健康检测"""
+        logger.info(f"开始实例健康检测...")
+
+        if instance_type is None or instance_type == "nitter":
+            logger.info("检测 Nitter 实例...")
+            for url in FALLBACK_NITTER_INSTANCES:
+                success, response_time = self.check_nitter_instance(url)
+                self.update_instance_status("nitter", url, success, response_time)
+                status = "✓" if success else "✗"
+                logger.info(f"  {status} {url} - {response_time}ms")
+                time.sleep(0.5)
+
+        if instance_type is None or instance_type == "rsshub":
+            logger.info("检测 RSSHub 实例...")
+            for url in FALLBACK_RSSHUB_INSTANCES:
+                success, response_time = self.check_rsshub_instance(url)
+                self.update_instance_status("rsshub", url, success, response_time)
+                status = "✓" if success else "✗"
+                logger.info(f"  {status} {url} - {response_time}ms")
+                time.sleep(0.5)
+
+        self.health_data["last_full_check"] = datetime.utcnow().isoformat()
+        self._save_health_data()
+        logger.info("实例健康检测完成")
+
+    def should_run_health_check(self) -> bool:
+        """判断是否需要运行健康检测"""
+        last_check = self.health_data.get("last_full_check")
+        if not last_check:
+            return True
+        try:
+            last_time = datetime.fromisoformat(last_check)
+            return datetime.utcnow() - last_time > timedelta(hours=HEALTH_CHECK_INTERVAL_HOURS)
+        except:
+            return True
+
+    def mark_success(self, instance_type: str, instance_url: str, response_time: int = None):
+        """标记实例成功"""
+        self.update_instance_status(instance_type, instance_url, True, response_time)
+
+    def mark_failure(self, instance_type: str, instance_url: str):
+        """标记实例失败"""
+        self.update_instance_status(instance_type, instance_url, False)
+
+
+# 全局实例健康管理器
+_instance_health_manager = None
+
+def get_health_manager() -> InstanceHealthManager:
+    """获取全局实例健康管理器"""
+    global _instance_health_manager
+    if _instance_health_manager is None:
+        _instance_health_manager = InstanceHealthManager()
+    return _instance_health_manager
+
 # ================= 健康实例获取 =================
 def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
     if os.path.exists(file_path):
