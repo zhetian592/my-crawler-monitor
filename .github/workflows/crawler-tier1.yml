@@ -1,35 +1,46 @@
+name: Tier1 - Manual
 
+on:
+  workflow_dispatch:
 
-name: Tier1 - Manualon:
-  workflow_dispatch:jobs:
+jobs:
   crawl:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PAT_TOKEN }}  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: '3.10'
+          token: ${{ secrets.PAT_TOKEN }}
+          fetch-depth: 0
 
-  - name: Install dependencies
-    run: |
-      pip install --upgrade pip
-      pip install -r requirements.txt
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-  - name: Run crawler
-    env:
-      GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
-    run: python crawler.py
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-  - name: Commit and push changes
-    uses: stefanzweifel/git-auto-commit-action@v5
-    with:
-      commit_message: "Manual update $(date -u '+%Y-%m-%d %H:%M:%S')"
-      file_pattern: "data/* report.md report.html reports/*"
-      commit_user_name: "github-actions[bot]"
-      commit_user_email: "github-actions[bot]@users.noreply.github.com"
-      commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-    env:
-      GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+      - name: Run crawler
+        env:
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+        run: python crawler.py
 
+      # 生成带日期的 commit 消息（解决 with 中无法执行命令的问题）
+      - name: Generate commit message
+        id: msg
+        run: |
+          echo "COMMIT_MSG=Manual update $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: ${{ env.COMMIT_MSG }}
+          file_pattern: "data/* report.md report.html reports/*"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
