@@ -1,30 +1,33 @@
-生成时间：2026-05-26 06:03:20 UTC
+生成时间：2026-05-26 07:17:14 UTC
 
 | 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |
 |----------|----------|------------|----------|------------|
-| -------- | -------- | ------------ | -------- | ------------ |
-| 山西煤矿爆炸事故已致82人死亡，仍有人下落不明 | [查看](https://cn.nytimes.com/china/20260525/xi-coal-mine-explosion-rescue/?utm_source=RSS) | 执法争议，事故责任追究不力 | 纽约时报中文网 | 刚刚 |
-| 🆕 中国15年来最严重煤矿事故后，民众怒火升温 | [查看](https://www.bbc.com/zhongwen/articles/c8jvvywlmezo/trad?at_medium=RSS&at_campaign=rss) | 社会维稳，民众对政府的不满 | BBC中文 | 19小时前 |
-| 中国山西矿难至少82死 十七年来最致命事故 | [查看](https://www.bbc.com/zhongwen/articles/ce8ppdxe023o/trad?at_medium=RSS&at_campaign=rss) | 执法争议，企业安全管理失责 | BBC中文 | 14小时前 |
-| 🆕 依旧是“吃人的矿山”？ | [查看](https://www.rfi.fr/cn/%E4%B8%AD%E5%9B%BD/20260525-%E4%BE%9D%E6%97%A7%E6%98%AF-%E5%90%83%E4%BA%BA%E7%9A%84%E7%9F%BF%E5%B1%B1) | 社会维稳，矿工安全保障缺失 | 法国国际广播电台 | 8小时前 |
-| 🆕 中国打击非法跨境股票交易 股民竞相抛售离场 | [查看](https://www.dw.com/zh/中国打击非法跨境股票交易-股民竞争抛售离场/a-77291413?maca=chi-rss-chi-all-1127-rdf) | 社会维稳：股民恐慌抛售影响市场稳定 | 德国之声 | 30分钟前 |
-| 🆕 中共打压下 富途创办人身家一天蒸发17亿美元 | [查看](https://www.epochtimes.com/gb/26/5/26/n14774219.htm) | 经济风险：企业家财富蒸发影响投资信心 | 大纪元 | 2小时前 |
-| 🆕 广州龙卷风肆虐 大树被吹倒工地建筑被掀翻 | [查看](https://www.epochtimes.com/gb/26/5/26/n14774210.htm) | 自然灾害：基础设施受损影响民生 | 大纪元 | 3小时前 |
-| 美众院通过《加强人口贩运侦查法案》，议员称这是打击中国的人口贩运行为的重要一步 | [查看](https://www.voachinese.com/a/house-passed-enhancing-detection-of-human-trafficking-act-20260304/8121162.html) | 人口贩运 | 美国之音中文 | 时间未知 |
-| 众议院三委员会主席致函国务卿，请求将中国学生学者联谊会认定为外国使团 | [查看](https://www.voachinese.com/a/chairmen-moolenaar-mast-walberg-ask-rubio-to-act-on-the-chinese-students-and-scholars-association-20260305/8121677.html) | 外交关系 | 美国之音中文 | 时间未知 |
-| 🆕 美参议院审议国防战略，科尔比：特朗普政府对华“强有力但静悄悄”威慑是核心 | [查看](https://www.voachinese.com/a/colby-defends-national-defense-strategy-as-senators-press-on-taiwan-indo-pacific-priorities-20260303/8119843.html) | 军事威慑 | 美国之音中文 | 时间未知 |
-| 🆕 美国会报告揭露中国利用拉丁美洲“军民两用”航天设施收集情报 | [查看](https://www.voachinese.com/a/new-select-committee-investigation-uncovers-china-s-space-operations-in-latin-america-20260227/8118270.html) | 情报收集 | 美国之音中文 | 时间未知 |
-| 美共和党议员敦促财政部阻止美国资本资助中国军工产业 | [查看](https://www.voachinese.com/a/republican-members-of-congress-urge-the-treasury-department-to-block-u-s-capital-from-funding-china-s-military-industry-20260226/8117954.html) | 军工产业 | 美国之音中文 | 时间未知 |
-| 🆕 5月25日，腾讯新闻转载的香港媒体凤凰网的深度报道遭全网删除，揭露河南村镇银行储户人间惨剧 | [查看](https://x.com/whyyoutouzhele/status/2059107263135260863#m) | 资金安全 | 李老师不是你老师 | 5小时前 |
-| 🆕 重庆沙坪坝，成年人被强行带到戒网瘾学校遭虐待 | [查看](https://x.com/whyyoutouzhele/status/2059114803512455360#m) | 人权侵犯 | 李老师不是你老师 | 2小时前 |
-| 🆕 5月22日，武汉市部分业主聚集维权，抗议地铁施工噪音 | [查看](https://x.com/whyyoutouzhele/status/2059031759690600889#m) | 社会维稳 | 李老师不是你老师 | 8小时前 |
-| 🆕 5月25日，厦门校长在学生跑操时撑伞引发网友吐槽 | [查看](https://x.com/whyyoutouzhele/status/2059069504550732031#m) | 教育问题 | 李老师不是你老师 | 8小时前 |
-| 🆕 网传南通理工大学，自个玩捆绑play，窒息死了 | [查看](https://x.com/newszg_official/status/2059053317448466472#m) | 社会事件，涉及校园安全 | 新闻调查 | 6小时前 |
-| 🆕 广东珠海华发商都的星巴克咖啡店，三个男的拿刀疯狂砍人，导致一人死亡 | [查看](https://x.com/newszg_official/status/2059053104545645049#m) | 社会治安，暴力事件 | 新闻调查 | 6小时前 |
-| 🆕 中国底层悲剧，每时每刻都在上演，工人被电死、货车司机疲劳驾驶猝死等 | [查看](https://x.com/newszg_official/status/2058910741001101449#m) | 社会问题，劳动安全 | 新闻调查 | 16小时前 |
-| 🆕 江苏南京一钓友落水溺亡，岸上无人施救，塘主面临巨额赔偿 | [查看](https://x.com/newszg_official/status/2058908003227881763#m) | 社会责任，公共安全 | 新闻调查 | 16小时前 |
-| 中共保密局罕见曝光航天系统泄密案，工程师向外国出卖涉密信息 | [查看](https://x.com/NTDChinese/status/2059081249684398401#m) | 国家安全，信息泄露 | 新唐人 | 7小时前 |
-| 三家9口被冲走 重慶大量房屋被夷为平地 | [查看](https://x.com/NTDChinese/status/2059088074563518686#m) | 社会维稳：洪灾导致伤亡，官方数据被质疑造假。 | 新唐人 | 4小时前 |
-| 🆕 外媒：伊朗绕道阿联酋 获取中方卫星设备 | [查看](https://x.com/dajiyuan/status/2059061957953507399#m) | 执法争议：中企疑似向伊朗秘密出售武器，涉及国际制裁。 | 大纪元 | 6小时前 |
-| 亲共总统武契奇访华当天 塞国万人上街逼宫 | [查看](https://x.com/dajiyuan/status/2059031761817051379#m) | 政治动荡：抗议活动因火灾事故引发，质疑中企参与的工程质量。 | 大纪元 | 8小时前 |
-| 中共突曝航天泄密案 | [查看](https://x.com/NTDFIVE/status/2059021488922009917#m) | 文化冲突：航天技术泄密可能影响国际信任 | 大纪元 | 8小时前 |
+| --------（2个信源） | -------- | ------------ | ---、-------- | ------------ |
+| 中国15年来最严重煤矿事故后，民众怒火升温 | [查看](https://www.bbc.com/zhongwen/articles/c8jvvywlmezo/trad?at_medium=RSS&at_campaign=rss) | 社会维稳：民众要求追责，质疑安全管理 | BBC中文 | 20小时前 |
+| 中国山西矿难至少82死 十七年来最致命事故 | [查看](https://www.bbc.com/zhongwen/articles/ce8ppdxe023o/trad?at_medium=RSS&at_campaign=rss) | 执法争议：事故责任未明确，救援不力 | BBC中文 | 16小时前 |
+| 依旧是“吃人的矿山”？ | [查看](https://www.rfi.fr/cn/%E4%B8%AD%E5%9B%BD/20260525-%E4%BE%9D%E6%97%A7%E6%98%AF-%E5%90%83%E4%BA%BA%E7%9A%84%E7%9F%BF%E5%B1%B1) | 社会维稳：矿工安全隐患严重，救援不及时 | 法国国际广播电台 | 9小时前 |
+| 山西煤矿爆炸事故已致82人死亡，仍有人下落不明 | [查看](https://cn.nytimes.com/china/20260525/xi-coal-mine-explosion-rescue/?utm_source=RSS) | 社会维稳：矿难频发，责任追究不足 | 纽约时报中文网 | 20小时前 |
+| 中国打击非法跨境股票交易 股民竞相抛售离场 | [查看](https://www.dw.com/zh/中國打擊非法跨境股票交易-股民競相拋售離場/a-77291413?maca=chi-rss-chi-all-1127-rdf) | 经济风险：政策突变导致市场恐慌 | 德国之声 | 1小时前 |
+| 🆕 特朗普向中国示好引发印度担忧 | [查看](https://cn.nytimes.com/world/20260525/trump-rubio-india-china/?utm_source=RSS) | 外交风险：区域紧张局势加剧 | 纽约时报中文网 | 21小时前 |
+| 美众院通过《加强人口贩运侦查法案》，议员称这是打击中国的人口贩运行为的重要一步 | [查看](https://www.voachinese.com/a/house-passed-enhancing-detection-of-human-trafficking-act-20260304/8121162.html) | 人权风险：人口贩运问题引发国际关注 | 美国之音中文 | 时间未知 |
+| 众议院三委员会主席致函国务卿，请求将中国学生学者联谊会认定为外国使团 | [查看](https://www.voachinese.com/a/chairmen-moolenaar-mast-walberg-ask-rubio-to-act-on-the-chinese-students-and-scholars-association-20260305/8121677.html) | 外交风险：对华政策趋紧，影响交流 | 美国之音中文 | 时间未知 |
+| 中共打压下 富途创办人身家一天蒸发17亿美元 | [查看](https://www.epochtimes.com/gb/26/5/26/n14774219.htm) | 经济风险，企业受压迫导致财富损失 | 大纪元 | 4小时前 |
+| 🆕 非洲加纳突袭多家中资床垫厂，多名中国老板因销售劣质的床垫被加纳执法人员带走 | [查看](https://x.com/whyyoutouzhele/status/2059145004107337989#m) | 文化冲突，影响中资企业形象 | 李老师不是你老师 | 1小时前 |
+| 5月25日，腾讯新闻转载的香港媒体凤凰网的深度报道遭全网删除，揭露河南村镇银行储户困境 | [查看](https://x.com/whyyoutouzhele/status/2059107263135260863#m) | 言论管控，影响公众知情权 | 李老师不是你老师 | 4小时前 |
+| 重庆沙坪坝，成年人被强行带到戒网瘾学校遭虐待 | [查看](https://x.com/whyyoutouzhele/status/2059114803512455360#m) | 社会维稳，执法争议引发舆论 | 李老师不是你老师 | 3小时前 |
+| 🆕 珠海星巴克持刀伤人事件，导致多人受伤 | [查看](https://x.com/whyyoutouzhele/status/2059129904457752645#m) | 社会安全，公共场所暴力事件 | 李老师不是你老师 | 1小时前 |
+| 🆕 男子探访餐具消毒厂，遭工人暴力对待，工厂卫生条件差 | [查看](https://x.com/whyyoutouzhele/status/2059061956863209818#m) | 社会维稳：工人暴力对待外来者，反映社会矛盾 | 李老师不是你老师 | 7小时前 |
+| 🆕 外卖员呼吁组建工会，视频被抖音下架 | [查看](https://x.com/whyyoutouzhele/status/2059054405085716750#m) | 劳动权益：外卖员维权被打压，反映社会不公 | 李老师不是你老师 | 7小时前 |
+| 🆕 东莞工厂表彰加班员工，奖励引发网友吐槽 | [查看](https://x.com/whyyoutouzhele/status/2059099307764236332#m) | 劳动权益：加班文化与低报酬，引发社会不满 | 李老师不是你老师 | 8小时前 |
+| 🆕 武汉小区业主抗议地铁施工噪音影响生活 | [查看](https://x.com/whyyoutouzhele/status/2059031759690600889#m) | 社会维稳：业主维权反映政府与民众矛盾 | 李老师不是你老师 | 9小时前 |
+| 🆕 苏州安置房业主反对高压线安装，现场保安监视 | [查看](https://x.com/whyyoutouzhele/status/2059016656484274187#m) | 社会维稳：业主反对高压线，反映居民权益被忽视 | 李老师不是你老师 | 10小时前 |
+| 🆕 珠海星巴克发生砍人事件，造成一死 | [查看](https://x.com/newszg_official/status/2059052939059335663#m) | 社会治安：暴力事件频发，反映社会安全隐患 | 新闻调查 | 7小时前 |
+| 🆕 南通理工大学传出学生窒息事件 | [查看](https://x.com/newszg_official/status/2059050075607933406#m) | 教育问题：校园安全隐患引发关注 | 新闻调查 | 8小时前 |
+| 🆕 中国底层悲剧频发，工人和司机等群体遭遇不幸 | [查看](https://x.com/newszg_official/status/2058910741001101449#m) | 社会问题：底层民众生存困境，反映社会不公 | 新闻调查 | 17小时前 |
+| 南京钓友落水溺亡，塘主面临赔偿 | [查看](https://x.com/newszg_official/status/2058908003227881763#m) | 社会安全：公共安全意识缺失，导致悲剧发生 | 新闻调查 | 17小时前 |
+| 🆕 网传手游ID审查现况，存在性别歧视 | [查看](https://x.com/newszg_official/status/2058899732119134307#m) | 文化冲突：游戏审查不公，反映社会性别问题 | 新闻调查 | 17小时前 |
+| 🆕 云南高级法院法官文盲，影响司法公正 | [查看](https://x.com/fangshimin/status/2059167900867707048#m) | 司法问题：法官素质问题影响法律公正 | 方世民 | 13分钟前 |
+| 中共保密局罕见曝光航天系统泄密案，称工程师向外国出卖涉密信息 | [查看](https://epochtim.es/ldm17g) | 执法争议：泄密事件引发对国家安全的质疑 | 新唐人 | 8小时前 |
+| 🆕 重庆洪灾导致大量房屋被夷为平地，伤亡数字被质疑造假 | [查看](https://epochtim.es/6qb5ma) | 社会维稳：政府信息透明度低，民众不满 | 新唐人 | 5小时前 |
+| 🆕 塞尔维亚总统武契奇访华当天，数万民众上街抗议要求提前选举 | [查看](https://epochtim.es/hb3ec1) | 政治动荡：反政府抗议活动影响中共形象 | 大纪元 | 9小时前 |
+| 🆕 雙匯子公司豬肉檢出抗生素超標近38倍，引發網絡關注 | [查看](https://x.com/dajiyuan/status/2059054406356947274#m) | 社会维稳：食品安全问题引发公众恐慌 | 大纪元 | 7小时前 |
