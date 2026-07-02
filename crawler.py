@@ -760,143 +760,7 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
-    # 完全保留原有逻辑
-    events_data = []
-    for row in rows:
-        cells = [c.strip() for c in row.split("|")[1:-1]]
-        if len(cells) != 5:
-            continue
-        event = cells[0]
-        link = cells[1]
-        risk = cells[2]
-        source = cells[3]
-        time_ago = cells[4]
-        pub_dt = None
-        if "小时前" in time_ago:
-            try:
-                hours = int(time_ago.replace("小时前", "").strip())
-                pub_dt = datetime.utcnow() - timedelta(hours=hours)
-            except:
-                pass
-        elif "分钟前" in time_ago:
-            try:
-                minutes = int(time_ago.replace("分钟前", "").strip())
-                pub_dt = datetime.utcnow() - timedelta(minutes=minutes)
-            except:
-                pass
-        elif "天前" in time_ago:
-            try:
-                days = int(time_ago.replace("天前", "").strip())
-                pub_dt = datetime.utcnow() - timedelta(days=days)
-            except:
-                pass
-        events_data.append((event, source, link, risk, time_ago, pub_dt, row))
-
-    merged = []
-    used = [False] * len(events_data)
-    for i, (event_i, src_i, link_i, risk_i, time_ago_i, pub_dt_i, row_i) in enumerate(events_data):
-        if used[i]:
-            continue
-        group = [(event_i, src_i, link_i, risk_i, time_ago_i, pub_dt_i, row_i)]
-        for j, (event_j, src_j, link_j, risk_j, time_ago_j, pub_dt_j, row_j) in enumerate(events_data):
-            if i == j or used[j]:
-                continue
-            if is_similar(event_i, event_j):
-                group.append((event_j, src_j, link_j, risk_j, time_ago_j, pub_dt_j, row_j))
-                used[j] = True
-        used[i] = True
-        merged.append(group)
-
-    unique_rows = []
-    events_in_report = []
-    for group in merged:
-        best_item = None
-        best_pub = None
-        best_priority = 999
-        for item in group:
-            event, src, link, risk, time_ago, pub_dt, row = item
-            priority = get_source_priority(src)
-            if best_item is None:
-                best_item = item
-                best_pub = pub_dt
-                best_priority = priority
-            else:
-                if pub_dt and best_pub:
-                    if pub_dt > best_pub:
-                        best_item = item
-                        best_pub = pub_dt
-                        best_priority = priority
-                    elif pub_dt == best_pub and priority < best_priority:
-                        best_item = item
-                        best_pub = pub_dt
-                        best_priority = priority
-                elif pub_dt and not best_pub:
-                    best_item = item
-                    best_pub = pub_dt
-                    best_priority = priority
-                elif not pub_dt and best_pub:
-                    pass
-                else:
-                    if priority < best_priority:
-                        best_item = item
-                        best_pub = pub_dt
-                        best_priority = priority
-        first_event, first_src, first_link, first_risk, first_time_ago, _, _ = best_item
-        sources = sorted(set([s for _, s, _, _, _, _, _ in group]))
-        source_count = len(sources)
-        source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
-        event_text = first_event
-        if source_count > 1:
-            event_text = f"{event_text}（{source_count}个信源）"
-        new_cells = [event_text, first_link, first_risk, source_display, first_time_ago]
-        new_row = "| " + " | ".join(new_cells) + " |"
-        is_new = True
-        for old in old_events:
-            if is_similar(first_event, old):
-                is_new = False
-                break
-        if is_new:
-            new_cells[0] = "🆕 " + new_cells[0]
-            new_row = "| " + " | ".join(new_cells) + " |"
-        unique_rows.append(new_row)
-        events_in_report.append(first_event)
-    return unique_rows, events_in_report
-
-def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
-    today = datetime.utcnow().date()
-    new_counts = {}
-    new_rows = []
-    for row in rows:
-        cells = [c.strip() for c in row.split("|")[1:-1]]
-        if len(cells) != 5:
-            continue
-        event = cells[0].replace("🆕", "").strip()
-        event = re.sub(r'（\d+个信源）', '', event).strip()
-        record = event_counts.get(event, {"count": 0, "last_seen": None})
-        count = record.get("count", 0)
-        last_seen_str = record.get("last_seen")
-        last_seen = datetime.strptime(last_seen_str, "%Y-%m-%d").date() if last_seen_str else None
-
-        if count >= MAX_REPEAT_COUNT:
-            if last_seen and (today - last_seen).days < COOLDOWN_DAYS:
-                logger.info(f"隐藏重复事件（冷却期内）: {event[:50]}")
-                new_counts[event] = {"count": count, "last_seen": today.isoformat()}
-                continue
-            else:
-                count = 1
-        else:
-            count += 1
-
-        new_rows.append(row)
-        new_counts[event] = {"count": count, "last_seen": today.isoformat()}
-
-    for event, record in event_counts.items():
-        if event not in new_counts:
-            new_counts[event] = record
-    return new_rows, new_counts
-
-# ================= AI 分析（原有，无修改） =================
+# ================= 修改：AI 分析部分（新 Prompt，列数改为6） =================
 def estimate_tokens(text: str) -> int:
     if TIKTOKEN_AVAILABLE:
         enc = tiktoken.encoding_for_model("gpt-4o-mini")
@@ -936,6 +800,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
+    # 新的 Prompt，要求风险点详细（50-80字），并增加可信度字段
     prompt_prefix = """你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**，并按重要性输出报告。
 
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
@@ -951,18 +816,22 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 - 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
 
 **三、输出格式要求**：
-- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |`
+- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 可信度 |`
 - 每行一条负面内容，按以下优先级排序：
   1. 来自官方机构、智库、政府部门的报告类内容。
   2. 其他有实质分析的负面新闻或推文。
 - 原文链接列使用 `[查看](URL)` 格式。
 - "信息来源"列使用输入中提供的"来源"名称（已转换为中文）。
 - "发布多久前"列直接使用输入中的"发布时间"。
+- "可信度"列填写 **高/中/低**，判断标准：
+  - 高：官方信源、权威媒体（如路透、BBC、美联社等）或知名智库直接发布。
+  - 中：普通新闻媒体、一般智库、较有影响力的个人账号。
+  - 低：个人社交媒体、匿名爆料、未经证实的消息。
 - 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
 - 不要添加任何额外解释、标题或总结。
 
 **四、风险点要求**：
-- 每条风险点应包含类别（如"社会维稳""教育管控""文化冲突""执法争议"等）和简要说明，总字数不超过30字。
+- "潜在风险点"必须详细描述该事件可能引发的具体风险或后果，字数控制在 **50~80字**，要求有实质性内容，不能是简单标签。例如："该事件可能引发民众对教育公平的质疑，并可能被境外媒体炒作，影响国际形象，需要密切关注舆论发酵。"
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
@@ -981,8 +850,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
 
     all_table_rows = []
-    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 |"
-    table_sep = "|----------|----------|------------|----------|------------|"
+    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 可信度 |"
+    table_sep = "|----------|----------|------------|----------|------------|--------|"
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
@@ -1001,7 +870,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                 if line.startswith(table_header):
                     continue
                 cells = [c.strip() for c in line.split("|")[1:-1]]
-                if len(cells) == 5:
+                # 现在要求6列
+                if len(cells) == 6:
                     all_table_rows.append(line)
         time.sleep(AI_REQUEST_DELAY)
 
@@ -1012,7 +882,148 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     final_table = "\n".join([table_header, table_sep] + unique_rows)
     return final_table, events_in_report
 
-# ================= 报告生成（原有） =================
+# ================= 修改：去重标记函数（适配6列） =================
+def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
+    # 解析每行，每行有6列：事件简述，链接，风险点，来源，时间，可信度
+    events_data = []
+    for row in rows:
+        cells = [c.strip() for c in row.split("|")[1:-1]]
+        if len(cells) != 6:
+            continue
+        event = cells[0]
+        link = cells[1]
+        risk = cells[2]
+        source = cells[3]
+        time_ago = cells[4]
+        credibility = cells[5]  # 可信度，暂不用于去重，但保留在输出中
+        # 解析发布时间（用于排序）
+        pub_dt = None
+        if "小时前" in time_ago:
+            try:
+                hours = int(time_ago.replace("小时前", "").strip())
+                pub_dt = datetime.utcnow() - timedelta(hours=hours)
+            except:
+                pass
+        elif "分钟前" in time_ago:
+            try:
+                minutes = int(time_ago.replace("分钟前", "").strip())
+                pub_dt = datetime.utcnow() - timedelta(minutes=minutes)
+            except:
+                pass
+        elif "天前" in time_ago:
+            try:
+                days = int(time_ago.replace("天前", "").strip())
+                pub_dt = datetime.utcnow() - timedelta(days=days)
+            except:
+                pass
+        events_data.append((event, source, link, risk, time_ago, credibility, pub_dt, row))
+
+    merged = []
+    used = [False] * len(events_data)
+    for i, (event_i, src_i, link_i, risk_i, time_ago_i, cred_i, pub_dt_i, row_i) in enumerate(events_data):
+        if used[i]:
+            continue
+        group = [(event_i, src_i, link_i, risk_i, time_ago_i, cred_i, pub_dt_i, row_i)]
+        for j, (event_j, src_j, link_j, risk_j, time_ago_j, cred_j, pub_dt_j, row_j) in enumerate(events_data):
+            if i == j or used[j]:
+                continue
+            if is_similar(event_i, event_j):
+                group.append((event_j, src_j, link_j, risk_j, time_ago_j, cred_j, pub_dt_j, row_j))
+                used[j] = True
+        used[i] = True
+        merged.append(group)
+
+    unique_rows = []
+    events_in_report = []
+    for group in merged:
+        # 选择最佳项：按发布时间最新，其次按信源优先级
+        best_item = None
+        best_pub = None
+        best_priority = 999
+        for item in group:
+            event, src, link, risk, time_ago, cred, pub_dt, row = item
+            priority = get_source_priority(src)
+            if best_item is None:
+                best_item = item
+                best_pub = pub_dt
+                best_priority = priority
+            else:
+                if pub_dt and best_pub:
+                    if pub_dt > best_pub:
+                        best_item = item
+                        best_pub = pub_dt
+                        best_priority = priority
+                    elif pub_dt == best_pub and priority < best_priority:
+                        best_item = item
+                        best_pub = pub_dt
+                        best_priority = priority
+                elif pub_dt and not best_pub:
+                    best_item = item
+                    best_pub = pub_dt
+                    best_priority = priority
+                elif not pub_dt and best_pub:
+                    pass
+                else:
+                    if priority < best_priority:
+                        best_item = item
+                        best_pub = pub_dt
+                        best_priority = priority
+        first_event, first_src, first_link, first_risk, first_time_ago, first_cred, _, _ = best_item
+        sources = sorted(set([s for _, s, _, _, _, _, _, _ in group]))
+        source_count = len(sources)
+        source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
+        event_text = first_event
+        if source_count > 1:
+            event_text = f"{event_text}（{source_count}个信源）"
+        # 构建新行：保持6列
+        new_cells = [event_text, first_link, first_risk, source_display, first_time_ago, first_cred]
+        is_new = True
+        for old in old_events:
+            if is_similar(first_event, old):
+                is_new = False
+                break
+        if is_new:
+            new_cells[0] = "🆕 " + new_cells[0]
+        new_row = "| " + " | ".join(new_cells) + " |"
+        unique_rows.append(new_row)
+        events_in_report.append(first_event)
+    return unique_rows, events_in_report
+
+# ================= 修改：重复计数过滤（适配6列） =================
+def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
+    today = datetime.utcnow().date()
+    new_counts = {}
+    new_rows = []
+    for row in rows:
+        cells = [c.strip() for c in row.split("|")[1:-1]]
+        if len(cells) != 6:
+            continue
+        event = cells[0].replace("🆕", "").strip()
+        event = re.sub(r'（\d+个信源）', '', event).strip()
+        record = event_counts.get(event, {"count": 0, "last_seen": None})
+        count = record.get("count", 0)
+        last_seen_str = record.get("last_seen")
+        last_seen = datetime.strptime(last_seen_str, "%Y-%m-%d").date() if last_seen_str else None
+
+        if count >= MAX_REPEAT_COUNT:
+            if last_seen and (today - last_seen).days < COOLDOWN_DAYS:
+                logger.info(f"隐藏重复事件（冷却期内）: {event[:50]}")
+                new_counts[event] = {"count": count, "last_seen": today.isoformat()}
+                continue
+            else:
+                count = 1
+        else:
+            count += 1
+
+        new_rows.append(row)
+        new_counts[event] = {"count": count, "last_seen": today.isoformat()}
+
+    for event, record in event_counts.items():
+        if event not in new_counts:
+            new_counts[event] = record
+    return new_rows, new_counts
+
+# ================= 修改：HTML 报告生成（适配6列） =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
@@ -1020,27 +1031,35 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                html_table += '<tr>\n<thead>\n'
+                # 生成表头
+                html_table += '<table>\n<thead>\n<tr>\n'
+                # 解析表头
+                header_cells = [c.strip() for c in line.split("|")[1:-1]]
+                for h in header_cells:
+                    html_table += f"<th>{h}</th>\n"
+                html_table += "</tr>\n</thead>\n<tbody>\n"
                 in_table = True
+                continue
             if re.match(r'^\|[\s\-:]+\|$', line):
                 continue
             cells = [c.strip() for c in line.split("|")[1:-1]]
-            if len(cells) != 5:
+            if len(cells) != 6:
                 continue
             html_table += "<tr>\n"
             for cell in cells:
+                # 处理链接
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
                 if link_match:
                     text, url = link_match.group(1), link_match.group(2)
                     cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
-                html_table += f"<td>{cell}<tr>\n"
+                html_table += f"<td>{cell}</td>\n"
             html_table += "</tr>\n"
         else:
             if in_table:
-                html_table += "</thead><tbody></tbody></table>\n"
+                html_table += "</tbody></table>\n"
                 in_table = False
     if in_table:
-        html_table += "</thead><tbody></tbody><table>\n"
+        html_table += "</tbody></table>\n"
 
     login_script = f'''
 <script>
@@ -1159,7 +1178,7 @@ def cleanup_old_files(days: int = KEEP_DAYS):
                 except ValueError:
                     continue
 
-# ================= 主流程（增强后，完全兼容原有逻辑） =================
+# ================= 主流程 =================
 def main():
     start = time.time()
     logger.info("=== 开始抓取信源（过去24小时） ===")
