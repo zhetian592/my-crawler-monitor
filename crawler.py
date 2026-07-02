@@ -760,7 +760,7 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= 修改：AI 分析部分（新 Prompt，列数改为6） =================
+# ================= AI 分析部分（新 Prompt，列数6，风险等级） =================
 def estimate_tokens(text: str) -> int:
     if TIKTOKEN_AVAILABLE:
         enc = tiktoken.encoding_for_model("gpt-4o-mini")
@@ -800,8 +800,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
-    # 新的 Prompt，要求风险点详细（50-80字），并增加可信度字段
-    prompt_prefix = """你是一名专业的网络安全和舆情分析师。你的任务是：从以下内容中筛选出**涉及中国的负面舆情**，并按重要性输出报告。
+    # 最终版 Prompt（无标签前缀，两个示例，明确风险等级复合条件）
+    prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
 
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
 - 纯转发（RT/转发）且无新增实质性评论。
@@ -816,22 +816,37 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 - 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
 
 **三、输出格式要求**：
-- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 可信度 |`
-- 每行一条负面内容，按以下优先级排序：
-  1. 来自官方机构、智库、政府部门的报告类内容。
-  2. 其他有实质分析的负面新闻或推文。
+- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |`
+- 每行一条负面内容，按风险等级（高>中>低）和来源优先级排序。
 - 原文链接列使用 `[查看](URL)` 格式。
-- "信息来源"列使用输入中提供的"来源"名称（已转换为中文）。
-- "发布多久前"列直接使用输入中的"发布时间"。
-- "可信度"列填写 **高/中/低**，判断标准：
-  - 高：官方信源、权威媒体（如路透、BBC、美联社等）或知名智库直接发布。
-  - 中：普通新闻媒体、一般智库、较有影响力的个人账号。
-  - 低：个人社交媒体、匿名爆料、未经证实的消息。
+- "信息来源"列直接使用输入中提供的来源名称。
+- "发布多久前"列直接使用输入中的发布时间。
+- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性（高风险需同时具备高敏感性和较强传播力）：
+  - **高**：涉及重大政治敏感议题，且传播力强、煽动性高，极易引发舆论风暴或境外炒作。
+  - **中**：涉及较敏感社会议题，有一定传播空间，可能引发局部讨论。
+  - **低**：一般性批评或事实报道，传播范围有限，风险可控。
 - 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
 - 不要添加任何额外解释、标题或总结。
 
-**四、风险点要求**：
-- "潜在风险点"必须详细描述该事件可能引发的具体风险或后果，字数控制在 **50~80字**，要求有实质性内容，不能是简单标签。例如："该事件可能引发民众对教育公平的质疑，并可能被境外媒体炒作，影响国际形象，需要密切关注舆论发酵。"
+**四、风险点撰写要求（核心）**：
+请按以下结构撰写"潜在风险点"（一段文字，但需清晰包含两部分）：
+
+**第一部分（简述具体风险）**：用一句话概括该内容的主要风险性质（如涉及哪类事件、主要危害）。
+
+**第二部分（综合分析五个维度）**：紧接着用自然连贯的语言，从以下五个维度进行综合研判，**不要使用"传播性：""敏感性："等标签**，而是将所有维度融合成一段通顺的分析文字：
+- 传播潜力（账号影响力、平台热度、转发趋势）
+- 议题敏感性（政治、社会、外交、民族等敏感程度）
+- 语言煽动性（是否情绪化、对立化、号召性）
+- 可被利用性（是否容易被境内外势力放大或歪曲）
+- 历史关联性（是否与当前热点或历史敏感事件相关，是否存在叠加效应）
+
+**格式示例1（中敏感+社会议题）**：
+"该内容涉及×地执法争议，可能削弱公众对基层治理的信任。发布账号粉丝量较大且已被境外多家媒体引用，语言情绪化明显，极易激发共鸣；事件触及维稳议题属中高敏感，存在被恶意包装为'人权危机'的空间，且与近期类似事件形成叠加，需警惕舆论共振风险。"
+
+**格式示例2（高敏感+政治议题）**：
+"该内容由境外反华账号发布，直接攻击中国政治制度，基调极其负面。该账号在境外平台影响力大，原文已被大量转发，扩散趋势明显；语言极具煽动性和对抗性，极易被国内自媒体二次传播放大，并与当前外交摩擦形成联动，属于典型的认知战内容，需高度警惕并准备应对预案。"
+
+请确保每个风险点的描述总字数控制在 **80~120字**，既有总体概括，又有分维度细节，语言流畅无标签堆砌。
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
@@ -850,8 +865,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
 
     all_table_rows = []
-    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 可信度 |"
-    table_sep = "|----------|----------|------------|----------|------------|--------|"
+    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
+    table_sep = "|----------|----------|------------|----------|------------|------------|"
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
@@ -870,7 +885,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                 if line.startswith(table_header):
                     continue
                 cells = [c.strip() for c in line.split("|")[1:-1]]
-                # 现在要求6列
+                # 要求6列
                 if len(cells) == 6:
                     all_table_rows.append(line)
         time.sleep(AI_REQUEST_DELAY)
@@ -882,9 +897,9 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     final_table = "\n".join([table_header, table_sep] + unique_rows)
     return final_table, events_in_report
 
-# ================= 修改：去重标记函数（适配6列） =================
+# ================= 去重标记函数（适配6列） =================
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
-    # 解析每行，每行有6列：事件简述，链接，风险点，来源，时间，可信度
+    # 解析每行，每行有6列：事件简述，链接，风险点，来源，时间，风险等级
     events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
@@ -895,7 +910,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         risk = cells[2]
         source = cells[3]
         time_ago = cells[4]
-        credibility = cells[5]  # 可信度，暂不用于去重，但保留在输出中
+        risk_level = cells[5]  # 风险等级，暂不用于去重，但保留在输出中
         # 解析发布时间（用于排序）
         pub_dt = None
         if "小时前" in time_ago:
@@ -916,19 +931,19 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
                 pub_dt = datetime.utcnow() - timedelta(days=days)
             except:
                 pass
-        events_data.append((event, source, link, risk, time_ago, credibility, pub_dt, row))
+        events_data.append((event, source, link, risk, time_ago, risk_level, pub_dt, row))
 
     merged = []
     used = [False] * len(events_data)
-    for i, (event_i, src_i, link_i, risk_i, time_ago_i, cred_i, pub_dt_i, row_i) in enumerate(events_data):
+    for i, (event_i, src_i, link_i, risk_i, time_ago_i, risk_level_i, pub_dt_i, row_i) in enumerate(events_data):
         if used[i]:
             continue
-        group = [(event_i, src_i, link_i, risk_i, time_ago_i, cred_i, pub_dt_i, row_i)]
-        for j, (event_j, src_j, link_j, risk_j, time_ago_j, cred_j, pub_dt_j, row_j) in enumerate(events_data):
+        group = [(event_i, src_i, link_i, risk_i, time_ago_i, risk_level_i, pub_dt_i, row_i)]
+        for j, (event_j, src_j, link_j, risk_j, time_ago_j, risk_level_j, pub_dt_j, row_j) in enumerate(events_data):
             if i == j or used[j]:
                 continue
             if is_similar(event_i, event_j):
-                group.append((event_j, src_j, link_j, risk_j, time_ago_j, cred_j, pub_dt_j, row_j))
+                group.append((event_j, src_j, link_j, risk_j, time_ago_j, risk_level_j, pub_dt_j, row_j))
                 used[j] = True
         used[i] = True
         merged.append(group)
@@ -941,7 +956,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         best_pub = None
         best_priority = 999
         for item in group:
-            event, src, link, risk, time_ago, cred, pub_dt, row = item
+            event, src, link, risk, time_ago, risk_level, pub_dt, row = item
             priority = get_source_priority(src)
             if best_item is None:
                 best_item = item
@@ -968,7 +983,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
                         best_item = item
                         best_pub = pub_dt
                         best_priority = priority
-        first_event, first_src, first_link, first_risk, first_time_ago, first_cred, _, _ = best_item
+        first_event, first_src, first_link, first_risk, first_time_ago, first_risk_level, _, _ = best_item
         sources = sorted(set([s for _, s, _, _, _, _, _, _ in group]))
         source_count = len(sources)
         source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
@@ -976,7 +991,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         if source_count > 1:
             event_text = f"{event_text}（{source_count}个信源）"
         # 构建新行：保持6列
-        new_cells = [event_text, first_link, first_risk, source_display, first_time_ago, first_cred]
+        new_cells = [event_text, first_link, first_risk, source_display, first_time_ago, first_risk_level]
         is_new = True
         for old in old_events:
             if is_similar(first_event, old):
@@ -989,7 +1004,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         events_in_report.append(first_event)
     return unique_rows, events_in_report
 
-# ================= 修改：重复计数过滤（适配6列） =================
+# ================= 重复计数过滤（适配6列） =================
 def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
     today = datetime.utcnow().date()
     new_counts = {}
@@ -1023,7 +1038,7 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
             new_counts[event] = record
     return new_rows, new_counts
 
-# ================= 修改：HTML 报告生成（适配6列） =================
+# ================= HTML 报告生成（适配6列） =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
