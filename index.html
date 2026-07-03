@@ -14,69 +14,74 @@
             padding: 0;
         }
 
-:root {
-    --bg-body: #f1f5f9;
-    --bg-card: rgba(255, 255, 255, 0.40);
-    --bg-card-solid: rgba(255, 255, 255, 0.85);
-    --text-primary: #000000;
-    --text-secondary: #1a1a2e;
-    --border-color: rgba(0, 0, 0, 0.08);
-    --shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-    --shadow-hover: 0 12px 48px rgba(0, 0, 0, 0.25);
-    --radius: 20px;
-    --link-color: #1a4bbf;
-    --link-hover: #0d2d7a;
-    --gradient-primary: linear-gradient(135deg, #2563eb, #7c3aed);
-    --gradient-danger: linear-gradient(135deg, #f87171, #dc2626);
-    --gradient-warning: linear-gradient(135deg, #fbbf24, #d97706);
-    --gradient-success: linear-gradient(135deg, #34d399, #059669);
-    --glass-border: rgba(255, 255, 255, 0.30);
-    --glass-bg: rgba(255, 255, 255, 0.30);
-    --table-header-bg: rgba(0, 0, 0, 0.04);
-    --risk-high: #dc2626;
-    --risk-medium: #d97706;
-    --risk-low: #059669;
-    --tooltip-bg: rgba(255, 255, 255, 0.95);
-    --tooltip-text: #000000;
-    --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
-    --tooltip-border: rgba(255, 255, 255, 0.5);
-}
+        :root {
+            --bg-body: #f1f5f9;
+            --bg-card: rgba(255, 255, 255, 0.25);
+            --bg-card-solid: rgba(255, 255, 255, 0.85);
+            --text-primary: #000000;
+            --text-secondary: #1a1a2e;
+            --border-color: rgba(0, 0, 0, 0.15);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+            --shadow-hover: 0 12px 48px rgba(0, 0, 0, 0.28);
+            --radius: 20px;
+            --link-color: #1a4bbf;
+            --link-hover: #0d2d7a;
+            --gradient-primary: linear-gradient(135deg, #2563eb, #7c3aed);
+            --gradient-danger: linear-gradient(135deg, #f87171, #dc2626);
+            --gradient-warning: linear-gradient(135deg, #fbbf24, #d97706);
+            --gradient-success: linear-gradient(135deg, #34d399, #059669);
+            --glass-border: rgba(255, 255, 255, 0.30);
+            --glass-bg: rgba(255, 255, 255, 0.20);
+            --table-header-bg: rgba(0, 0, 0, 0.08);
+            --table-hover-bg: rgba(0, 0, 0, 0.04);
+            --risk-high: #dc2626;
+            --risk-medium: #d97706;
+            --risk-low: #059669;
+            --tooltip-bg: rgba(255, 255, 255, 0.96);
+            --tooltip-text: #000000;
+            --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
+            --tooltip-border: rgba(255, 255, 255, 0.5);
+        }
 
-[data-theme="dark"] {
-    --bg-body: #0b1121;
-    --bg-card: rgba(26, 35, 50, 0.45);
-    --bg-card-solid: rgba(26, 35, 50, 0.85);
-    --text-primary: #ffffff;
-    --text-secondary: #d0d8e0;
-    --border-color: rgba(255, 255, 255, 0.08);
-    --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    --shadow-hover: 0 12px 48px rgba(0, 0, 0, 0.7);
-    --glass-border: rgba(255, 255, 255, 0.06);
-    --glass-bg: rgba(26, 35, 50, 0.4);
-    --table-header-bg: rgba(30, 41, 59, 0.5);
-    --link-color: #6ea8fe;
-    --link-hover: #9ec8ff;
-    --tooltip-bg: rgba(26, 35, 50, 0.95);
-    --tooltip-text: #f0f4f8;
-    --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
-    --tooltip-border: rgba(255, 255, 255, 0.1);
-}
+        [data-theme="dark"] {
+            --bg-body: #0b1121;
+            --bg-card: rgba(26, 35, 50, 0.30);
+            --bg-card-solid: rgba(26, 35, 50, 0.85);
+            --text-primary: #ffffff;
+            --text-secondary: #d0d8e0;
+            --border-color: rgba(255, 255, 255, 0.12);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            --shadow-hover: 0 12px 48px rgba(0, 0, 0, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.06);
+            --glass-bg: rgba(26, 35, 50, 0.30);
+            --table-header-bg: rgba(30, 41, 59, 0.5);
+            --table-hover-bg: rgba(30, 41, 59, 0.3);
+            --link-color: #6ea8fe;
+            --link-hover: #9ec8ff;
+            --tooltip-bg: rgba(26, 35, 50, 0.96);
+            --tooltip-text: #f0f4f8;
+            --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+            --tooltip-border: rgba(255, 255, 255, 0.1);
+        }
 
-body {
-    background-image: url('clipboard-image-1783081059.jpg');
-    background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
-    background-color: #0b1121;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
-    color: var(--text-primary);
-    margin: 0;
-    padding: 20px;
-    line-height: 1.6;
-    transition: background 0.3s ease, color 0.3s ease;
-    min-height: 100vh;
-    position: relative;
-}
+        body {
+            background-image: url('clipboard-image-1783081059.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-color: #0b1121;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+            color: var(--text-primary);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            transition: background 0.3s ease, color 0.3s ease;
+            min-height: 100vh;
+            position: relative;
+            text-shadow: 0 1px 8px rgba(255, 255, 255, 0.08), 0 0 30px rgba(0, 0, 0, 0.12);
+        }
+
+        /* ===== 氛围光晕 ===== */
         body::before {
             content: '';
             position: fixed;
@@ -84,7 +89,7 @@ body {
             left: -20%;
             width: 70%;
             height: 70%;
-            background: radial-gradient(circle, rgba(56, 189, 248, 0.08) 0%, transparent 70%);
+            background: radial-gradient(circle, rgba(56, 189, 248, 0.06) 0%, transparent 70%);
             pointer-events: none;
             z-index: 0;
         }
@@ -95,7 +100,7 @@ body {
             right: -20%;
             width: 70%;
             height: 70%;
-            background: radial-gradient(circle, rgba(244, 114, 182, 0.06) 0%, transparent 70%);
+            background: radial-gradient(circle, rgba(244, 114, 182, 0.04) 0%, transparent 70%);
             pointer-events: none;
             z-index: 0;
         }
@@ -107,10 +112,11 @@ body {
             z-index: 1;
         }
 
+        /* ===== 卡片 ===== */
         .card {
             background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
             border: 1px solid var(--glass-border);
             border-radius: var(--radius);
             box-shadow: var(--shadow);
@@ -125,8 +131,13 @@ body {
             background: var(--bg-card-solid);
             backdrop-filter: none;
             border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+        }
+        .card-solid:hover {
+            box-shadow: var(--shadow-hover);
         }
 
+        /* ===== 导航栏 ===== */
         .navbar {
             display: flex;
             align-items: center;
@@ -145,6 +156,7 @@ body {
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            text-shadow: none;
         }
         .navbar-brand .logo-icon {
             font-size: 2rem;
@@ -183,6 +195,7 @@ body {
             flex-wrap: wrap;
         }
 
+        /* ===== 按钮 ===== */
         .btn {
             display: inline-flex;
             align-items: center;
@@ -199,6 +212,7 @@ body {
             transition: all 0.25s ease;
             text-decoration: none;
             user-select: none;
+            text-shadow: none;
         }
         .btn:hover {
             transform: translateY(-2px);
@@ -209,6 +223,7 @@ body {
             background: var(--gradient-primary);
             color: white;
             border: none;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.15);
         }
         .btn-primary:hover {
             box-shadow: 0 8px 28px rgba(56, 189, 248, 0.35);
@@ -217,6 +232,7 @@ body {
             background: var(--gradient-danger);
             color: white;
             border: none;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.15);
         }
         .btn-danger:hover {
             box-shadow: 0 8px 28px rgba(244, 67, 54, 0.35);
@@ -225,6 +241,7 @@ body {
             background: var(--gradient-success);
             color: white;
             border: none;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.15);
         }
         .btn-success:hover {
             box-shadow: 0 8px 28px rgba(52, 211, 153, 0.35);
@@ -243,6 +260,7 @@ body {
             box-shadow: none !important;
         }
 
+        /* ===== 统计卡片 ===== */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -250,10 +268,12 @@ body {
             margin-bottom: 24px;
         }
         .stat-card {
-            background: var(--bg-card-solid);
+            background: var(--bg-card);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
             border-radius: 16px;
             padding: 16px 20px;
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--glass-border);
             box-shadow: var(--shadow);
             transition: all 0.3s ease;
             text-align: center;
@@ -261,7 +281,6 @@ body {
         .stat-card:hover {
             transform: translateY(-4px);
             box-shadow: var(--shadow-hover);
-            border-color: rgba(56, 189, 248, 0.2);
         }
         .stat-number {
             font-size: 2.2rem;
@@ -271,6 +290,7 @@ body {
             -webkit-text-fill-color: transparent;
             background-clip: text;
             line-height: 1.2;
+            text-shadow: none;
         }
         .stat-number.danger {
             background: var(--gradient-danger);
@@ -303,6 +323,7 @@ body {
             font-weight: 500;
         }
 
+        /* ===== 高风险摘要 ===== */
         .high-risk-summary {
             background: var(--bg-card-solid);
             border-radius: 16px;
@@ -363,9 +384,14 @@ body {
             margin-right: 6px;
         }
 
+        /* ===== 报告表格 ===== */
         .report-wrapper {
             overflow-x: auto;
             margin-top: 8px;
+            background: var(--bg-card-solid);
+            border-radius: 12px;
+            padding: 4px 0;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
         }
         .report-wrapper table {
             width: 100%;
@@ -376,7 +402,6 @@ body {
         }
         .report-wrapper th {
             background: var(--table-header-bg);
-            backdrop-filter: blur(8px);
             font-weight: 600;
             padding: 12px 14px;
             text-align: left;
@@ -396,7 +421,7 @@ body {
             transition: all 0.2s ease;
         }
         .report-wrapper tbody tr:hover {
-            background: var(--glass-bg);
+            background: var(--table-hover-bg);
         }
         .report-wrapper a {
             color: var(--link-color);
@@ -407,6 +432,7 @@ body {
             text-decoration: underline;
         }
 
+        /* ===== 风险等级标签 ===== */
         .risk-tag {
             display: inline-block;
             font-size: 0.7rem;
@@ -417,19 +443,19 @@ body {
             letter-spacing: 0.03em;
         }
         .risk-tag.high {
-            background: rgba(244, 67, 54, 0.15);
-            color: #f43f5e;
-            box-shadow: 0 0 12px rgba(244, 67, 54, 0.15);
+            background: rgba(220, 38, 38, 0.12);
+            color: #dc2626;
+            box-shadow: 0 0 12px rgba(220, 38, 38, 0.08);
         }
         .risk-tag.medium {
-            background: rgba(245, 158, 11, 0.15);
-            color: #f59e0b;
-            box-shadow: 0 0 12px rgba(245, 158, 11, 0.12);
+            background: rgba(217, 119, 6, 0.12);
+            color: #d97706;
+            box-shadow: 0 0 12px rgba(217, 119, 6, 0.08);
         }
         .risk-tag.low {
-            background: rgba(52, 211, 153, 0.15);
-            color: #34d399;
-            box-shadow: 0 0 12px rgba(52, 211, 153, 0.12);
+            background: rgba(5, 150, 105, 0.12);
+            color: #059669;
+            box-shadow: 0 0 12px rgba(5, 150, 105, 0.08);
         }
 
         /* ===== 风险点：10字截断 + 点击弹窗 ===== */
@@ -471,6 +497,7 @@ body {
             color: var(--link-hover);
         }
 
+        /* ===== Tooltip 弹窗 ===== */
         .risk-tooltip {
             position: fixed;
             max-width: 460px;
@@ -493,6 +520,7 @@ body {
             pointer-events: none;
             word-break: break-word;
             white-space: pre-wrap;
+            text-shadow: none;
         }
         .risk-tooltip.visible {
             opacity: 1;
@@ -538,16 +566,16 @@ body {
             text-transform: uppercase;
         }
         .risk-tooltip .tooltip-risk-badge.high {
-            background: rgba(244, 67, 54, 0.15);
-            color: #f43f5e;
+            background: rgba(220, 38, 38, 0.12);
+            color: #dc2626;
         }
         .risk-tooltip .tooltip-risk-badge.medium {
-            background: rgba(245, 158, 11, 0.15);
-            color: #f59e0b;
+            background: rgba(217, 119, 6, 0.12);
+            color: #d97706;
         }
         .risk-tooltip .tooltip-risk-badge.low {
-            background: rgba(52, 211, 153, 0.15);
-            color: #34d399;
+            background: rgba(5, 150, 105, 0.12);
+            color: #059669;
         }
         .risk-tooltip .tooltip-close {
             display: inline-block;
@@ -567,6 +595,7 @@ body {
             color: var(--link-hover);
         }
 
+        /* ===== 底部 ===== */
         .footer-bar {
             margin-top: 30px;
             text-align: center;
@@ -580,6 +609,7 @@ body {
             border-top: 1px solid var(--border-color);
         }
 
+        /* ===== 滚动条 ===== */
         ::-webkit-scrollbar {
             width: 6px;
             height: 6px;
@@ -592,6 +622,7 @@ body {
             border-radius: 10px;
         }
 
+        /* ===== 加载动画 ===== */
         .loader {
             border: 3px solid var(--border-color);
             border-top: 3px solid #38bdf8;
@@ -606,6 +637,7 @@ body {
             100% { transform: rotate(360deg); }
         }
 
+        /* ===== 登录覆盖层 ===== */
         .login-overlay {
             position: fixed;
             top: 0;
@@ -668,6 +700,7 @@ body {
             font-size: 0.85rem;
         }
 
+        /* ===== 响应式 ===== */
         @media (max-width: 700px) {
             body { padding: 12px; }
             .card { padding: 16px; }
@@ -938,7 +971,6 @@ body {
             const low = sorted.filter(r => r.riskLevel === '低').length;
             const newCount = sorted.filter(r => r.isNew || r.eventText.includes('🆕')).length;
 
-            // 抓取数据独立显示，不fallback到total
             const displayFetch = fetchCount > 0 ? fetchCount : 0;
 
             statsGrid.style.display = 'grid';
@@ -1017,7 +1049,6 @@ body {
 
             clearTimeout(tooltipTimeout);
             tooltip.classList.add('visible');
-            // 存储来源引用
             tooltip._source = sourceEl;
             activeTooltip = tooltip;
         }
@@ -1063,7 +1094,6 @@ body {
 
                 const fetchCount = extractFetchCount(text);
 
-                // 截取表格部分
                 const tableStart = text.indexOf('| 事件简述');
                 const tableText = tableStart > 0 ? text.substring(tableStart) : text;
                 let html = marked.parse(tableText);
@@ -1077,25 +1107,20 @@ body {
                     }
                 });
 
-                // 解析原始行数据
                 const rawRows = parseReportTableFromMarkdown(tableText);
                 const sortedRows = sortRows(rawRows);
 
-                // 重建表格（完全重建，确保排序生效）
                 const tables = temp.querySelectorAll('table');
                 tables.forEach(table => {
                     const thead = table.querySelector('thead');
                     const tbody = table.querySelector('tbody');
                     if (!thead || !tbody) return;
 
-                    // 清空 tbody
                     tbody.innerHTML = '';
 
-                    // 遍历 sortedRows 生成行
                     sortedRows.forEach(row => {
                         const tr = document.createElement('tr');
 
-                        // 1. 事件简述（带链接）
                         const td1 = document.createElement('td');
                         const displayText = row.eventText.replace('🆕', '').trim();
                         if (row.link) {
@@ -1105,7 +1130,6 @@ body {
                         }
                         tr.appendChild(td1);
 
-                        // 2. 原文链接（[查看]）
                         const td2 = document.createElement('td');
                         if (row.link) {
                             td2.innerHTML = `<a href="${escapeHtml(row.link)}" target="_blank" rel="noopener noreferrer">查看</a>`;
@@ -1114,7 +1138,6 @@ body {
                         }
                         tr.appendChild(td2);
 
-                        // 3. 潜在风险点（10字截断 + 展开弹窗）
                         const td3 = document.createElement('td');
                         const fullRisk = row.risk || '';
                         if (fullRisk.length > 10) {
@@ -1152,17 +1175,14 @@ body {
                         }
                         tr.appendChild(td3);
 
-                        // 4. 信息来源
                         const td4 = document.createElement('td');
                         td4.textContent = row.source || '-';
                         tr.appendChild(td4);
 
-                        // 5. 发布多久前
                         const td5 = document.createElement('td');
                         td5.textContent = row.timeAgo || '-';
                         tr.appendChild(td5);
 
-                        // 6. 风险等级
                         const td6 = document.createElement('td');
                         const lc = row.riskLevel === '高' ? 'high' : row.riskLevel === '中' ? 'medium' : 'low';
                         td6.innerHTML = `<span class="risk-tag ${lc}">${row.riskLevel}</span>`;
@@ -1175,10 +1195,8 @@ body {
                 html = temp.innerHTML;
                 reportDiv.innerHTML = `<div class="report-wrapper">${html}</div>`;
 
-                // 更新统计
                 updateStatsAndHighRisk(sortedRows, fetchCount);
 
-                // 滚动提示
                 const wrapper = reportDiv.querySelector('.report-wrapper');
                 if (wrapper && wrapper.scrollWidth > wrapper.clientWidth) {
                     if (!reportDiv.querySelector('.scroll-hint')) {
