@@ -231,46 +231,6 @@
             transform: none !important;
             box-shadow: none !important;
         }
-        /* 筛选按钮组 */
-        .filter-group {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin: 12px 0 8px;
-        }
-        .filter-btn {
-            padding: 4px 16px;
-            border-radius: 30px;
-            border: 1px solid var(--border-color);
-            background: var(--glass-bg);
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: all 0.2s;
-            color: var(--text-secondary);
-        }
-        .filter-btn:hover {
-            transform: translateY(-1px);
-        }
-        .filter-btn.active {
-            border-color: var(--link-color);
-            color: var(--link-color);
-            background: rgba(56, 189, 248, 0.1);
-        }
-        .filter-btn.active-high {
-            border-color: var(--risk-high);
-            color: var(--risk-high);
-            background: rgba(244, 67, 54, 0.1);
-        }
-        .filter-btn.active-medium {
-            border-color: var(--risk-medium);
-            color: var(--risk-medium);
-            background: rgba(245, 158, 11, 0.1);
-        }
-        .filter-btn.active-low {
-            border-color: var(--risk-low);
-            color: var(--risk-low);
-            background: rgba(52, 211, 153, 0.1);
-        }
 
         /* ===== 统计卡片 ===== */
         .stats-grid {
@@ -287,12 +247,19 @@
             box-shadow: var(--shadow);
             transition: all 0.3s ease;
             text-align: center;
-            cursor: pointer;
         }
         .stat-card:hover {
             transform: translateY(-4px);
             box-shadow: var(--shadow-hover);
             border-color: rgba(56, 189, 248, 0.2);
+        }
+        /* 只有"总事件"可点击 */
+        .stat-card.clickable {
+            cursor: pointer;
+        }
+        .stat-card.clickable:hover {
+            border-color: var(--link-color);
+            box-shadow: 0 8px 32px rgba(56, 189, 248, 0.15);
         }
         .stat-number {
             font-size: 2.2rem;
@@ -326,6 +293,12 @@
             color: var(--text-secondary);
             margin-top: 4px;
             font-weight: 500;
+        }
+        .stat-hint {
+            font-size: 0.65rem;
+            color: var(--link-color);
+            margin-top: 2px;
+            opacity: 0.7;
         }
 
         /* ===== 图表行 ===== */
@@ -434,7 +407,7 @@
             color: var(--link-color);
         }
 
-        /* ===== 报告表格 ===== */
+        /* ===== 本次报告表格 ===== */
         .report-wrapper {
             overflow-x: auto;
             margin-top: 8px;
@@ -473,9 +446,6 @@
         .report-wrapper tbody tr:hover {
             background: var(--glass-bg);
         }
-        .report-wrapper tbody tr.hidden-row {
-            display: none;
-        }
         .report-wrapper a {
             color: var(--link-color);
             text-decoration: none;
@@ -492,7 +462,6 @@
             border-radius: 30px;
             text-transform: uppercase;
             letter-spacing: 0.03em;
-            cursor: pointer;
         }
         .risk-tag.high {
             background: rgba(244, 67, 54, 0.15);
@@ -524,6 +493,108 @@
         }
         .risk-cell .toggle-link:hover {
             color: var(--link-hover);
+        }
+
+        /* ===== 底部折叠历史列表 ===== */
+        .history-toggle-area {
+            margin-top: 8px;
+            padding-top: 16px;
+            border-top: 2px dashed var(--border-color);
+        }
+        .history-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--glass-bg);
+            border: 1px solid var(--border-color);
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+        .history-toggle-btn:hover {
+            background: var(--bg-card-solid);
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-2px);
+        }
+        .history-toggle-btn .arrow {
+            display: inline-block;
+            transition: transform 0.3s ease;
+            font-size: 1.2rem;
+        }
+        .history-toggle-btn .arrow.open {
+            transform: rotate(180deg);
+        }
+        .history-toggle-btn .badge {
+            background: var(--gradient-primary);
+            color: white;
+            padding: 0 12px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .history-container {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease, opacity 0.3s ease;
+            opacity: 0;
+        }
+        .history-container.open {
+            max-height: 5000px;
+            opacity: 1;
+        }
+        .history-wrapper {
+            margin-top: 16px;
+            overflow-x: auto;
+        }
+        .history-wrapper table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .history-wrapper th {
+            background: var(--table-header-bg);
+            font-weight: 600;
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 2px solid var(--border-color);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-secondary);
+        }
+        .history-wrapper td {
+            padding: 6px 12px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+        .history-wrapper tbody tr:hover {
+            background: var(--glass-bg);
+        }
+        .history-wrapper .date-group {
+            background: var(--glass-bg);
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .history-wrapper .date-group td {
+            padding: 6px 12px;
+            border-bottom: 2px solid var(--border-color);
+        }
+        .history-loading {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+        .history-empty {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-secondary);
         }
 
         /* ===== 底部 ===== */
@@ -663,6 +734,11 @@
             .high-risk-summary li {
                 font-size: 0.8rem;
             }
+            .history-wrapper td,
+            .history-wrapper th {
+                font-size: 0.7rem;
+                padding: 4px 6px;
+            }
         }
         @media (max-width: 480px) {
             .stats-grid {
@@ -720,7 +796,7 @@
             <!-- 图表行 -->
             <div class="charts-row" id="chartsRow" style="display:none;">
                 <div class="chart-box">
-                    <h3>📊 本周风险分布</h3>
+                    <h3>📊 本次风险分布</h3>
                     <div class="chart-container"><canvas id="pieChart"></canvas></div>
                 </div>
                 <div class="chart-box">
@@ -734,27 +810,32 @@
 
             <!-- 高风险TOP5 -->
             <div id="highRiskSummary" class="high-risk-summary" style="display:none;">
-                <h3>⚠️ 本周高风险事件 TOP5</h3>
+                <h3>⚠️ 本次高风险事件 TOP5</h3>
                 <ul id="highRiskList"></ul>
             </div>
 
-            <!-- 筛选器 -->
-            <div class="card" style="padding:12px 20px;margin-bottom:16px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-                    <span style="font-size:0.85rem;color:var(--text-secondary);">🔍 筛选风险等级：</span>
-                    <div class="filter-group">
-                        <button class="filter-btn active" data-filter="all">全部</button>
-                        <button class="filter-btn" data-filter="高">🔴 高风险</button>
-                        <button class="filter-btn" data-filter="中">🟠 中风险</button>
-                        <button class="filter-btn" data-filter="低">🟢 低风险</button>
-                    </div>
-                    <span id="filterCount" style="font-size:0.8rem;color:var(--text-secondary);"></span>
+            <!-- 本次报告表格 -->
+            <div class="card" id="reportCard">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+                    <span style="font-size:0.95rem;font-weight:600;color:var(--text-secondary);">
+                        📋 本次报告详情 <span id="reportCount" style="font-weight:400;font-size:0.85rem;"></span>
+                    </span>
                 </div>
-            </div>
-
-            <!-- 报告表格 -->
-            <div class="card">
                 <div id="report-content"><div class="loader"></div></div>
+
+                <!-- 底部：点击"总事件"展开历史列表 -->
+                <div class="history-toggle-area">
+                    <button class="history-toggle-btn" id="historyToggleBtn" onclick="toggleHistory()">
+                        <span>📂 本周所有事件汇总</span>
+                        <span class="badge" id="historyBadge">加载中...</span>
+                        <span class="arrow" id="historyArrow">▼</span>
+                    </button>
+                    <div class="history-container" id="historyContainer">
+                        <div id="historyContent">
+                            <div class="history-loading">⏳ 加载历史数据中...</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- 底部 -->
@@ -807,7 +888,9 @@
         let pieChartInstance = null;
         let lineChartInstance = null;
         let allReportRows = [];
-        let currentFilter = 'all';
+        let historyData = [];
+        let historyLoaded = false;
+        let historyOpen = false;
         let countdownInterval = null;
 
         // ============================================================
@@ -880,10 +963,24 @@
             return '未知';
         }
 
+        function formatDate(isoStr) {
+            if (!isoStr) return '未知日期';
+            const parts = isoStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+            if (!parts) return isoStr;
+            return parts[1] + '-' + parts[2] + '-' + parts[3];
+        }
+
+        function getTodayStr() {
+            const d = new Date();
+            return d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0');
+        }
+
         // ============================================================
-        // 5. 解析报告表格（同时提取每行的链接）
+        // 5. 解析报告表格（从HTML或文本）
         // ============================================================
-        function parseReportTable(html) {
+        function parseReportTableFromHTML(html) {
             const rows = [];
             const temp = document.createElement('div');
             temp.innerHTML = html;
@@ -895,21 +992,17 @@
             trs.forEach(tr => {
                 const cells = tr.querySelectorAll('td');
                 if (cells.length >= 6) {
-                    // 提取事件简述（可能已含链接）
                     let eventText = cells[0]?.innerText?.trim() || '';
-                    // 尝试从事件简述中提取链接（如果已经被包裹）
                     let link = '';
                     const linkEl = cells[0]?.querySelector('a');
                     if (linkEl) {
                         link = linkEl.href;
                         eventText = linkEl.innerText.trim();
                     } else {
-                        // 否则从原文链接列提取
                         const linkCell = cells[1];
                         const a = linkCell?.querySelector('a');
                         if (a) link = a.href;
                     }
-                    // 如果仍然没有链接，尝试从原文链接列取文字
                     if (!link) {
                         const linkCellText = cells[1]?.innerText?.trim() || '';
                         const match = linkCellText.match(/https?:\/\/[^\s]+/);
@@ -925,10 +1018,39 @@
             return rows;
         }
 
+        function parseReportTableFromMarkdown(text) {
+            const rows = [];
+            const lines = text.split('\n');
+            let inTable = false;
+            for (let line of lines) {
+                if (line.startsWith('|') && line.includes('|')) {
+                    if (!inTable) { inTable = true; continue; }
+                    if (/^\|[\s\-:]+\|$/.test(line)) continue;
+                    const cells = line.split('|').map(c => c.trim()).filter(c => c.length > 0);
+                    if (cells.length >= 6) {
+                        let eventText = cells[0];
+                        let link = '';
+                        const linkMatch = cells[1].match(/\[([^\]]*)\]\(([^)]*)\)/);
+                        if (linkMatch) {
+                            link = linkMatch[2];
+                        }
+                        const risk = cells[2] || '';
+                        const source = cells[3] || '';
+                        const timeAgo = cells[4] || '';
+                        const riskLevel = parseRiskLevel(cells[5] || '');
+                        rows.push({ eventText, link, risk, source, timeAgo, riskLevel });
+                    }
+                } else {
+                    if (inTable) break;
+                }
+            }
+            return rows;
+        }
+
         // ============================================================
         // 6. 更新统计 + 图表 + 高风险TOP5 + 周报总结
         // ============================================================
-        function updateStatsAndCharts(rows, weeklySummaryText) {
+        function updateStatsAndCharts(rows, weeklySummaryText, reportTime) {
             const statsGrid = document.getElementById('statsGrid');
             const chartsRow = document.getElementById('chartsRow');
             const highRiskSummary = document.getElementById('highRiskSummary');
@@ -940,41 +1062,44 @@
                 chartsRow.style.display = 'none';
                 highRiskSummary.style.display = 'none';
                 weeklySummary.style.display = 'none';
+                document.getElementById('reportCount').textContent = '(0条)';
                 return;
             }
 
             allReportRows = rows;
 
-            // 统计
             const total = rows.length;
             const high = rows.filter(r => r.riskLevel === '高').length;
             const medium = rows.filter(r => r.riskLevel === '中').length;
             const low = rows.filter(r => r.riskLevel === '低').length;
-            const unknown = total - high - medium - low;
             const newCount = rows.filter(r => r.eventText.includes('🆕')).length;
 
-            // 统计卡片（点击触发筛选并滚动到表格）
+            // 更新报告计数
+            document.getElementById('reportCount').textContent = `(共${total}条)`;
+
+            // 统计卡片：只有"总事件"可点击
             statsGrid.style.display = 'grid';
             statsGrid.innerHTML = `
-                <div class="stat-card" onclick="applyFilter('all'); scrollToTable();">
+                <div class="stat-card clickable" onclick="toggleHistory();">
                     <div class="stat-number">${total}</div>
-                    <div class="stat-label">📊 本周总事件</div>
+                    <div class="stat-label">📊 本次总事件</div>
+                    <div class="stat-hint">👆 点击查看本周汇总</div>
                 </div>
-                <div class="stat-card" onclick="applyFilter('高'); scrollToTable();">
+                <div class="stat-card">
                     <div class="stat-number danger">${high}</div>
                     <div class="stat-label">🔴 高风险</div>
                 </div>
-                <div class="stat-card" onclick="applyFilter('中'); scrollToTable();">
+                <div class="stat-card">
                     <div class="stat-number warning">${medium}</div>
                     <div class="stat-label">🟠 中风险</div>
                 </div>
-                <div class="stat-card" onclick="applyFilter('低'); scrollToTable();">
+                <div class="stat-card">
                     <div class="stat-number success">${low}</div>
                     <div class="stat-label">🟢 低风险</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-number">${newCount}</div>
-                    <div class="stat-label">🆕 本周新增</div>
+                    <div class="stat-label">🆕 新增</div>
                 </div>
             `;
 
@@ -989,16 +1114,14 @@
             // 饼图
             const labels = ['高风险', '中风险', '低风险'];
             const values = [high, medium, low];
-            if (unknown > 0) { labels.push('未知');
-                values.push(unknown); }
             const pieCtx = document.getElementById('pieChart').getContext('2d');
             if (pieChartInstance) pieChartInstance.destroy();
             pieChartInstance = new Chart(pieCtx, {
                 type: 'doughnut',
                 data: {
                     labels: labels,
-                    datasets: [{ data: values, backgroundColor: ['#f43f5e', '#f59e0b', '#34d399',
-                            '#9aa9b9'], borderWidth: 0 }]
+                    datasets: [{ data: values, backgroundColor: ['#f43f5e', '#f59e0b', '#34d399'],
+                        borderWidth: 0 }]
                 },
                 options: {
                     responsive: true,
@@ -1009,7 +1132,7 @@
                 }
             });
 
-            // 高风险TOP5（带链接）
+            // 高风险TOP5
             const highRiskItems = rows.filter(r => r.riskLevel === '高').slice(0, 5);
             if (highRiskItems.length > 0) {
                 highRiskSummary.style.display = 'block';
@@ -1028,14 +1151,9 @@
 
             chartsRow.style.display = 'grid';
 
-            // 更新筛选计数
-            updateFilterCount();
-        }
-
-        function scrollToTable() {
-            const el = document.querySelector('.report-wrapper');
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // 更新历史列表的badge（如果已加载）
+            if (historyLoaded) {
+                document.getElementById('historyBadge').textContent = `${historyData.length}条`;
             }
         }
 
@@ -1045,7 +1163,7 @@
         async function loadTrendData() {
             try {
                 const resp = await fetch(
-                'https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/trend_data.json');
+                    'https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/trend_data.json');
                 if (!resp.ok) return;
                 const data = await resp.json();
                 if (!data || data.length === 0) return;
@@ -1087,65 +1205,155 @@
         }
 
         // ============================================================
-        // 8. 筛选功能
+        // 8. 加载本周历史事件（从reports/目录）
         // ============================================================
-        function applyFilter(level) {
-            currentFilter = level;
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.className = 'filter-btn';
-                if (btn.dataset.filter === level) {
-                    if (level === '高') btn.classList.add('active-high');
-                    else if (level === '中') btn.classList.add('active-medium');
-                    else if (level === '低') btn.classList.add('active-low');
-                    else btn.classList.add('active');
-                }
-            });
-            // 筛选表格
-            const table = document.querySelector('.report-wrapper table');
-            if (!table) return;
-            const tbody = table.querySelector('tbody');
-            if (!tbody) return;
-            const rows = tbody.querySelectorAll('tr');
-            let visible = 0;
-            rows.forEach(row => {
-                const cells = row.querySelectorAll('td');
-                if (cells.length >= 6) {
-                    const riskText = cells[5]?.innerText?.trim() || '';
-                    const riskLevel = parseRiskLevel(riskText);
-                    if (level === 'all' || riskLevel === level) {
-                        row.classList.remove('hidden-row');
-                        visible++;
-                    } else {
-                        row.classList.add('hidden-row');
-                    }
-                } else {
-                    row.classList.remove('hidden-row');
-                    visible++;
-                }
-            });
-            updateFilterCount(visible);
-        }
+        async function loadHistoryEvents() {
+            const badge = document.getElementById('historyBadge');
+            const content = document.getElementById('historyContent');
 
-        function updateFilterCount(visible) {
-            const el = document.getElementById('filterCount');
-            const total = allReportRows.length;
-            if (currentFilter === 'all') {
-                el.textContent = `显示全部 ${total} 条`;
-            } else {
-                const count = allReportRows.filter(r => r.riskLevel === currentFilter).length;
-                el.textContent = `显示 ${currentFilter}风险 ${count} 条 (共 ${total} 条)`;
+            try {
+                // 使用GitHub API获取reports目录文件列表
+                const apiUrl =
+                    'https://api.github.com/repos/zhetian592/my-crawler-monitor/contents/reports';
+                const resp = await fetch(apiUrl);
+                if (!resp.ok) throw new Error(`API请求失败: ${resp.status}`);
+                const files = await resp.json();
+
+                // 过滤出report_*.html文件
+                const reportFiles = files
+                    .filter(f => f.name.startsWith('report_') && f.name.endsWith('.html'))
+                    .sort((a, b) => b.name.localeCompare(a.name)); // 最新的在前
+
+                if (reportFiles.length === 0) {
+                    content.innerHTML = '<div class="history-empty">📭 暂无历史报告</div>';
+                    badge.textContent = '0条';
+                    historyLoaded = true;
+                    return;
+                }
+
+                // 取最近7天（最多7个文件）
+                const recentFiles = reportFiles.slice(0, 7);
+                const allEvents = [];
+                const dateMap = {};
+
+                for (const file of recentFiles) {
+                    try {
+                        const htmlResp = await fetch(file.download_url);
+                        if (!htmlResp.ok) continue;
+                        const html = await htmlResp.text();
+
+                        // 提取日期：从文件名 report_YYYYMMDD_HHMMSS.html
+                        const dateMatch = file.name.match(/report_(\d{4})(\d{2})(\d{2})_/);
+                        const dateStr = dateMatch ?
+                            `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` :
+                            file.name.slice(0, 10);
+
+                        // 解析HTML表格
+                        const rows = parseReportTableFromHTML(html);
+                        rows.forEach(row => {
+                            // 跳过空事件
+                            if (!row.eventText || row.eventText.length < 3) return;
+                            allEvents.push({
+                                ...row,
+                                date: dateStr
+                            });
+                            if (!dateMap[dateStr]) dateMap[dateStr] = [];
+                            dateMap[dateStr].push(row);
+                        });
+                    } catch (e) {
+                        console.warn(`加载历史报告 ${file.name} 失败:`, e);
+                    }
+                }
+
+                historyData = allEvents;
+                historyLoaded = true;
+
+                if (allEvents.length === 0) {
+                    content.innerHTML = '<div class="history-empty">📭 本周暂无历史数据</div>';
+                    badge.textContent = '0条';
+                    return;
+                }
+
+                badge.textContent = `${allEvents.length}条`;
+
+                // 按日期分组渲染
+                const sortedDates = Object.keys(dateMap).sort((a, b) => b.localeCompare(a));
+                let html = '<div class="history-wrapper"><table><thead><tr>';
+                html += '<th>日期</th><th>事件简述</th><th>风险等级</th><th>信息来源</th><th>原文链接</th>';
+                html += '</tr></thead><tbody>';
+
+                for (const date of sortedDates) {
+                    const items = dateMap[date];
+                    // 日期分组行
+                    html += `<tr class="date-group"><td colspan="5">📅 ${date}（${items.length}条）</td></tr>`;
+                    items.forEach(item => {
+                        const linkHtml = item.link ?
+                            `<a href="${item.link}" target="_blank">查看</a>` :
+                            '-';
+                        const riskClass = item.riskLevel === '高' ? 'high' :
+                            item.riskLevel === '中' ? 'medium' : 'low';
+                        const riskTag = `<span class="risk-tag ${riskClass}">${item.riskLevel}</span>`;
+                        html += `<tr>
+                            <td style="white-space:nowrap;">${date}</td>
+                            <td>${item.eventText}</td>
+                            <td>${riskTag}</td>
+                            <td>${item.source || '-'}</td>
+                            <td>${linkHtml}</td>
+                        </tr>`;
+                    });
+                }
+
+                html += '</tbody></table></div>';
+                content.innerHTML = html;
+
+            } catch (err) {
+                console.error('加载历史数据失败:', err);
+                content.innerHTML =
+                    `<div class="history-empty">⚠️ 加载历史数据失败: ${err.message}<br><button class="btn btn-outline" style="margin-top:12px;" onclick="loadHistoryEvents()">🔄 重试</button></div>`;
+                badge.textContent = '加载失败';
+                historyLoaded = true;
             }
         }
 
-        // 绑定筛选按钮
-        document.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
-            });
-        });
+        // ============================================================
+        // 9. 折叠切换
+        // ============================================================
+        function toggleHistory() {
+            const container = document.getElementById('historyContainer');
+            const arrow = document.getElementById('historyArrow');
+
+            if (!historyLoaded) {
+                // 首次加载
+                container.classList.add('open');
+                arrow.classList.add('open');
+                historyOpen = true;
+                loadHistoryEvents();
+                return;
+            }
+
+            historyOpen = !historyOpen;
+            if (historyOpen) {
+                container.classList.add('open');
+                arrow.classList.add('open');
+            } else {
+                container.classList.remove('open');
+                arrow.classList.remove('open');
+            }
+
+            // 滚动到展开位置
+            if (historyOpen) {
+                setTimeout(() => {
+                    const btn = document.getElementById('historyToggleBtn');
+                    btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 100);
+            }
+        }
+
+        // 暴露给HTML onclick使用
+        window.toggleHistory = toggleHistory;
 
         // ============================================================
-        // 9. 加载报告（含事件简述链接化）
+        // 10. 加载本次报告（主体）
         // ============================================================
         let lastReportHash = localStorage.getItem('lastReportHash') || '';
 
@@ -1179,7 +1387,7 @@
 
                 let rawTime = extractReportTime(text);
                 let displayTime = rawTime ? convertUtcToBeijing(rawTime) : '未知';
-                document.getElementById('report-time-display').textContent = `📅 ${displayTime}`;
+                document.getElementById('report-time-display').textContent = `📅 ${displayTime}（本次抓取）`;
 
                 // 提取周报总结
                 let weeklySummaryText = '';
@@ -1203,6 +1411,7 @@
                     }
                 }
 
+                // 解析Markdown
                 let html = marked.parse(text);
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = html;
@@ -1213,7 +1422,7 @@
                     }
                 });
 
-                // 1) 风险点折叠
+                // 风险点折叠
                 const tables = tempDiv.querySelectorAll('table');
                 tables.forEach(table => {
                     const rows = table.querySelectorAll('tbody tr');
@@ -1235,11 +1444,11 @@
                     });
                 });
 
-                // 2) 解析数据并构造链接化事件简述
-                const rows = parseReportTable(html);
+                // 解析数据
+                const rows = parseReportTableFromMarkdown(text);
                 allReportRows = rows;
 
-                // 重新处理表格：将事件简述替换为链接（如果有link）
+                // 事件简述链接化
                 tables.forEach(table => {
                     const tbody = table.querySelector('tbody');
                     if (!tbody) return;
@@ -1261,9 +1470,15 @@
                 html = tempDiv.innerHTML;
                 reportDiv.innerHTML = `<div class="report-wrapper">${html}</div>`;
 
-                // 更新统计、图表、高风险等
-                updateStatsAndCharts(rows, weeklySummaryText);
+                // 更新统计、图表等
+                updateStatsAndCharts(rows, weeklySummaryText, displayTime);
                 await loadTrendData();
+
+                // 预加载历史数据（但默认收起）
+                if (!historyLoaded) {
+                    // 静默预加载
+                    loadHistoryEvents().catch(() => {});
+                }
 
                 if (currentHash !== lastReportHash) {
                     if (showAlert) alert('✅ 报告已刷新！');
@@ -1271,11 +1486,9 @@
                     lastReportHash = currentHash;
                 }
 
-                applyFilter('all');
-
             } catch (err) {
                 reportDiv.innerHTML =
-                `<div style="color:#f87171;background:rgba(244,67,54,0.08);padding:20px;border-radius:16px;">
+                    `<div style="color:#f87171;background:rgba(244,67,54,0.08);padding:20px;border-radius:16px;">
                     <strong>⚠️ 加载失败</strong><br>${err.message}<br><br>
                     <button class="btn btn-primary" onclick="loadReport(true)">🔄 重试</button>
                 </div>`;
@@ -1284,7 +1497,7 @@
         }
 
         // ============================================================
-        // 10. GitHub Actions 触发
+        // 11. GitHub Actions 触发
         // ============================================================
         const REPO_OWNER = 'zhetian592';
         const REPO_NAME = 'my-crawler-monitor';
@@ -1386,7 +1599,7 @@
         }
 
         // ============================================================
-        // 11. 历史报告
+        // 12. 历史报告
         // ============================================================
         async function openHistory() {
             const btn = document.getElementById('history-btn');
@@ -1410,7 +1623,7 @@
         }
 
         // ============================================================
-        // 12. Token 提示
+        // 13. Token 提示
         // ============================================================
         function promptTokenIfNeeded() {
             if (!localStorage.getItem(GITHUB_TOKEN_KEY)) {
@@ -1427,7 +1640,7 @@
         }
 
         // ============================================================
-        // 13. 初始化
+        // 14. 初始化
         // ============================================================
         function initApp() {
             applyTheme();
@@ -1443,7 +1656,14 @@
             loadReport(false);
             updateButtonState();
             promptTokenIfNeeded();
+
+            // 如果用户之前打开了历史列表，刷新后保持状态（但默认关闭）
+            // 无额外操作
         }
+
+        // 暴露函数给全局
+        window.loadReport = loadReport;
+        window.loadHistoryEvents = loadHistoryEvents;
 
         checkLogin();
     </script>
