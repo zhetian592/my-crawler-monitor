@@ -41,6 +41,9 @@
             --tooltip-text: #000000;
             --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
             --tooltip-border: rgba(255, 255, 255, 0.5);
+            /* 表格背景 - 半透明 + 模糊 */
+            --table-bg: rgba(255, 255, 255, 0.30);
+            --table-blur: blur(12px);
         }
 
         [data-theme="dark"] {
@@ -62,6 +65,7 @@
             --tooltip-text: #f0f4f8;
             --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
             --tooltip-border: rgba(255, 255, 255, 0.1);
+            --table-bg: rgba(26, 35, 50, 0.40);
         }
 
         body {
@@ -112,7 +116,7 @@
             z-index: 1;
         }
 
-        /* ===== 卡片 ===== */
+        /* ===== 卡片（毛玻璃） ===== */
         .card {
             background: var(--bg-card);
             backdrop-filter: blur(24px);
@@ -388,10 +392,13 @@
         .report-wrapper {
             overflow-x: auto;
             margin-top: 8px;
-            background: var(--bg-card-solid);
+            background: var(--table-bg);
+            backdrop-filter: var(--table-blur);
+            -webkit-backdrop-filter: var(--table-blur);
             border-radius: 12px;
             padding: 4px 0;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow);
         }
         .report-wrapper table {
             width: 100%;
@@ -1121,15 +1128,19 @@
                     sortedRows.forEach(row => {
                         const tr = document.createElement('tr');
 
+                        // ===== 1. 事件简述（保留 🆕 标记） =====
                         const td1 = document.createElement('td');
                         const displayText = row.eventText.replace('🆕', '').trim();
+                        const isNew = row.isNew || row.eventText.includes('🆕');
+                        const newPrefix = isNew ? '🆕 ' : '';
                         if (row.link) {
-                            td1.innerHTML = `<a href="${escapeHtml(row.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(displayText)}</a>`;
+                            td1.innerHTML = `<a href="${escapeHtml(row.link)}" target="_blank" rel="noopener noreferrer">${newPrefix}${escapeHtml(displayText)}</a>`;
                         } else {
-                            td1.textContent = displayText;
+                            td1.textContent = newPrefix + displayText;
                         }
                         tr.appendChild(td1);
 
+                        // 2. 原文链接（[查看]）
                         const td2 = document.createElement('td');
                         if (row.link) {
                             td2.innerHTML = `<a href="${escapeHtml(row.link)}" target="_blank" rel="noopener noreferrer">查看</a>`;
@@ -1138,6 +1149,7 @@
                         }
                         tr.appendChild(td2);
 
+                        // 3. 潜在风险点（10字截断 + 展开弹窗）
                         const td3 = document.createElement('td');
                         const fullRisk = row.risk || '';
                         if (fullRisk.length > 10) {
@@ -1175,14 +1187,17 @@
                         }
                         tr.appendChild(td3);
 
+                        // 4. 信息来源
                         const td4 = document.createElement('td');
                         td4.textContent = row.source || '-';
                         tr.appendChild(td4);
 
+                        // 5. 发布多久前
                         const td5 = document.createElement('td');
                         td5.textContent = row.timeAgo || '-';
                         tr.appendChild(td5);
 
+                        // 6. 风险等级
                         const td6 = document.createElement('td');
                         const lc = row.riskLevel === '高' ? 'high' : row.riskLevel === '中' ? 'medium' : 'low';
                         td6.innerHTML = `<span class="risk-tag ${lc}">${row.riskLevel}</span>`;
