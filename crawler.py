@@ -96,7 +96,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# ================= 原有辅助函数（保持不变） =================
+# ================= 辅助函数 =================
 def clean_html(text: Optional[str]) -> str:
     if not text:
         return ""
@@ -182,7 +182,7 @@ def get_source_priority(source_name: str) -> int:
         return 3
     return 4
 
-# ================= 信源配置加载（原有逻辑，保留） =================
+# ================= 信源配置加载 =================
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
     default = [
@@ -247,7 +247,7 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================ 新增：信源健康管理与镜像池 ================
+# ================ 信源健康管理 ================
 class SourceHealth:
     def __init__(self, max_fails=DISABLE_FAILED_THRESHOLD, cooldown_minutes=DISABLE_COOLDOWN_MINUTES):
         self.max_fails = max_fails
@@ -329,7 +329,7 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
             logger.warning(f"读取 {file_path} 失败: {e}")
     return fallback
 
-# ================ 新增：持久化URL去重缓存 ================
+# ================ URL去重缓存 ================
 class URLDedupCache:
     def __init__(self, cache_file=URL_DEDUP_FILE):
         self.cache_file = cache_file
@@ -370,7 +370,7 @@ class URLDedupCache:
             with open(self.cache_file, 'w') as f:
                 json.dump(list(self.url_set), f)
 
-# ================ 原有失败信源管理（保留并扩展） ================
+# ================ 失败信源管理 ================
 def load_disabled_sources() -> Dict[str, dict]:
     if os.path.exists(DISABLED_SOURCES_FILE):
         try:
@@ -728,7 +728,7 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析部分 =================
+# ================= AI 分析 =================
 def estimate_tokens(text: str) -> int:
     if TIKTOKEN_AVAILABLE:
         enc = tiktoken.encoding_for_model("gpt-4o-mini")
@@ -863,7 +863,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     final_table = "\n".join([table_header, table_sep] + unique_rows)
     return final_table, events_in_report
 
-# ================= 去重标记函数 =================
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
     events_data = []
     for row in rows:
@@ -966,7 +965,6 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         events_in_report.append(first_event)
     return unique_rows, events_in_report
 
-# ================= 重复计数过滤 =================
 def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
     today = datetime.utcnow().date()
     new_counts = {}
@@ -1081,12 +1079,10 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 </body>
 </html>"""
 
-# ================= 保存报告（新增"抓取数据"行） =================
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     raw_count = len(all_articles)
 
-    # 报告头部包含抓取数据
     timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
     fetch_info = f"抓取数据：{raw_count}条\n\n"
     final_content = timestamp_str + fetch_info + report_text
