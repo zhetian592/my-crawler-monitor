@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 稳定版（保留最近7天数据用于趋势分析）+ 信源抓取优化 + 周报总结
+# crawler.py - 稳定版（保留最近2天数据/报告）+ 信源抓取优化
 import os
 import json
 import re
@@ -57,16 +57,15 @@ PROXIES = None
 if os.environ.get("HTTP_PROXY"):
     PROXIES = {"http": os.environ["HTTP_PROXY"], "https": os.environ.get("HTTPS_PROXY", os.environ["HTTP_PROXY"])}
 
-# 改动：保留7天数据供趋势图使用
-KEEP_DAYS = 7
+KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
 AI_REQUEST_DELAY = 2
-DISABLE_FAILED_THRESHOLD = 3
-DISABLE_COOLDOWN_MINUTES = 60 * 12
-DISABLE_AUTO_RECOVER_DAYS = 7
+DISABLE_FAILED_THRESHOLD = 3          # 连续失败多少次后禁用
+DISABLE_COOLDOWN_MINUTES = 60 * 12    # 禁用冷却时间（分钟），默认12小时后自动恢复
+DISABLE_AUTO_RECOVER_DAYS = 7         # 保留原有7天强制恢复
 EVENT_EXPIRE_DAYS = 60
 
 EVENT_COUNTS_FILE = "event_counts.json"
@@ -74,8 +73,7 @@ HEALTHY_NITTER_FILE = "healthy_nitter.json"
 HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
-URL_DEDUP_FILE = "url_dedup.json"
-TREND_DATA_FILE = "trend_data.json"  # 新增趋势数据文件
+URL_DEDUP_FILE = "url_dedup.json"     # 新增：持久化URL去重缓存
 
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net",
@@ -249,8 +247,9 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================ 信源健康管理与镜像池 ================
+# ================ 新增：信源健康管理与镜像池 ================
 class SourceHealth:
+    """信源健康跟踪，用于单信源的熔断与恢复（基于冷却时间）"""
     def __init__(self, max_fails=DISABLE_FAILED_THRESHOLD, cooldown_minutes=DISABLE_COOLDOWN_MINUTES):
         self.max_fails = max_fails
         self.cooldown = cooldown_minutes * 60
@@ -260,6 +259,7 @@ class SourceHealth:
     def record_fail(self, source_key):
         self.fail_counts[source_key] = self.fail_counts.get(source_key, 0) + 1
         if self.fail_counts[source_key] >= self.max_fails:
+            # 进入冷却期
             self.disabled_until[source_key] = time.time() + self.cooldown
             logger.warning(f"信源 {source_key} 连续失败{self.fail_counts[source_key]}次，已暂时禁用 {self.cooldown//60} 分钟")
 
@@ -273,12 +273,14 @@ class SourceHealth:
         if source_key not in self.disabled_until:
             return False
         if time.time() > self.disabled_until[source_key]:
+            # 冷却结束，自动恢复
             del self.disabled_until[source_key]
             self.fail_counts[source_key] = 0
             return False
         return True
 
 class MirrorPool:
+    """多镜像池（如Nitter/RSSHub实例），支持轮转与故障移除"""
     def __init__(self, urls):
         self.original = list(urls)
         self.available = list(urls)
@@ -295,16 +297,20 @@ class MirrorPool:
             self.available.remove(url)
 
     def report_success(self, url):
-        pass
+        pass  # 成功时可选择放回，但轮转机制已足够
 
-nitter_health = SourceHealth(max_fails=2, cooldown_minutes=30)
+# 全局健康实例（用于Nitter/RSSHub池）
+nitter_health = SourceHealth(max_fails=2, cooldown_minutes=30)   # 实例自身健康
 rsshub_health = SourceHealth(max_fails=2, cooldown_minutes=30)
 
 def get_nitter_instances() -> List[str]:
+    """获取当前可用的Nitter实例列表，结合历史健康文件"""
     base = load_healthy_instances(HEALTHY_NITTER_FILE, FALLBACK_NITTER_INSTANCES)
+    # 过滤掉被标记为不健康的实例（基于SourceHealth）
     return [inst for inst in base if not nitter_health.is_disabled(inst)]
 
 def update_nitter_health(instance_url: str, success: bool):
+    """更新Nitter实例的健康状态"""
     if success:
         nitter_health.record_success(instance_url)
     else:
@@ -331,21 +337,24 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
             logger.warning(f"读取 {file_path} 失败: {e}")
     return fallback
 
-# ================ URL去重缓存 ================
+# ================ 新增：持久化URL去重缓存 ================
 class URLDedupCache:
+    """基于布隆过滤器的URL去重缓存（可选，若未安装bloom-filter则用集合）"""
     def __init__(self, cache_file=URL_DEDUP_FILE):
         self.cache_file = cache_file
-        self.url_set = set()
+        self.url_set = set()  # 回退方案
         self.bloom = None
         try:
             from bloom_filter import BloomFilter
             self.bloom = BloomFilter(max_elements=1_000_000, error_rate=0.001)
+            # 尝试加载已有缓存
             if os.path.exists(cache_file):
                 with open(cache_file, 'r') as f:
                     self.bloom = BloomFilter.from_base64(f.read())
             logger.info("URL去重使用布隆过滤器")
         except ImportError:
             logger.info("bloom-filter未安装，URL去重使用内存集合（重启后失效）")
+        # 若用集合，尝试加载
         if not self.bloom and os.path.exists(cache_file):
             try:
                 with open(cache_file, 'r') as f:
@@ -372,8 +381,9 @@ class URLDedupCache:
             with open(self.cache_file, 'w') as f:
                 json.dump(list(self.url_set), f)
 
-# ================ 失败信源管理 ================
+# ================ 原有失败信源管理（保留并扩展） ================
 def load_disabled_sources() -> Dict[str, dict]:
+    """原有逻辑保留，作为信源长期禁用记录（兼容）"""
     if os.path.exists(DISABLED_SOURCES_FILE):
         try:
             with open(DISABLED_SOURCES_FILE, 'r', encoding='utf-8') as f:
@@ -395,6 +405,7 @@ def save_disabled_sources(disabled: Dict[str, dict]):
         json.dump(disabled, f, indent=2, ensure_ascii=False)
 
 def update_disabled_sources(failed_sources: List[Tuple[str, str]]):
+    """原有函数保留，结合新的SourceHealth提供更灵活冷却"""
     disabled = load_disabled_sources()
     today = datetime.utcnow().date().isoformat()
     for url, _ in failed_sources:
@@ -447,9 +458,10 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心 =================
+# ================= 抓取核心（增强多层重试与镜像切换） =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances)
+    # 原有映射逻辑完全保留
     if "voachinese.com" in url:
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
@@ -507,20 +519,26 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     return url
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
+    """
+    抓取单个RSS，加入URL去重缓存检查（优化：已抓取过的URL不再重复处理）
+    """
     try:
         resp = fetch_url(rss_url, timeout=25)
         feed = feedparser.parse(resp.content)
         cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
         items = []
         for entry in feed.entries:
+            # 时间过滤
             published_str = entry.get("published", entry.get("updated", ""))
             pub_dt = parse_published_strict(published_str)
             if pub_dt is not None and pub_dt < cutoff:
                 continue
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
+            # URL去重：若已成功抓取过，跳过
             if url_cache.seen(link):
                 continue
+            # 内容哈希去重（原有）
             title = clean_html(entry.get("title", ""))
             summary = clean_html(entry.get("summary", ""))
             if not summary:
@@ -531,6 +549,7 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
             if h in processed_hashes:
                 continue
             processed_hashes.add(h)
+            # 生成来源名
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -551,6 +570,7 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
                 "time_ago": time_ago,
                 "fetched_at": datetime.utcnow().isoformat()
             })
+            # 标记URL为已处理（持久化缓存）
             url_cache.add(link)
         return items
     except Exception as e:
@@ -558,6 +578,11 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
         return []
 
 def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
+    """
+    增强的信源抓取，使用镜像池和动态健康管理。
+    - X信源：遍历Nitter实例，失败时自动更新实例健康列表。
+    - 普通信源：尝试所有RSS候选，同样更新RSSHub实例健康。
+    """
     if is_source_disabled(original_url):
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
@@ -582,11 +607,13 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
                     update_nitter_health(instance, False)
                     nitter_pool.report_failure(instance)
             except Exception:
+                # 已经尝试过所有镜像
                 break
             time.sleep(0.5)
         logger.debug(f"X {username} 所有实例均失败")
         return []
 
+    # 普通信源，生成RSS候选列表
     rsshub_instances = get_rsshub_instances()
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if not rss_candidates:
@@ -596,7 +623,9 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
         rss_candidates = [rss_candidates]
 
     for rss_url in rss_candidates:
+        # 记录使用的RSSHub实例
         instance_used = None
+        # 如果URL包含rsshub域名，提取实例
         for inst in rsshub_instances:
             if inst in rss_url:
                 instance_used = inst
@@ -624,7 +653,7 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源（时间窗口各异）")
     all_items = []
     processed_hashes = set()
-    url_cache = URLDedupCache()
+    url_cache = URLDedupCache()  # 新增持久化URL去重
     failed_sources = []
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -646,11 +675,12 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
                 failed_sources.append((url, str(e)))
                 logger.error(f"✗ {url} 异常: {e}")
 
+    # 持久化URL去重缓存
     url_cache.save()
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希+URL去重）")
     return all_items, failed_sources
 
-# ================= 失败记录 =================
+# ================= 原有：持久化失败记录 =================
 def log_failed_sources(failed_sources: List[Tuple[str, str]]):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     data = {}
@@ -668,7 +698,7 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         json.dump(data, f, ensure_ascii=False, indent=2)
     update_disabled_sources(failed_sources)
 
-# ================= 历史事件管理 =================
+# ================= 原有：历史事件加载、去重、AI分析、报告生成（完全保留） =================
 def load_previous_events() -> List[str]:
     events = []
     if not os.path.exists("report.md"):
@@ -730,7 +760,7 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析部分（含周报总结） =================
+# ================= AI 分析部分（新 Prompt，列数6，风险等级） =================
 def estimate_tokens(text: str) -> int:
     if TIKTOKEN_AVAILABLE:
         enc = tiktoken.encoding_for_model("gpt-4o-mini")
@@ -770,7 +800,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
-    # ===== 新增周报总结要求 =====
+    # 最终版 Prompt（无标签前缀，两个示例，明确风险等级复合条件）
     prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
 
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
@@ -784,15 +814,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 - 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
 - 即使内容没有直接提及"中国"或"中共"，但事件发生在中国境内或涉及中国公民，也应保留。
 - 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
-
-**二点五、周报总结要求（必须在表格之前输出）**：
-- 在表格上方，先用一段话（约 80-120 字）总结本周舆情整体态势，包括：
-  - 本周涉华负面舆情的总体数量和高/中/低分布
-  - 最主要的风险议题（2-3 个，如新疆、台湾、疫情防控等）
-  - 最主要的风险来源（如境外反华账号、西方主流媒体等）
-  - 需要重点关注的方向
-- 总结格式：直接以一段文字呈现，不要加标题或列表，以"📊 本周舆情综述："开头。
-- 示例："📊 本周舆情综述：共监测到 23 条涉华负面舆情，高风险 5 条，涉及新疆人权、台湾问题、疫情防控等三大议题。主要来源为境外反华账号（@whyyoutouzhele）和西方主流媒体，其中新疆议题持续发酵，台湾问题出现突发性炒作，需重点监测。"
 
 **三、输出格式要求**：
 - 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |`
@@ -846,8 +867,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
     table_sep = "|----------|----------|------------|----------|------------|------------|"
-    # 收集周报总结
-    weekly_summary = ""
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
@@ -858,9 +877,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         lines = content.split("\n")
         in_table = False
         for line in lines:
-            # 提取周报总结
-            if "📊 本周舆情综述" in line and not weekly_summary:
-                weekly_summary = line.strip()
             if line.startswith("|") and "|" in line:
                 if not in_table:
                     in_table = True
@@ -869,24 +885,21 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                 if line.startswith(table_header):
                     continue
                 cells = [c.strip() for c in line.split("|")[1:-1]]
+                # 要求6列
                 if len(cells) == 6:
                     all_table_rows.append(line)
         time.sleep(AI_REQUEST_DELAY)
-
-    # 如果周报总结没有提取到，生成一个默认的
-    if not weekly_summary and all_table_rows:
-        weekly_summary = "📊 本周舆情综述：共监测到 {} 条涉华负面舆情，详情见下表。".format(len(all_table_rows))
 
     if not all_table_rows:
         return "无相关内容。\n", []
 
     unique_rows, events_in_report = deduplicate_and_mark_new(all_table_rows, old_events)
-    # 在表格前插入周报总结
-    final_report = weekly_summary + "\n\n" + "\n".join([table_header, table_sep] + unique_rows)
-    return final_report, events_in_report
+    final_table = "\n".join([table_header, table_sep] + unique_rows)
+    return final_table, events_in_report
 
-# ================= 去重标记（6列） =================
+# ================= 去重标记函数（适配6列） =================
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
+    # 解析每行，每行有6列：事件简述，链接，风险点，来源，时间，风险等级
     events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
@@ -897,7 +910,8 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         risk = cells[2]
         source = cells[3]
         time_ago = cells[4]
-        risk_level = cells[5]
+        risk_level = cells[5]  # 风险等级，暂不用于去重，但保留在输出中
+        # 解析发布时间（用于排序）
         pub_dt = None
         if "小时前" in time_ago:
             try:
@@ -937,6 +951,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
     unique_rows = []
     events_in_report = []
     for group in merged:
+        # 选择最佳项：按发布时间最新，其次按信源优先级
         best_item = None
         best_pub = None
         best_priority = 999
@@ -975,6 +990,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         event_text = first_event
         if source_count > 1:
             event_text = f"{event_text}（{source_count}个信源）"
+        # 构建新行：保持6列
         new_cells = [event_text, first_link, first_risk, source_display, first_time_ago, first_risk_level]
         is_new = True
         for old in old_events:
@@ -988,7 +1004,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         events_in_report.append(first_event)
     return unique_rows, events_in_report
 
-# ================= 重复过滤（6列） =================
+# ================= 重复计数过滤（适配6列） =================
 def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
     today = datetime.utcnow().date()
     new_counts = {}
@@ -1022,7 +1038,7 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
             new_counts[event] = record
     return new_rows, new_counts
 
-# ================= HTML 报告生成 =================
+# ================= HTML 报告生成（适配6列） =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
@@ -1030,7 +1046,9 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
+                # 生成表头
                 html_table += '<table>\n<thead>\n<tr>\n'
+                # 解析表头
                 header_cells = [c.strip() for c in line.split("|")[1:-1]]
                 for h in header_cells:
                     html_table += f"<th>{h}</th>\n"
@@ -1044,6 +1062,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 continue
             html_table += "<tr>\n"
             for cell in cells:
+                # 处理链接
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
                 if link_match:
                     text, url = link_match.group(1), link_match.group(2)
@@ -1056,13 +1075,6 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 in_table = False
     if in_table:
         html_table += "</tbody></table>\n"
-
-    # 提取周报总结（放在表格前面）
-    summary = ""
-    for line in lines:
-        if "📊 本周舆情综述" in line:
-            summary = line.strip()
-            break
 
     login_script = f'''
 <script>
@@ -1095,14 +1107,12 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
         a {{ color: #0366d6; text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
         .footer {{ margin-top: 30px; font-size: 12px; color: #6a737d; }}
-        .summary {{ background: #f0f7ff; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }}
     </style>
     {login_script}
 </head>
 <body>
 <h1>📊 内容安全行业舆情报告</h1>
 <p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
-{('<div class="summary">' + summary + '</div>') if summary else ''}
 <div id="report">
 {html_table}
 </div>
@@ -1156,70 +1166,6 @@ def generate_index_page():
     with open(os.path.join(reports_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(index_html)
 
-# ================= 新增：更新趋势数据 =================
-def update_trend_data(articles: List[Dict], report_table: str):
-    """从报告表格统计风险等级，更新 trend_data.json"""
-    today = datetime.utcnow().strftime("%Y-%m-%d")
-    high = medium = low = 0
-
-    # 解析报告表格中的风险等级
-    lines = report_table.split('\n')
-    in_table = False
-    for line in lines:
-        if line.startswith('|') and '|' in line:
-            if not in_table:
-                in_table = True
-                continue
-            if re.match(r'^\|[\s\-:]+\|$', line):
-                continue
-            cells = [c.strip() for c in line.split('|')[1:-1]]
-            if len(cells) >= 6:
-                risk = cells[5].strip()
-                if '高' in risk:
-                    high += 1
-                elif '中' in risk:
-                    medium += 1
-                elif '低' in risk:
-                    low += 1
-
-    total = high + medium + low
-    if total == 0:
-        logger.info("无风险数据，跳过趋势更新")
-        return
-
-    # 加载已有数据
-    data = []
-    if os.path.exists(TREND_DATA_FILE):
-        try:
-            with open(TREND_DATA_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except:
-            pass
-
-    # 查找今日是否已有记录
-    existing = next((d for d in data if d.get('date') == today), None)
-    entry = {
-        'date': today,
-        'total': total,
-        'high': high,
-        'medium': medium,
-        'low': low,
-        'sources': len(set(art.get('source_name', '') for art in articles))
-    }
-    if existing:
-        existing.update(entry)
-    else:
-        data.append(entry)
-
-    # 只保留最近30天
-    cutoff = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
-    data = [d for d in data if d.get('date', '') >= cutoff]
-
-    with open(TREND_DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    logger.info(f"趋势数据已更新: {today} 总{total} 高{high} 中{medium} 低{low}")
-
-# ================= 清理旧文件 =================
 def cleanup_old_files(days: int = KEEP_DAYS):
     cutoff = datetime.utcnow() - timedelta(days=days)
     data_dir = "data"
@@ -1276,25 +1222,11 @@ def main():
         lines = report_table.split("\n")
         header = lines[0] if lines else ""
         sep = lines[1] if len(lines) > 1 else ""
-        # 跳过第一行（周报总结）
-        start_idx = 0
-        for i, line in enumerate(lines):
-            if line.startswith('|'):
-                start_idx = i
-                break
-        table_rows = lines[start_idx+2:] if len(lines) > start_idx+2 else []
+        table_rows = lines[2:] if len(lines) > 2 else []
         filtered_rows, new_counts = filter_by_repeat_count(table_rows, event_counts)
         save_event_counts(new_counts)
         if filtered_rows:
-            # 重新组装，保留周报总结
-            summary_lines = []
-            for line in lines:
-                if line.startswith('📊'):
-                    summary_lines.append(line)
-                elif line.startswith('|'):
-                    break
-            summary_text = '\n'.join(summary_lines)
-            final_table = summary_text + '\n\n' + '\n'.join([header, sep] + filtered_rows)
+            final_table = "\n".join([header, sep] + filtered_rows)
         else:
             final_table = "无相关内容（所有事件已进入冷却期）。\n"
     else:
@@ -1303,10 +1235,6 @@ def main():
 
     full_report = final_table
     save_reports_with_history(full_report, all_articles, failed_sources)
-
-    # 更新趋势数据
-    update_trend_data(all_articles, full_report)
-
     logger.info(f"=== 清理超过 {KEEP_DAYS} 天的旧文件 ===")
     cleanup_old_files()
     logger.info(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
