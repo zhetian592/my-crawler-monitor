@@ -253,7 +253,6 @@
             box-shadow: var(--shadow-hover);
             border-color: rgba(56, 189, 248, 0.2);
         }
-        /* 只有"总事件"可点击 */
         .stat-card.clickable {
             cursor: pointer;
         }
@@ -295,7 +294,7 @@
             font-weight: 500;
         }
         .stat-hint {
-            font-size: 0.65rem;
+            font-size: 0.6rem;
             color: var(--link-color);
             margin-top: 2px;
             opacity: 0.7;
@@ -319,6 +318,7 @@
             padding: 16px 20px;
             border: 1px solid var(--border-color);
             box-shadow: var(--shadow);
+            position: relative;
         }
         .chart-box h3 {
             font-size: 0.95rem;
@@ -329,6 +329,13 @@
         .chart-container {
             position: relative;
             height: 200px;
+        }
+        .chart-note {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-align: right;
+            margin-top: 4px;
+            opacity: 0.6;
         }
 
         /* ===== 高风险摘要 ===== */
@@ -475,21 +482,29 @@
             background: rgba(52, 211, 153, 0.15);
             color: #34d399;
         }
-        .risk-cell .short {
-            display: inline;
+
+        /* ===== 风险点折叠（使用 max-height 安全方案） ===== */
+        .risk-cell {
+            position: relative;
         }
-        .risk-cell .full {
-            display: none;
-            white-space: pre-wrap;
+        .risk-cell .risk-content {
+            max-height: 60px;
+            overflow: hidden;
+            transition: max-height 0.4s ease;
             word-break: break-word;
+            white-space: pre-wrap;
+        }
+        .risk-cell .risk-content.expanded {
+            max-height: 2000px;
         }
         .risk-cell .toggle-link {
             color: var(--link-color);
             cursor: pointer;
             font-size: 0.75rem;
-            margin-left: 4px;
             text-decoration: none;
             border-bottom: 1px dashed var(--link-color);
+            display: inline-block;
+            margin-top: 2px;
         }
         .risk-cell .toggle-link:hover {
             color: var(--link-hover);
@@ -497,7 +512,7 @@
 
         /* ===== 底部折叠历史列表 ===== */
         .history-toggle-area {
-            margin-top: 8px;
+            margin-top: 16px;
             padding-top: 16px;
             border-top: 2px dashed var(--border-color);
         }
@@ -595,6 +610,11 @@
             padding: 20px;
             text-align: center;
             color: var(--text-secondary);
+        }
+        .history-error {
+            padding: 20px;
+            text-align: center;
+            color: #f87171;
         }
 
         /* ===== 底部 ===== */
@@ -802,6 +822,7 @@
                 <div class="chart-box">
                     <h3>📈 近7天趋势</h3>
                     <div class="chart-container"><canvas id="lineChart"></canvas></div>
+                    <div class="chart-note" id="trendNote"></div>
                 </div>
             </div>
 
@@ -892,6 +913,7 @@
         let historyLoaded = false;
         let historyOpen = false;
         let countdownInterval = null;
+        let isHistoryLoading = false;
 
         // ============================================================
         // 3. 主题
@@ -920,7 +942,7 @@
         }
 
         // ============================================================
-        // 4. 工具
+        // 4. 工具函数
         // ============================================================
         function convertUtcToBeijing(utcTimeStr) {
             let cleaned = utcTimeStr.replace(' UTC', '').trim();
@@ -963,61 +985,20 @@
             return '未知';
         }
 
-        function formatDate(isoStr) {
-            if (!isoStr) return '未知日期';
-            const parts = isoStr.match(/(\d{4})-(\d{2})-(\d{2})/);
-            if (!parts) return isoStr;
-            return parts[1] + '-' + parts[2] + '-' + parts[3];
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
-        function getTodayStr() {
-            const d = new Date();
-            return d.getFullYear() + '-' +
-                String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                String(d.getDate()).padStart(2, '0');
+        function getToken() {
+            return localStorage.getItem('github_pat') || null;
         }
 
         // ============================================================
-        // 5. 解析报告表格（从HTML或文本）
+        // 5. 解析报告表格
         // ============================================================
-        function parseReportTableFromHTML(html) {
-            const rows = [];
-            const temp = document.createElement('div');
-            temp.innerHTML = html;
-            const table = temp.querySelector('table');
-            if (!table) return rows;
-            const tbody = table.querySelector('tbody');
-            if (!tbody) return rows;
-            const trs = tbody.querySelectorAll('tr');
-            trs.forEach(tr => {
-                const cells = tr.querySelectorAll('td');
-                if (cells.length >= 6) {
-                    let eventText = cells[0]?.innerText?.trim() || '';
-                    let link = '';
-                    const linkEl = cells[0]?.querySelector('a');
-                    if (linkEl) {
-                        link = linkEl.href;
-                        eventText = linkEl.innerText.trim();
-                    } else {
-                        const linkCell = cells[1];
-                        const a = linkCell?.querySelector('a');
-                        if (a) link = a.href;
-                    }
-                    if (!link) {
-                        const linkCellText = cells[1]?.innerText?.trim() || '';
-                        const match = linkCellText.match(/https?:\/\/[^\s]+/);
-                        if (match) link = match[0];
-                    }
-                    const risk = cells[2]?.innerText?.trim() || '';
-                    const source = cells[3]?.innerText?.trim() || '';
-                    const timeAgo = cells[4]?.innerText?.trim() || '';
-                    const riskLevel = parseRiskLevel(cells[5]?.innerText?.trim() || '');
-                    rows.push({ eventText, link, risk, source, timeAgo, riskLevel });
-                }
-            });
-            return rows;
-        }
-
         function parseReportTableFromMarkdown(text) {
             const rows = [];
             const lines = text.split('\n');
@@ -1074,10 +1055,9 @@
             const low = rows.filter(r => r.riskLevel === '低').length;
             const newCount = rows.filter(r => r.eventText.includes('🆕')).length;
 
-            // 更新报告计数
             document.getElementById('reportCount').textContent = `(共${total}条)`;
 
-            // 统计卡片：只有"总事件"可点击
+            // 统计卡片：只有"本次总事件"可点击
             statsGrid.style.display = 'grid';
             statsGrid.innerHTML = `
                 <div class="stat-card clickable" onclick="toggleHistory();">
@@ -1103,10 +1083,18 @@
                 </div>
             `;
 
-            // 周报总结
+            // === 修正周报总结中的数字 ===
             if (weeklySummaryText) {
+                // 替换 "共监测到 X 条" 为实际统计数
+                const fixedSummary = weeklySummaryText.replace(
+                    /共监测到\s*\d+\s*条/,
+                    `共监测到 ${total} 条`
+                ).replace(
+                    /高风险\s*\d+\s*条/,
+                    `高风险 ${high} 条`
+                );
                 weeklySummary.style.display = 'block';
-                weeklySummary.innerHTML = weeklySummaryText;
+                weeklySummary.innerHTML = fixedSummary;
             } else {
                 weeklySummary.style.display = 'none';
             }
@@ -1138,9 +1126,9 @@
                 highRiskSummary.style.display = 'block';
                 highRiskList.innerHTML = highRiskItems.map(item =>
                     `<li>
-                        ${item.link ? `<a href="${item.link}" target="_blank" class="risk-link">${item.eventText.replace('🆕','').trim()}</a>` : `<span>${item.eventText.replace('🆕','').trim()}</span>`}
+                        ${item.link ? `<a href="${item.link}" target="_blank" class="risk-link">${escapeHtml(item.eventText.replace('🆕','').trim())}</a>` : `<span>${escapeHtml(item.eventText.replace('🆕','').trim())}</span>`}
                         <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                            <span class="source-tag">${item.source}</span>
+                            <span class="source-tag">${escapeHtml(item.source)}</span>
                             <span class="risk-badge">高风险</span>
                         </span>
                     </li>`
@@ -1158,110 +1146,139 @@
         }
 
         // ============================================================
-        // 7. 趋势图加载真实数据
+        // 7. 近7天趋势（真实数据优先，模拟兜底）
         // ============================================================
         async function loadTrendData() {
+            const note = document.getElementById('trendNote');
             try {
                 const resp = await fetch(
-                    'https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/trend_data.json');
-                if (!resp.ok) return;
+                    'https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/trend_data.json'
+                );
+                if (!resp.ok) throw new Error('文件不存在');
                 const data = await resp.json();
-                if (!data || data.length === 0) return;
+                if (!data || data.length === 0) throw new Error('数据为空');
+
                 const sorted = data.sort((a, b) => a.date.localeCompare(b.date));
                 const last7 = sorted.slice(-7);
                 const labels = last7.map(d => d.date.slice(5));
                 const counts = last7.map(d => d.total || 0);
-                const lineCtx = document.getElementById('lineChart').getContext('2d');
-                if (lineChartInstance) lineChartInstance.destroy();
-                lineChartInstance = new Chart(lineCtx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: '风险数量',
-                            data: counts,
-                            borderColor: '#38bdf8',
-                            backgroundColor: 'rgba(56,189,248,0.1)',
-                            fill: true,
-                            tension: 0.3,
-                            pointBackgroundColor: '#38bdf8',
-                            pointBorderColor: 'white',
-                            borderWidth: 2,
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                            x: { grid: { display: false } }
-                        }
-                    }
-                });
+                note.textContent = '📊 基于真实历史数据';
+                renderLineChart(labels, counts);
             } catch (e) {
-                console.warn('加载趋势数据失败:', e);
+                // 模拟数据
+                const today = new Date();
+                const labels = [];
+                const counts = [];
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date(today);
+                    d.setDate(d.getDate() - i);
+                    labels.push((d.getMonth() + 1) + '/' + String(d.getDate()).padStart(2, '0'));
+                    counts.push(Math.floor(Math.random() * 25) + 5);
+                }
+                // 用今天实际数据替换最后一天（如果有）
+                if (allReportRows.length > 0) {
+                    counts[counts.length - 1] = allReportRows.length;
+                }
+                note.textContent = '📊 基于模拟数据（仅供参考）';
+                renderLineChart(labels, counts);
             }
         }
 
+        function renderLineChart(labels, counts) {
+            const lineCtx = document.getElementById('lineChart').getContext('2d');
+            if (lineChartInstance) lineChartInstance.destroy();
+            lineChartInstance = new Chart(lineCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '风险数量',
+                        data: counts,
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56,189,248,0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: '#38bdf8',
+                        pointBorderColor: 'white',
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
         // ============================================================
-        // 8. 加载本周历史事件（从reports/目录）
+        // 8. 加载本周历史事件（使用Token认证）
         // ============================================================
         async function loadHistoryEvents() {
+            if (isHistoryLoading) return;
+            isHistoryLoading = true;
             const badge = document.getElementById('historyBadge');
             const content = document.getElementById('historyContent');
 
             try {
-                // 使用GitHub API获取reports目录文件列表
+                const token = getToken();
+                const headers = {};
+                if (token) {
+                    headers['Authorization'] = 'Bearer ' + token;
+                }
+
+                // 先用API获取文件列表
                 const apiUrl =
                     'https://api.github.com/repos/zhetian592/my-crawler-monitor/contents/reports';
-                const resp = await fetch(apiUrl);
-                if (!resp.ok) throw new Error(`API请求失败: ${resp.status}`);
-                const files = await resp.json();
+                const resp = await fetch(apiUrl, { headers });
+                if (!resp.ok) {
+                    // 如果API失败，尝试从index.html解析
+                    await loadHistoryFromIndex();
+                    isHistoryLoading = false;
+                    return;
+                }
 
-                // 过滤出report_*.html文件
+                const files = await resp.json();
                 const reportFiles = files
                     .filter(f => f.name.startsWith('report_') && f.name.endsWith('.html'))
-                    .sort((a, b) => b.name.localeCompare(a.name)); // 最新的在前
+                    .sort((a, b) => b.name.localeCompare(a.name));
 
                 if (reportFiles.length === 0) {
                     content.innerHTML = '<div class="history-empty">📭 暂无历史报告</div>';
                     badge.textContent = '0条';
                     historyLoaded = true;
+                    isHistoryLoading = false;
                     return;
                 }
 
-                // 取最近7天（最多7个文件）
                 const recentFiles = reportFiles.slice(0, 7);
                 const allEvents = [];
                 const dateMap = {};
 
                 for (const file of recentFiles) {
                     try {
-                        const htmlResp = await fetch(file.download_url);
+                        const htmlResp = await fetch(file.download_url, { headers });
                         if (!htmlResp.ok) continue;
                         const html = await htmlResp.text();
 
-                        // 提取日期：从文件名 report_YYYYMMDD_HHMMSS.html
                         const dateMatch = file.name.match(/report_(\d{4})(\d{2})(\d{2})_/);
                         const dateStr = dateMatch ?
                             `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` :
                             file.name.slice(0, 10);
 
-                        // 解析HTML表格
                         const rows = parseReportTableFromHTML(html);
                         rows.forEach(row => {
-                            // 跳过空事件
                             if (!row.eventText || row.eventText.length < 3) return;
-                            allEvents.push({
-                                ...row,
-                                date: dateStr
-                            });
+                            allEvents.push({ ...row, date: dateStr });
                             if (!dateMap[dateStr]) dateMap[dateStr] = [];
                             dateMap[dateStr].push(row);
                         });
                     } catch (e) {
-                        console.warn(`加载历史报告 ${file.name} 失败:`, e);
+                        console.warn('加载历史报告失败:', file.name, e);
                     }
                 }
 
@@ -1271,48 +1288,159 @@
                 if (allEvents.length === 0) {
                     content.innerHTML = '<div class="history-empty">📭 本周暂无历史数据</div>';
                     badge.textContent = '0条';
+                    isHistoryLoading = false;
                     return;
                 }
 
                 badge.textContent = `${allEvents.length}条`;
-
-                // 按日期分组渲染
-                const sortedDates = Object.keys(dateMap).sort((a, b) => b.localeCompare(a));
-                let html = '<div class="history-wrapper"><table><thead><tr>';
-                html += '<th>日期</th><th>事件简述</th><th>风险等级</th><th>信息来源</th><th>原文链接</th>';
-                html += '</tr></thead><tbody>';
-
-                for (const date of sortedDates) {
-                    const items = dateMap[date];
-                    // 日期分组行
-                    html += `<tr class="date-group"><td colspan="5">📅 ${date}（${items.length}条）</td></tr>`;
-                    items.forEach(item => {
-                        const linkHtml = item.link ?
-                            `<a href="${item.link}" target="_blank">查看</a>` :
-                            '-';
-                        const riskClass = item.riskLevel === '高' ? 'high' :
-                            item.riskLevel === '中' ? 'medium' : 'low';
-                        const riskTag = `<span class="risk-tag ${riskClass}">${item.riskLevel}</span>`;
-                        html += `<tr>
-                            <td style="white-space:nowrap;">${date}</td>
-                            <td>${item.eventText}</td>
-                            <td>${riskTag}</td>
-                            <td>${item.source || '-'}</td>
-                            <td>${linkHtml}</td>
-                        </tr>`;
-                    });
-                }
-
-                html += '</tbody></table></div>';
-                content.innerHTML = html;
+                renderHistoryTable(dateMap, content);
 
             } catch (err) {
                 console.error('加载历史数据失败:', err);
-                content.innerHTML =
-                    `<div class="history-empty">⚠️ 加载历史数据失败: ${err.message}<br><button class="btn btn-outline" style="margin-top:12px;" onclick="loadHistoryEvents()">🔄 重试</button></div>`;
-                badge.textContent = '加载失败';
-                historyLoaded = true;
+                // 降级尝试从index.html加载
+                try {
+                    await loadHistoryFromIndex();
+                } catch (e2) {
+                    content.innerHTML =
+                        `<div class="history-error">⚠️ 加载历史数据失败: ${escapeHtml(err.message)}<br><button class="btn btn-outline" style="margin-top:12px;" onclick="loadHistoryEvents()">🔄 重试</button></div>`;
+                    badge.textContent = '加载失败';
+                }
             }
+            isHistoryLoading = false;
+        }
+
+        // 降级方案：从 reports/index.html 解析链接
+        async function loadHistoryFromIndex() {
+            const content = document.getElementById('historyContent');
+            const badge = document.getElementById('historyBadge');
+            try {
+                const resp = await fetch(
+                    'https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/reports/index.html'
+                );
+                if (!resp.ok) throw new Error('无法获取历史索引');
+                const html = await resp.text();
+                const temp = document.createElement('div');
+                temp.innerHTML = html;
+                const links = temp.querySelectorAll('a[href*="report_"]');
+                const hrefs = [];
+                links.forEach(a => {
+                    const href = a.getAttribute('href');
+                    if (href && href.startsWith('report_') && href.endsWith('.html')) {
+                        hrefs.push(href);
+                    }
+                });
+                if (hrefs.length === 0) {
+                    content.innerHTML = '<div class="history-empty">📭 暂无历史报告</div>';
+                    badge.textContent = '0条';
+                    historyLoaded = true;
+                    return;
+                }
+                const recent = hrefs.slice(0, 7);
+                const allEvents = [];
+                const dateMap = {};
+                for (const h of recent) {
+                    try {
+                        const url =
+                            `https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/reports/${h}`;
+                        const r = await fetch(url);
+                        if (!r.ok) continue;
+                        const htmlContent = await r.text();
+                        const dateMatch = h.match(/report_(\d{4})(\d{2})(\d{2})_/);
+                        const dateStr = dateMatch ?
+                            `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` :
+                            h.slice(0, 10);
+                        const rows = parseReportTableFromHTML(htmlContent);
+                        rows.forEach(row => {
+                            if (!row.eventText || row.eventText.length < 3) return;
+                            allEvents.push({ ...row, date: dateStr });
+                            if (!dateMap[dateStr]) dateMap[dateStr] = [];
+                            dateMap[dateStr].push(row);
+                        });
+                    } catch (e) {
+                        console.warn('加载历史报告失败:', h, e);
+                    }
+                }
+                historyData = allEvents;
+                historyLoaded = true;
+                if (allEvents.length === 0) {
+                    content.innerHTML = '<div class="history-empty">📭 本周暂无历史数据</div>';
+                    badge.textContent = '0条';
+                    return;
+                }
+                badge.textContent = `${allEvents.length}条`;
+                renderHistoryTable(dateMap, content);
+            } catch (err) {
+                throw err;
+            }
+        }
+
+        // 解析HTML表格（用textContent防乱码）
+        function parseReportTableFromHTML(html) {
+            const rows = [];
+            const temp = document.createElement('div');
+            temp.innerHTML = html;
+            const table = temp.querySelector('table');
+            if (!table) return rows;
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return rows;
+            const trs = tbody.querySelectorAll('tr');
+            trs.forEach(tr => {
+                const cells = tr.querySelectorAll('td');
+                if (cells.length >= 6) {
+                    let eventText = cells[0]?.textContent?.trim() || '';
+                    let link = '';
+                    const linkEl = cells[0]?.querySelector('a');
+                    if (linkEl) {
+                        link = linkEl.href;
+                        eventText = linkEl.textContent.trim();
+                    } else {
+                        const linkCell = cells[1];
+                        const a = linkCell?.querySelector('a');
+                        if (a) link = a.href;
+                    }
+                    if (!link) {
+                        const linkText = cells[1]?.textContent?.trim() || '';
+                        const match = linkText.match(/https?:\/\/[^\s]+/);
+                        if (match) link = match[0];
+                    }
+                    const risk = cells[2]?.textContent?.trim() || '';
+                    const source = cells[3]?.textContent?.trim() || '';
+                    const timeAgo = cells[4]?.textContent?.trim() || '';
+                    const riskLevel = parseRiskLevel(cells[5]?.textContent?.trim() || '');
+                    if (eventText && eventText.length > 0) {
+                        rows.push({ eventText, link, risk, source, timeAgo, riskLevel });
+                    }
+                }
+            });
+            return rows;
+        }
+
+        function renderHistoryTable(dateMap, content) {
+            const sortedDates = Object.keys(dateMap).sort((a, b) => b.localeCompare(a));
+            let html = '<div class="history-wrapper"><table><thead><tr>';
+            html += '<th>日期</th><th>事件简述</th><th>风险等级</th><th>信息来源</th><th>原文链接</th>';
+            html += '</tr></thead><tbody>';
+            for (const date of sortedDates) {
+                const items = dateMap[date];
+                html += `<tr class="date-group"><td colspan="5">📅 ${escapeHtml(date)}（${items.length}条）</td></tr>`;
+                items.forEach(item => {
+                    const linkHtml = item.link ?
+                        `<a href="${escapeHtml(item.link)}" target="_blank">查看</a>` :
+                        '-';
+                    const riskClass = item.riskLevel === '高' ? 'high' :
+                        item.riskLevel === '中' ? 'medium' : 'low';
+                    const riskTag = `<span class="risk-tag ${riskClass}">${escapeHtml(item.riskLevel)}</span>`;
+                    html += `<tr>
+                        <td style="white-space:nowrap;">${escapeHtml(date)}</td>
+                        <td>${escapeHtml(item.eventText)}</td>
+                        <td>${riskTag}</td>
+                        <td>${escapeHtml(item.source || '-')}</td>
+                        <td>${linkHtml}</td>
+                    </tr>`;
+                });
+            }
+            html += '</tbody></table></div>';
+            content.innerHTML = html;
         }
 
         // ============================================================
@@ -1323,7 +1451,6 @@
             const arrow = document.getElementById('historyArrow');
 
             if (!historyLoaded) {
-                // 首次加载
                 container.classList.add('open');
                 arrow.classList.add('open');
                 historyOpen = true;
@@ -1340,7 +1467,6 @@
                 arrow.classList.remove('open');
             }
 
-            // 滚动到展开位置
             if (historyOpen) {
                 setTimeout(() => {
                     const btn = document.getElementById('historyToggleBtn');
@@ -1348,12 +1474,10 @@
                 }, 100);
             }
         }
-
-        // 暴露给HTML onclick使用
         window.toggleHistory = toggleHistory;
 
         // ============================================================
-        // 10. 加载本次报告（主体）
+        // 10. 加载本次报告
         // ============================================================
         let lastReportHash = localStorage.getItem('lastReportHash') || '';
 
@@ -1361,16 +1485,12 @@
             return text.slice(0, 200) + text.length;
         }
 
-        window.toggleRisk = function(el) {
-            const cell = el.closest('td');
-            if (!cell) return;
-            const short = cell.querySelector('.short');
-            const full = cell.querySelector('.full');
-            if (short && full) {
-                const isExpanded = full.style.display !== 'none';
-                short.style.display = isExpanded ? 'inline' : 'none';
-                full.style.display = isExpanded ? 'none' : 'block';
-                el.textContent = isExpanded ? '展开' : '收起';
+        // 风险点折叠切换（使用max-height安全方案）
+        window.toggleRiskContent = function(el) {
+            const content = el.parentElement.querySelector('.risk-content');
+            if (content) {
+                content.classList.toggle('expanded');
+                el.textContent = content.classList.contains('expanded') ? '收起' : '展开';
             }
         };
 
@@ -1380,7 +1500,8 @@
 
             try {
                 const response = await fetch(
-                    'https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/report.md');
+                    'https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/report.md'
+                );
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const text = await response.text();
                 const currentHash = simpleHash(text);
@@ -1422,7 +1543,7 @@
                     }
                 });
 
-                // 风险点折叠
+                // 风险点折叠：使用 max-height 安全方案
                 const tables = tempDiv.querySelectorAll('table');
                 tables.forEach(table => {
                     const rows = table.querySelectorAll('tbody tr');
@@ -1430,14 +1551,13 @@
                         const cells = row.querySelectorAll('td');
                         if (cells.length >= 6) {
                             const riskCell = cells[2];
-                            const fullText = riskCell.innerText.trim();
+                            const fullText = riskCell.textContent.trim();
                             if (fullText.length > 40) {
                                 const shortText = fullText.substring(0, 35) + '...';
                                 riskCell.className = 'risk-cell';
                                 riskCell.innerHTML = `
-                                    <span class="short">${shortText}</span>
-                                    <span class="full">${fullText}</span>
-                                    <a class="toggle-link" onclick="toggleRisk(this)">展开</a>
+                                    <div class="risk-content">${escapeHtml(fullText)}</div>
+                                    <a class="toggle-link" onclick="toggleRiskContent(this)">展开</a>
                                 `;
                             }
                         }
@@ -1459,9 +1579,9 @@
                             const rowData = rows[idx];
                             if (rowData && rowData.link) {
                                 const eventCell = cells[0];
-                                const originalText = eventCell.innerText.trim();
+                                const originalText = eventCell.textContent.trim();
                                 eventCell.innerHTML =
-                                    `<a href="${rowData.link}" target="_blank" rel="noopener noreferrer">${originalText}</a>`;
+                                    `<a href="${escapeHtml(rowData.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(originalText)}</a>`;
                             }
                         }
                     });
@@ -1474,9 +1594,8 @@
                 updateStatsAndCharts(rows, weeklySummaryText, displayTime);
                 await loadTrendData();
 
-                // 预加载历史数据（但默认收起）
-                if (!historyLoaded) {
-                    // 静默预加载
+                // 预加载历史数据（静默）
+                if (!historyLoaded && !isHistoryLoading) {
                     loadHistoryEvents().catch(() => {});
                 }
 
@@ -1489,7 +1608,7 @@
             } catch (err) {
                 reportDiv.innerHTML =
                     `<div style="color:#f87171;background:rgba(244,67,54,0.08);padding:20px;border-radius:16px;">
-                    <strong>⚠️ 加载失败</strong><br>${err.message}<br><br>
+                    <strong>⚠️ 加载失败</strong><br>${escapeHtml(err.message)}<br><br>
                     <button class="btn btn-primary" onclick="loadReport(true)">🔄 重试</button>
                 </div>`;
                 if (showAlert) alert(`❌ 报告刷新失败：${err.message}`);
@@ -1599,7 +1718,7 @@
         }
 
         // ============================================================
-        // 12. 历史报告
+        // 12. 历史报告跳转
         // ============================================================
         async function openHistory() {
             const btn = document.getElementById('history-btn');
@@ -1656,14 +1775,12 @@
             loadReport(false);
             updateButtonState();
             promptTokenIfNeeded();
-
-            // 如果用户之前打开了历史列表，刷新后保持状态（但默认关闭）
-            // 无额外操作
         }
 
         // 暴露函数给全局
         window.loadReport = loadReport;
         window.loadHistoryEvents = loadHistoryEvents;
+        window.toggleRiskContent = toggleRiskContent;
 
         checkLogin();
     </script>
