@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
@@ -14,38 +14,8 @@
             padding: 0;
         }
 
-        :root {
-            --bg-body: #f1f5f9;
-            --bg-card: rgba(255, 255, 255, 0.25);
-            --bg-card-solid: rgba(255, 255, 255, 0.85);
-            --text-primary: #000000;
-            --text-secondary: #1a1a2e;
-            --border-color: rgba(0, 0, 0, 0.15);
-            --shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-            --shadow-hover: 0 12px 48px rgba(0, 0, 0, 0.28);
-            --radius: 20px;
-            --link-color: #1a4bbf;
-            --link-hover: #0d2d7a;
-            --gradient-primary: linear-gradient(135deg, #2563eb, #7c3aed);
-            --gradient-danger: linear-gradient(135deg, #f87171, #dc2626);
-            --gradient-warning: linear-gradient(135deg, #fbbf24, #d97706);
-            --gradient-success: linear-gradient(135deg, #34d399, #059669);
-            --glass-border: rgba(255, 255, 255, 0.30);
-            --glass-bg: rgba(255, 255, 255, 0.20);
-            --table-header-bg: rgba(0, 0, 0, 0.08);
-            --table-hover-bg: rgba(0, 0, 0, 0.04);
-            --risk-high: #dc2626;
-            --risk-medium: #d97706;
-            --risk-low: #059669;
-            --tooltip-bg: rgba(255, 255, 255, 0.96);
-            --tooltip-text: #000000;
-            --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
-            --tooltip-border: rgba(255, 255, 255, 0.5);
-            /* 表格背景 - 半透明 + 模糊 */
-            --table-bg: rgba(255, 255, 255, 0.30);
-            --table-blur: blur(12px);
-        }
-
+        /* ===== 深色主题（默认） ===== */
+        :root,
         [data-theme="dark"] {
             --bg-body: #0b1121;
             --bg-card: rgba(26, 35, 50, 0.30);
@@ -59,13 +29,95 @@
             --glass-bg: rgba(26, 35, 50, 0.30);
             --table-header-bg: rgba(30, 41, 59, 0.5);
             --table-hover-bg: rgba(30, 41, 59, 0.3);
+            --table-bg: rgba(26, 35, 50, 0.40);
+            --table-blur: blur(12px);
             --link-color: #6ea8fe;
             --link-hover: #9ec8ff;
+            --gradient-primary: linear-gradient(135deg, #38bdf8, #818cf8);
+            --gradient-danger: linear-gradient(135deg, #f87171, #f43f5e);
+            --gradient-warning: linear-gradient(135deg, #fbbf24, #f59e0b);
+            --gradient-success: linear-gradient(135deg, #34d399, #60a5fa);
+            --risk-high: #f43f5e;
+            --risk-medium: #f59e0b;
+            --risk-low: #34d399;
             --tooltip-bg: rgba(26, 35, 50, 0.96);
             --tooltip-text: #f0f4f8;
             --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
             --tooltip-border: rgba(255, 255, 255, 0.1);
-            --table-bg: rgba(26, 35, 50, 0.40);
+            --theme-label: '🌙 深色';
+            --accent-glow: rgba(56, 189, 248, 0.06);
+            --accent-glow2: rgba(244, 114, 182, 0.04);
+            --stat-number-bg: linear-gradient(135deg, #38bdf8, #818cf8);
+        }
+
+        /* ===== 青色主题 ===== */
+        [data-theme="cyan"] {
+            --bg-body: #0c1824;
+            --bg-card: rgba(15, 30, 50, 0.30);
+            --bg-card-solid: rgba(15, 30, 50, 0.85);
+            --text-primary: #e6f7ff;
+            --text-secondary: #b0d4e8;
+            --border-color: rgba(0, 255, 255, 0.10);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            --shadow-hover: 0 12px 48px rgba(0, 200, 255, 0.08);
+            --glass-border: rgba(0, 255, 255, 0.08);
+            --glass-bg: rgba(0, 200, 255, 0.06);
+            --table-header-bg: rgba(0, 200, 255, 0.08);
+            --table-hover-bg: rgba(0, 200, 255, 0.05);
+            --table-bg: rgba(0, 40, 60, 0.40);
+            --table-blur: blur(12px);
+            --link-color: #22d3ee;
+            --link-hover: #67e8f9;
+            --gradient-primary: linear-gradient(135deg, #06b6d4, #3b82f6);
+            --gradient-danger: linear-gradient(135deg, #f87171, #f43f5e);
+            --gradient-warning: linear-gradient(135deg, #fbbf24, #f59e0b);
+            --gradient-success: linear-gradient(135deg, #34d399, #06b6d4);
+            --risk-high: #f43f5e;
+            --risk-medium: #f59e0b;
+            --risk-low: #22d3ee;
+            --tooltip-bg: rgba(0, 30, 50, 0.96);
+            --tooltip-text: #e6f7ff;
+            --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+            --tooltip-border: rgba(0, 255, 255, 0.1);
+            --theme-label: '💠 青色';
+            --accent-glow: rgba(0, 255, 255, 0.06);
+            --accent-glow2: rgba(56, 189, 248, 0.04);
+            --stat-number-bg: linear-gradient(135deg, #06b6d4, #3b82f6);
+        }
+
+        /* ===== 橙色主题 ===== */
+        [data-theme="orange"] {
+            --bg-body: #1a0e08;
+            --bg-card: rgba(40, 20, 10, 0.30);
+            --bg-card-solid: rgba(40, 20, 10, 0.85);
+            --text-primary: #fff5ed;
+            --text-secondary: #e8d5c8;
+            --border-color: rgba(255, 150, 50, 0.10);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            --shadow-hover: 0 12px 48px rgba(255, 150, 50, 0.08);
+            --glass-border: rgba(255, 150, 50, 0.08);
+            --glass-bg: rgba(255, 150, 50, 0.06);
+            --table-header-bg: rgba(255, 150, 50, 0.08);
+            --table-hover-bg: rgba(255, 150, 50, 0.05);
+            --table-bg: rgba(50, 25, 10, 0.40);
+            --table-blur: blur(12px);
+            --link-color: #fb923c;
+            --link-hover: #fdba74;
+            --gradient-primary: linear-gradient(135deg, #f97316, #f43f5e);
+            --gradient-danger: linear-gradient(135deg, #f87171, #dc2626);
+            --gradient-warning: linear-gradient(135deg, #fbbf24, #f97316);
+            --gradient-success: linear-gradient(135deg, #34d399, #f97316);
+            --risk-high: #f43f5e;
+            --risk-medium: #f97316;
+            --risk-low: #fb923c;
+            --tooltip-bg: rgba(40, 20, 10, 0.96);
+            --tooltip-text: #fff5ed;
+            --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+            --tooltip-border: rgba(255, 150, 50, 0.1);
+            --theme-label: '🔥 橙色';
+            --accent-glow: rgba(255, 150, 50, 0.06);
+            --accent-glow2: rgba(244, 114, 182, 0.04);
+            --stat-number-bg: linear-gradient(135deg, #f97316, #f43f5e);
         }
 
         body {
@@ -85,7 +137,7 @@
             text-shadow: 0 1px 8px rgba(255, 255, 255, 0.08), 0 0 30px rgba(0, 0, 0, 0.12);
         }
 
-        /* ===== 氛围光晕 ===== */
+        /* ===== 氛围光晕（随主题变化） ===== */
         body::before {
             content: '';
             position: fixed;
@@ -93,7 +145,7 @@
             left: -20%;
             width: 70%;
             height: 70%;
-            background: radial-gradient(circle, rgba(56, 189, 248, 0.06) 0%, transparent 70%);
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
             pointer-events: none;
             z-index: 0;
         }
@@ -104,7 +156,7 @@
             right: -20%;
             width: 70%;
             height: 70%;
-            background: radial-gradient(circle, rgba(244, 114, 182, 0.04) 0%, transparent 70%);
+            background: radial-gradient(circle, var(--accent-glow2) 0%, transparent 70%);
             pointer-events: none;
             z-index: 0;
         }
@@ -221,7 +273,7 @@
         .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-            border-color: rgba(56, 189, 248, 0.4);
+            border-color: var(--link-color);
         }
         .btn-primary {
             background: var(--gradient-primary);
@@ -230,7 +282,7 @@
             text-shadow: 0 1px 4px rgba(0,0,0,0.15);
         }
         .btn-primary:hover {
-            box-shadow: 0 8px 28px rgba(56, 189, 248, 0.35);
+            box-shadow: 0 8px 28px var(--link-color);
         }
         .btn-danger {
             background: var(--gradient-danger);
@@ -289,7 +341,7 @@
         .stat-number {
             font-size: 2.2rem;
             font-weight: 700;
-            background: var(--gradient-primary);
+            background: var(--stat-number-bg);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -315,7 +367,7 @@
             background-clip: text;
         }
         .stat-number.info {
-            background: var(--gradient-primary);
+            background: var(--stat-number-bg);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -369,6 +421,7 @@
             font-weight: 500;
         }
         .high-risk-summary .risk-link:hover {
+            color: var(--link-hover);
             text-decoration: underline;
         }
         .high-risk-summary .source-tag {
@@ -450,19 +503,19 @@
             letter-spacing: 0.03em;
         }
         .risk-tag.high {
-            background: rgba(220, 38, 38, 0.12);
-            color: #dc2626;
-            box-shadow: 0 0 12px rgba(220, 38, 38, 0.08);
+            background: rgba(244, 67, 54, 0.15);
+            color: #f43f5e;
+            box-shadow: 0 0 12px rgba(244, 67, 54, 0.08);
         }
         .risk-tag.medium {
-            background: rgba(217, 119, 6, 0.12);
-            color: #d97706;
-            box-shadow: 0 0 12px rgba(217, 119, 6, 0.08);
+            background: rgba(245, 158, 11, 0.15);
+            color: #f59e0b;
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.08);
         }
         .risk-tag.low {
-            background: rgba(5, 150, 105, 0.12);
-            color: #059669;
-            box-shadow: 0 0 12px rgba(5, 150, 105, 0.08);
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+            box-shadow: 0 0 12px rgba(52, 211, 153, 0.08);
         }
 
         /* ===== 风险点：10字截断 + 点击弹窗 ===== */
@@ -573,16 +626,16 @@
             text-transform: uppercase;
         }
         .risk-tooltip .tooltip-risk-badge.high {
-            background: rgba(220, 38, 38, 0.12);
-            color: #dc2626;
+            background: rgba(244, 67, 54, 0.15);
+            color: #f43f5e;
         }
         .risk-tooltip .tooltip-risk-badge.medium {
-            background: rgba(217, 119, 6, 0.12);
-            color: #d97706;
+            background: rgba(245, 158, 11, 0.15);
+            color: #f59e0b;
         }
         .risk-tooltip .tooltip-risk-badge.low {
-            background: rgba(5, 150, 105, 0.12);
-            color: #059669;
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
         }
         .risk-tooltip .tooltip-close {
             display: inline-block;
@@ -753,7 +806,7 @@
                         <button id="refresh-btn" class="btn btn-outline">🔄 刷新</button>
                         <button id="trigger-action-btn" class="btn btn-danger">🚀 立即更新</button>
                         <button id="history-btn" class="btn btn-success">📚 历史</button>
-                        <button id="themeToggleBtn" class="btn btn-outline">🌓 主题</button>
+                        <button id="themeToggleBtn" class="btn btn-outline" id="themeBtn">🌙 深色</button>
                         <button id="logoutBtn" class="btn btn-outline" style="font-size:0.75rem;">退出</button>
                     </div>
                 </div>
@@ -815,13 +868,19 @@
         // ============================================================
         // 2. 初始化
         // ============================================================
-        let currentTheme = localStorage.getItem('theme') || 'auto';
+        const THEMES = ['dark', 'cyan', 'orange'];
+        const THEME_LABELS = {
+            dark: '🌙 深色',
+            cyan: '💠 青色',
+            orange: '🔥 橙色'
+        };
+        let currentTheme = localStorage.getItem('theme') || 'dark';
         let countdownInterval = null;
         let activeTooltip = null;
 
         function initApp() {
             applyTheme();
-            document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
+            document.getElementById('themeToggleBtn').addEventListener('click', cycleTheme);
             document.getElementById('logoutBtn').addEventListener('click', () => {
                 sessionStorage.removeItem(SESSION_KEY);
                 location.reload();
@@ -835,28 +894,22 @@
         }
 
         // ============================================================
-        // 3. 主题
+        // 3. 主题切换（深色 → 青色 → 橙色 → 深色）
         // ============================================================
         function applyTheme() {
             const html = document.documentElement;
-            if (currentTheme === 'dark') {
-                html.setAttribute('data-theme', 'dark');
-            } else if (currentTheme === 'light') {
-                html.setAttribute('data-theme', 'light');
-            } else {
-                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                    html.setAttribute('data-theme', 'dark');
-                } else {
-                    html.setAttribute('data-theme', 'light');
-                }
-            }
+            html.setAttribute('data-theme', currentTheme);
             localStorage.setItem('theme', currentTheme);
+            const btn = document.getElementById('themeToggleBtn');
+            if (btn) {
+                btn.textContent = THEME_LABELS[currentTheme] || '🌙 深色';
+            }
         }
 
-        function toggleTheme() {
-            if (currentTheme === 'auto') currentTheme = 'light';
-            else if (currentTheme === 'light') currentTheme = 'dark';
-            else currentTheme = 'auto';
+        function cycleTheme() {
+            const currentIndex = THEMES.indexOf(currentTheme);
+            const nextIndex = (currentIndex + 1) % THEMES.length;
+            currentTheme = THEMES[nextIndex];
             applyTheme();
         }
 
