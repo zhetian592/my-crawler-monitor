@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>🛡️ 内容安全舆情监控系统</title>
-    <!-- marked.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">
     </script>
     <style>
@@ -16,7 +15,6 @@
         }
 
         :root {
-            /* 浅色主题 */
             --bg-body: #f1f5f9;
             --bg-card: rgba(255, 255, 255, 0.70);
             --bg-card-solid: #ffffff;
@@ -26,28 +24,24 @@
             --shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
             --shadow-hover: 0 12px 48px rgba(0, 0, 0, 0.15);
             --radius: 20px;
-            --glow-color: rgba(56, 189, 248, 0.3);
             --link-color: #2563eb;
             --link-hover: #1d4ed8;
             --gradient-primary: linear-gradient(135deg, #38bdf8, #818cf8);
-            --gradient-accent: linear-gradient(135deg, #f472b6, #fb923c);
-            --gradient-success: linear-gradient(135deg, #34d399, #60a5fa);
             --gradient-danger: linear-gradient(135deg, #f87171, #f43f5e);
             --gradient-warning: linear-gradient(135deg, #fbbf24, #f59e0b);
+            --gradient-success: linear-gradient(135deg, #34d399, #60a5fa);
             --glass-border: rgba(255, 255, 255, 0.25);
             --glass-bg: rgba(255, 255, 255, 0.55);
             --table-header-bg: rgba(241, 245, 249, 0.6);
             --risk-high: #f43f5e;
             --risk-medium: #f59e0b;
             --risk-low: #34d399;
-            /* Tooltip */
             --tooltip-bg: rgba(255, 255, 255, 0.95);
             --tooltip-text: #0b1121;
             --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.18);
             --tooltip-border: rgba(255, 255, 255, 0.5);
         }
 
-        /* 深色主题 */
         [data-theme="dark"] {
             --bg-body: #0b1121;
             --bg-card: rgba(26, 35, 50, 0.75);
@@ -62,7 +56,6 @@
             --table-header-bg: rgba(30, 41, 59, 0.6);
             --link-color: #6ea8fe;
             --link-hover: #9ec8ff;
-            --glow-color: rgba(56, 189, 248, 0.15);
             --tooltip-bg: rgba(26, 35, 50, 0.95);
             --tooltip-text: #f0f4f8;
             --tooltip-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
@@ -79,8 +72,6 @@
             transition: background 0.3s ease, color 0.3s ease;
             min-height: 100vh;
         }
-
-        /* 背景装饰光晕 */
         body::before {
             content: '';
             position: fixed;
@@ -111,7 +102,6 @@
             z-index: 1;
         }
 
-        /* ===== 卡片 ===== */
         .card {
             background: var(--bg-card);
             backdrop-filter: blur(20px);
@@ -132,7 +122,6 @@
             border: 1px solid var(--border-color);
         }
 
-        /* ===== 顶部导航 ===== */
         .navbar {
             display: flex;
             align-items: center;
@@ -178,15 +167,8 @@
             animation: pulse-dot 2s infinite;
         }
         @keyframes pulse-dot {
-            0%,
-            100% {
-                opacity: 1;
-                transform: scale(1);
-            }
-            50% {
-                opacity: 0.5;
-                transform: scale(0.8);
-            }
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
         }
 
         .navbar-actions {
@@ -196,7 +178,6 @@
             flex-wrap: wrap;
         }
 
-        /* ===== 按钮样式 ===== */
         .btn {
             display: inline-flex;
             align-items: center;
@@ -257,7 +238,6 @@
             box-shadow: none !important;
         }
 
-        /* ===== 统计卡片行 ===== */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -318,7 +298,6 @@
             font-weight: 500;
         }
 
-        /* ===== 高风险摘要 ===== */
         .high-risk-summary {
             background: var(--bg-card-solid);
             border-radius: 16px;
@@ -379,7 +358,6 @@
             margin-right: 6px;
         }
 
-        /* ===== 报告表格 ===== */
         .report-wrapper {
             overflow-x: auto;
             margin-top: 8px;
@@ -424,7 +402,6 @@
             text-decoration: underline;
         }
 
-        /* ===== 风险等级标签 ===== */
         .risk-tag {
             display: inline-block;
             font-size: 0.7rem;
@@ -449,16 +426,8 @@
             color: #34d399;
             box-shadow: 0 0 12px rgba(52, 211, 153, 0.12);
         }
-        .risk-tag.new-high {
-            background: rgba(244, 67, 54, 0.25);
-            color: #f43f5e;
-            box-shadow: 0 0 16px rgba(244, 67, 54, 0.25);
-            border: 1px solid rgba(244, 67, 54, 0.3);
-        }
 
-        /* ============================================================
-           风险点：10字截断 + 点击弹窗（方案A）
-           ============================================================ */
+        /* ===== 风险点：10字截断 + 点击弹窗 ===== */
         .risk-cell {
             position: relative;
             display: inline-block;
@@ -497,7 +466,6 @@
             color: var(--link-hover);
         }
 
-        /* ===== Tooltip 弹窗（点击展开） ===== */
         .risk-tooltip {
             position: fixed;
             max-width: 460px;
@@ -594,7 +562,6 @@
             color: var(--link-hover);
         }
 
-        /* ===== 底部 ===== */
         .footer-bar {
             margin-top: 30px;
             text-align: center;
@@ -608,7 +575,6 @@
             border-top: 1px solid var(--border-color);
         }
 
-        /* ===== 滚动条美化 ===== */
         ::-webkit-scrollbar {
             width: 6px;
             height: 6px;
@@ -621,7 +587,6 @@
             border-radius: 10px;
         }
 
-        /* ===== 加载动画 ===== */
         .loader {
             border: 3px solid var(--border-color);
             border-top: 3px solid #38bdf8;
@@ -632,15 +597,10 @@
             margin: 20px auto;
         }
         @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-            100% {
-                transform: rotate(360deg);
-            }
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
-        /* ===== 登录覆盖层 ===== */
         .login-overlay {
             position: fixed;
             top: 0;
@@ -703,65 +663,27 @@
             font-size: 0.85rem;
         }
 
-        /* ===== 响应式 ===== */
         @media (max-width: 700px) {
-            body {
-                padding: 12px;
-            }
-            .card {
-                padding: 16px;
-            }
-            .navbar-brand {
-                font-size: 1.2rem;
-            }
-            .stats-grid {
-                grid-template-columns: repeat(3, 1fr);
-            }
-            .stat-number {
-                font-size: 1.6rem;
-            }
-            .report-wrapper td,
-            .report-wrapper th {
-                font-size: 0.75rem;
-                padding: 6px 8px;
-            }
-            .high-risk-summary li {
-                font-size: 0.8rem;
-            }
-            .risk-tooltip {
-                max-width: 300px;
-                padding: 12px 14px;
-                font-size: 0.8rem;
-            }
+            body { padding: 12px; }
+            .card { padding: 16px; }
+            .navbar-brand { font-size: 1.2rem; }
+            .stats-grid { grid-template-columns: repeat(3, 1fr); }
+            .stat-number { font-size: 1.6rem; }
+            .report-wrapper td, .report-wrapper th { font-size: 0.75rem; padding: 6px 8px; }
+            .high-risk-summary li { font-size: 0.8rem; }
+            .risk-tooltip { max-width: 300px; padding: 12px 14px; font-size: 0.8rem; }
         }
         @media (max-width: 480px) {
-            .stats-grid {
-                grid-template-columns: 1fr 1fr 1fr;
-                gap: 8px;
-            }
-            .stat-card {
-                padding: 10px 8px;
-            }
-            .stat-number {
-                font-size: 1.3rem;
-            }
-            .stat-label {
-                font-size: 0.6rem;
-            }
-            .navbar-actions .btn {
-                font-size: 0.65rem;
-                padding: 4px 10px;
-            }
-            .risk-tooltip {
-                max-width: 260px;
-                padding: 10px 12px;
-                font-size: 0.75rem;
-            }
+            .stats-grid { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+            .stat-card { padding: 10px 8px; }
+            .stat-number { font-size: 1.3rem; }
+            .stat-label { font-size: 0.6rem; }
+            .navbar-actions .btn { font-size: 0.65rem; padding: 4px 10px; }
+            .risk-tooltip { max-width: 260px; padding: 10px 12px; font-size: 0.75rem; }
         }
     </style>
 </head>
 <body>
-    <!-- ===== 登录覆盖层 ===== -->
     <div id="loginOverlay" class="login-overlay" style="display:none;">
         <div class="login-card">
             <h2>🔐 系统登录</h2>
@@ -772,11 +694,8 @@
         </div>
     </div>
 
-    <!-- ===== 主应用 ===== -->
     <div id="app" style="display:none;">
         <div class="container">
-
-            <!-- 导航栏 -->
             <div class="card" style="padding: 16px 24px;">
                 <div class="navbar">
                     <div class="navbar-brand">
@@ -795,23 +714,17 @@
                 </div>
             </div>
 
-            <!-- 统计卡片 -->
             <div class="stats-grid" id="statsGrid" style="display:none;"></div>
 
-            <!-- 高风险摘要 -->
             <div id="highRiskSummary" class="high-risk-summary" style="display:none;">
                 <h3>⚠️ 高风险事件 TOP 5</h3>
                 <ul id="highRiskList"></ul>
             </div>
 
-            <!-- 报告主表格 -->
             <div class="card">
-                <div id="report-content">
-                    <div class="loader"></div>
-                </div>
+                <div id="report-content"><div class="loader"></div></div>
             </div>
 
-            <!-- 底部 -->
             <div class="footer-bar">
                 <span>⚡ 数据来自定期爬取 | 自动生成涉华负面报告</span>
                 <span id="trigger-limit-info"></span>
@@ -821,7 +734,7 @@
 
     <script>
         // ============================================================
-        // 1. 登录验证
+        // 1. 登录
         // ============================================================
         const PASSWORD = 'dzx12123';
         const SESSION_KEY = 'logged_in';
@@ -855,7 +768,7 @@
         }
 
         // ============================================================
-        // 2. 应用初始化
+        // 2. 初始化
         // ============================================================
         let currentTheme = localStorage.getItem('theme') || 'auto';
         let countdownInterval = null;
@@ -863,7 +776,6 @@
 
         function initApp() {
             applyTheme();
-
             document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
             document.getElementById('logoutBtn').addEventListener('click', () => {
                 sessionStorage.removeItem(SESSION_KEY);
@@ -872,14 +784,13 @@
             document.getElementById('refresh-btn').addEventListener('click', () => loadReport(true));
             document.getElementById('trigger-action-btn').addEventListener('click', triggerWorkflow);
             document.getElementById('history-btn').addEventListener('click', openHistory);
-
             loadReport(false);
             updateButtonState();
             promptTokenIfNeeded();
         }
 
         // ============================================================
-        // 3. 主题切换
+        // 3. 主题
         // ============================================================
         function applyTheme() {
             const html = document.documentElement;
@@ -911,21 +822,16 @@
             let cleaned = utcTimeStr.replace(' UTC', '').trim();
             let parts = cleaned.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
             if (!parts) return utcTimeStr;
-            let year = parseInt(parts[1], 10),
-                month = parseInt(parts[2], 10) - 1,
-                day = parseInt(parts[3], 10),
-                hour = parseInt(parts[4], 10),
-                minute = parseInt(parts[5], 10),
-                second = parseInt(parts[6], 10);
+            let year = parseInt(parts[1]), month = parseInt(parts[2]) - 1, day = parseInt(parts[3]);
+            let hour = parseInt(parts[4]), minute = parseInt(parts[5]), second = parseInt(parts[6]);
             let utcDate = new Date(Date.UTC(year, month, day, hour, minute, second));
-            let beijingDate = new Date(utcDate.getTime() + 8 * 3600 * 1000);
-            let y = beijingDate.getUTCFullYear();
-            let m = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
-            let d = String(beijingDate.getUTCDate()).padStart(2, '0');
-            let h = String(beijingDate.getUTCHours()).padStart(2, '0');
-            let min = String(beijingDate.getUTCMinutes()).padStart(2, '0');
-            let sec = String(beijingDate.getUTCSeconds()).padStart(2, '0');
-            return `${y}-${m}-${d} ${h}:${min}:${sec}`;
+            let bj = new Date(utcDate.getTime() + 8 * 3600 * 1000);
+            return bj.getUTCFullYear() + '-' +
+                String(bj.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                String(bj.getUTCDate()).padStart(2, '0') + ' ' +
+                String(bj.getUTCHours()).padStart(2, '0') + ':' +
+                String(bj.getUTCMinutes()).padStart(2, '0') + ':' +
+                String(bj.getUTCSeconds()).padStart(2, '0');
         }
 
         function extractReportTime(text) {
@@ -934,20 +840,16 @@
                 /报告时间[：:]\s*([^\n]+)/,
                 /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*UTC)/,
             ];
-            for (let pattern of patterns) {
-                const match = text.match(pattern);
-                if (match && match[1]) return match[1].trim();
-            }
-            const lines = text.split('\n');
-            for (let line of lines) {
-                if (line.includes('UTC') || /^\s*\d{4}-\d{2}-\d{2}/.test(line)) return line.trim();
+            for (let p of patterns) {
+                const m = text.match(p);
+                if (m && m[1]) return m[1].trim();
             }
             return null;
         }
 
         function extractFetchCount(text) {
-            const match = text.match(/抓取数据[：:]\s*(\d+)\s*条/);
-            return match ? parseInt(match[1], 10) : 0;
+            const m = text.match(/抓取数据[：:]\s*(\d+)\s*条/);
+            return m ? parseInt(m[1], 10) : 0;
         }
 
         function escapeHtml(text) {
@@ -958,37 +860,8 @@
         }
 
         // ============================================================
-        // 5. 解析报告表格
+        // 5. 解析表格
         // ============================================================
-        function parseReportTable(html) {
-            const rows = [];
-            const temp = document.createElement('div');
-            temp.innerHTML = html;
-            const table = temp.querySelector('table');
-            if (!table) return rows;
-            const tbody = table.querySelector('tbody');
-            if (!tbody) return rows;
-            const trs = tbody.querySelectorAll('tr');
-            trs.forEach(tr => {
-                const cells = tr.querySelectorAll('td');
-                if (cells.length >= 6) {
-                    const eventText = cells[0]?.innerText?.trim() || '';
-                    const link = cells[1]?.querySelector('a')?.href || cells[1]?.innerText?.trim() || '';
-                    const risk = cells[2]?.innerText?.trim() || '';
-                    const source = cells[3]?.innerText?.trim() || '';
-                    const timeAgo = cells[4]?.innerText?.trim() || '';
-                    let riskLevel = cells[5]?.innerText?.trim() || '';
-                    if (riskLevel.includes('高')) riskLevel = '高';
-                    else if (riskLevel.includes('中')) riskLevel = '中';
-                    else if (riskLevel.includes('低')) riskLevel = '低';
-                    else riskLevel = '未知';
-                    const isNew = eventText.includes('🆕');
-                    rows.push({ eventText, link, risk, source, timeAgo, riskLevel, isNew });
-                }
-            });
-            return rows;
-        }
-
         function parseReportTableFromMarkdown(text) {
             const rows = [];
             const lines = text.split('\n');
@@ -1001,8 +874,8 @@
                     if (cells.length >= 6) {
                         let eventText = cells[0];
                         let link = '';
-                        const linkMatch = cells[1].match(/\[([^\]]*)\]\(([^)]*)\)/);
-                        if (linkMatch) link = linkMatch[2];
+                        const lm = cells[1].match(/\[([^\]]*)\]\(([^)]*)\)/);
+                        if (lm) link = lm[2];
                         const risk = cells[2] || '';
                         const source = cells[3] || '';
                         const timeAgo = cells[4] || '';
@@ -1022,13 +895,12 @@
         }
 
         // ============================================================
-        // 6. 排序函数（新增优先，新增+高风险最优先）
+        // 6. 排序（新增优先，新增+高风险最优先）
         // ============================================================
         function sortRows(rows) {
             const getPriority = (row) => {
                 const isNew = row.isNew || row.eventText.includes('🆕');
                 const level = row.riskLevel;
-                // 优先级数字越小越靠前
                 if (isNew && level === '高') return 1;
                 if (isNew && level === '中') return 2;
                 if (isNew && level === '低') return 3;
@@ -1041,7 +913,7 @@
         }
 
         // ============================================================
-        // 7. 更新统计卡片 + 高风险TOP5
+        // 7. 更新统计 + 高风险TOP5
         // ============================================================
         function updateStatsAndHighRisk(rows, fetchCount) {
             const statsGrid = document.getElementById('statsGrid');
@@ -1054,54 +926,35 @@
                 return;
             }
 
-            // 排序后的行用于统计
-            const sortedRows = sortRows(rows);
+            const sorted = sortRows(rows);
+            const total = sorted.length;
+            const high = sorted.filter(r => r.riskLevel === '高').length;
+            const medium = sorted.filter(r => r.riskLevel === '中').length;
+            const low = sorted.filter(r => r.riskLevel === '低').length;
+            const newCount = sorted.filter(r => r.isNew || r.eventText.includes('🆕')).length;
 
-            const total = sortedRows.length;
-            const high = sortedRows.filter(r => r.riskLevel === '高').length;
-            const medium = sortedRows.filter(r => r.riskLevel === '中').length;
-            const low = sortedRows.filter(r => r.riskLevel === '低').length;
-            const newCount = sortedRows.filter(r => r.isNew || r.eventText.includes('🆕')).length;
+            // 抓取数据独立显示，不fallback到total
+            const displayFetch = fetchCount > 0 ? fetchCount : 0;
 
-            // 统计卡片：抓取数据 → AI筛选总涉华事件 → 高风险 → 中风险 → 低风险 → 新增
             statsGrid.style.display = 'grid';
             statsGrid.innerHTML = `
-                <div class="stat-card">
-                    <div class="stat-number info">${fetchCount > 0 ? fetchCount : total}</div>
-                    <div class="stat-label">📥 抓取数据</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${total}</div>
-                    <div class="stat-label">🎯 AI筛选总涉华事件</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number danger">${high}</div>
-                    <div class="stat-label">🔴 高风险</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number warning">${medium}</div>
-                    <div class="stat-label">🟠 中风险</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number success">${low}</div>
-                    <div class="stat-label">🟢 低风险</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${newCount}</div>
-                    <div class="stat-label">🆕 新增</div>
-                </div>
+                <div class="stat-card"><div class="stat-number info">${displayFetch}</div><div class="stat-label">📥 抓取数据</div></div>
+                <div class="stat-card"><div class="stat-number">${total}</div><div class="stat-label">🎯 AI筛选总涉华事件</div></div>
+                <div class="stat-card"><div class="stat-number danger">${high}</div><div class="stat-label">🔴 高风险</div></div>
+                <div class="stat-card"><div class="stat-number warning">${medium}</div><div class="stat-label">🟠 中风险</div></div>
+                <div class="stat-card"><div class="stat-number success">${low}</div><div class="stat-label">🟢 低风险</div></div>
+                <div class="stat-card"><div class="stat-number">${newCount}</div><div class="stat-label">🆕 新增</div></div>
             `;
 
-            // 高风险TOP5（使用排序后的数据，优先展示新增的高风险）
-            const highRiskItems = sortedRows.filter(r => r.riskLevel === '高').slice(0, 5);
-            if (highRiskItems.length > 0) {
+            const highItems = sorted.filter(r => r.riskLevel === '高').slice(0, 5);
+            if (highItems.length > 0) {
                 highRiskSummary.style.display = 'block';
-                highRiskList.innerHTML = highRiskItems.map(item => {
+                highRiskList.innerHTML = highItems.map(item => {
                     const isNew = item.isNew || item.eventText.includes('🆕');
                     const displayText = item.eventText.replace('🆕', '').trim();
-                    const newBadge = isNew ? '<span class="new-badge">🆕</span>' : '';
+                    const badge = isNew ? '<span class="new-badge">🆕</span>' : '';
                     return `<li>
-                        ${item.link ? `<a href="${item.link}" target="_blank" class="risk-link">${newBadge}${escapeHtml(displayText)}</a>` : `<span>${newBadge}${escapeHtml(displayText)}</span>`}
+                        ${item.link ? `<a href="${item.link}" target="_blank" class="risk-link">${badge}${escapeHtml(displayText)}</a>` : `<span>${badge}${escapeHtml(displayText)}</span>`}
                         <span class="source-tag">${escapeHtml(item.source)}</span>
                     </li>`;
                 }).join('');
@@ -1111,7 +964,7 @@
         }
 
         // ============================================================
-        // 8. Tooltip 控制（方案A：点击展开弹窗）
+        // 8. Tooltip控制（点击弹窗）
         // ============================================================
         let tooltipInstance = null;
         let tooltipTimeout = null;
@@ -1127,51 +980,40 @@
             `;
             document.body.appendChild(el);
             tooltipInstance = el;
-
-            // 点击"收起"关闭
             el.querySelector('.tooltip-close').addEventListener('click', function(e) {
                 e.stopPropagation();
                 hideTooltipImmediately();
             });
-
             return el;
         }
 
-        function showTooltip(event, text, riskLevel) {
+        function showTooltip(sourceEl, text, riskLevel) {
+            if (!text || text.length === 0) return;
             const tooltip = createTooltip();
             const body = tooltip.querySelector('.tooltip-body');
+            const lc = riskLevel === '高' ? 'high' : riskLevel === '中' ? 'medium' : 'low';
+            body.innerHTML = `${escapeHtml(text)} <span class="tooltip-risk-badge ${lc}">${escapeHtml(riskLevel)}</span>`;
 
-            const levelClass = riskLevel === '高' ? 'high' : riskLevel === '中' ? 'medium' : 'low';
-            body.innerHTML = `
-                ${escapeHtml(text)}
-                <span class="tooltip-risk-badge ${levelClass}">${escapeHtml(riskLevel)}</span>
-            `;
-
-            // 定位
-            const rect = event.currentTarget.getBoundingClientRect();
-            const tooltipWidth = Math.min(460, window.innerWidth - 40);
-            const tooltipHeight = tooltip.offsetHeight || 200;
-
-            let left = rect.left + rect.width / 2 - tooltipWidth / 2;
-            let top = rect.top - tooltipHeight - 14;
-
+            const rect = sourceEl.getBoundingClientRect();
+            const tw = Math.min(460, window.innerWidth - 40);
+            let left = rect.left + rect.width / 2 - tw / 2;
+            let top = rect.top - (tooltip.offsetHeight || 200) - 14;
             if (left < 20) left = 20;
-            if (left + tooltipWidth > window.innerWidth - 20) {
-                left = window.innerWidth - tooltipWidth - 20;
-            }
+            if (left + tw > window.innerWidth - 20) left = window.innerWidth - tw - 20;
             if (top < 20) {
                 top = rect.bottom + 14;
                 tooltip.classList.add('arrow-top');
             } else {
                 tooltip.classList.remove('arrow-top');
             }
-
             tooltip.style.left = left + 'px';
             tooltip.style.top = top + 'px';
-            tooltip.style.maxWidth = Math.min(460, window.innerWidth - 40) + 'px';
+            tooltip.style.maxWidth = tw + 'px';
 
             clearTimeout(tooltipTimeout);
             tooltip.classList.add('visible');
+            // 存储来源引用
+            tooltip._source = sourceEl;
             activeTooltip = tooltip;
         }
 
@@ -1179,11 +1021,11 @@
             clearTimeout(tooltipTimeout);
             if (tooltipInstance) {
                 tooltipInstance.classList.remove('visible');
+                tooltipInstance._source = null;
                 activeTooltip = null;
             }
         }
 
-        // 点击页面其他区域隐藏
         document.addEventListener('click', function(e) {
             if (activeTooltip && !e.target.closest('.risk-cell') && !e.target.closest('.risk-tooltip')) {
                 hideTooltipImmediately();
@@ -1199,161 +1041,139 @@
             return text.slice(0, 200) + text.length;
         }
 
-        async function loadReport(showAlert = true) {
+        async function loadReport(showAlert) {
             const reportDiv = document.getElementById('report-content');
             reportDiv.innerHTML = '<div class="loader"></div>';
-
             hideTooltipImmediately();
 
             try {
-                const response = await fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/report.md');
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const text = await response.text();
-                const currentHash = simpleHash(text);
+                const resp = await fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/report.md');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const text = await resp.text();
+                const hash = simpleHash(text);
 
-                let rawTime = extractReportTime(text);
-                let displayTime = rawTime ? convertUtcToBeijing(rawTime) : '未知';
+                const rawTime = extractReportTime(text);
+                const displayTime = rawTime ? convertUtcToBeijing(rawTime) : '未知';
                 document.getElementById('report-time-display').textContent = `📅 ${displayTime}`;
 
-                // 提取抓取数据
                 const fetchCount = extractFetchCount(text);
 
-                // 解析Markdown（从表格开始的位置）
+                // 截取表格部分
                 const tableStart = text.indexOf('| 事件简述');
                 const tableText = tableStart > 0 ? text.substring(tableStart) : text;
                 let html = marked.parse(tableText);
 
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = html;
-                tempDiv.querySelectorAll('a').forEach(link => {
+                const temp = document.createElement('div');
+                temp.innerHTML = html;
+                temp.querySelectorAll('a').forEach(link => {
                     if (link.href && !link.href.startsWith('#')) {
                         link.setAttribute('target', '_blank');
                         link.setAttribute('rel', 'noopener noreferrer');
                     }
                 });
 
-                // ============================================================
-                // 方案A：风险点10字截断 + 点击弹窗
-                // ============================================================
-                const tables = tempDiv.querySelectorAll('table');
+                // 解析原始行数据
+                const rawRows = parseReportTableFromMarkdown(tableText);
+                const sortedRows = sortRows(rawRows);
+
+                // 重建表格（完全重建，确保排序生效）
+                const tables = temp.querySelectorAll('table');
                 tables.forEach(table => {
-                    const rows = table.querySelectorAll('tbody tr');
-                    rows.forEach(row => {
-                        const cells = row.querySelectorAll('td');
-                        if (cells.length >= 6) {
-                            const riskCell = cells[2];
-                            const fullText = riskCell.textContent.trim();
-
-                            let riskLevel = '未知';
-                            const levelText = cells[5]?.textContent?.trim() || '';
-                            if (levelText.includes('高')) riskLevel = '高';
-                            else if (levelText.includes('中')) riskLevel = '中';
-                            else if (levelText.includes('低')) riskLevel = '低';
-
-                            if (fullText.length > 10) {
-                                const shortText = fullText.substring(0, 10);
-                                const wrapper = document.createElement('span');
-                                wrapper.className = 'risk-cell';
-                                wrapper.dataset.fullText = fullText;
-                                wrapper.dataset.riskLevel = riskLevel;
-
-                                const textSpan = document.createElement('span');
-                                textSpan.className = 'risk-text';
-                                textSpan.textContent = shortText;
-                                wrapper.appendChild(textSpan);
-
-                                const ellipsis = document.createElement('span');
-                                ellipsis.className = 'ellipsis';
-                                ellipsis.textContent = '...';
-                                wrapper.appendChild(ellipsis);
-
-                                const expandBtn = document.createElement('button');
-                                expandBtn.className = 'expand-btn';
-                                expandBtn.textContent = '展开';
-                                expandBtn.addEventListener('click', function(e) {
-                                    e.stopPropagation();
-                                    // 如果已经显示该单元格的tooltip，则关闭
-                                    if (activeTooltip && activeTooltip.dataset?.source === wrapper) {
-                                        hideTooltipImmediately();
-                                        return;
-                                    }
-                                    showTooltip({ currentTarget: wrapper }, wrapper.dataset.fullText,
-                                        wrapper.dataset.riskLevel);
-                                    if (activeTooltip) {
-                                        activeTooltip.dataset.source = wrapper;
-                                    }
-                                });
-                                wrapper.appendChild(expandBtn);
-
-                                riskCell.innerHTML = '';
-                                riskCell.appendChild(wrapper);
-                            } else {
-                                riskCell.innerHTML =
-                                    `<span class="risk-cell" style="cursor:default;">${escapeHtml(fullText)}</span>`;
-                            }
-                        }
-                    });
-                });
-
-                // ===== 事件简述链接化 =====
-                const rowsFromMarkdown = parseReportTableFromMarkdown(tableText);
-                tables.forEach(table => {
+                    const thead = table.querySelector('thead');
                     const tbody = table.querySelector('tbody');
-                    if (!tbody) return;
-                    const trs = tbody.querySelectorAll('tr');
-                    trs.forEach((tr, idx) => {
-                        const cells = tr.querySelectorAll('td');
-                        if (cells.length >= 6 && idx < rowsFromMarkdown.length) {
-                            const rowData = rowsFromMarkdown[idx];
-                            if (rowData && rowData.link) {
-                                const eventCell = cells[0];
-                                const originalText = eventCell.textContent.trim();
-                                eventCell.innerHTML =
-                                    `<a href="${escapeHtml(rowData.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(originalText)}</a>`;
-                            }
+                    if (!thead || !tbody) return;
+
+                    // 清空 tbody
+                    tbody.innerHTML = '';
+
+                    // 遍历 sortedRows 生成行
+                    sortedRows.forEach(row => {
+                        const tr = document.createElement('tr');
+
+                        // 1. 事件简述（带链接）
+                        const td1 = document.createElement('td');
+                        const displayText = row.eventText.replace('🆕', '').trim();
+                        if (row.link) {
+                            td1.innerHTML = `<a href="${escapeHtml(row.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(displayText)}</a>`;
+                        } else {
+                            td1.textContent = displayText;
                         }
+                        tr.appendChild(td1);
+
+                        // 2. 原文链接（[查看]）
+                        const td2 = document.createElement('td');
+                        if (row.link) {
+                            td2.innerHTML = `<a href="${escapeHtml(row.link)}" target="_blank" rel="noopener noreferrer">查看</a>`;
+                        } else {
+                            td2.textContent = '-';
+                        }
+                        tr.appendChild(td2);
+
+                        // 3. 潜在风险点（10字截断 + 展开弹窗）
+                        const td3 = document.createElement('td');
+                        const fullRisk = row.risk || '';
+                        if (fullRisk.length > 10) {
+                            const shortRisk = fullRisk.substring(0, 10);
+                            const wrapper = document.createElement('span');
+                            wrapper.className = 'risk-cell';
+                            wrapper.dataset.fullText = fullRisk;
+                            wrapper.dataset.riskLevel = row.riskLevel;
+
+                            const textSpan = document.createElement('span');
+                            textSpan.className = 'risk-text';
+                            textSpan.textContent = shortRisk;
+                            wrapper.appendChild(textSpan);
+
+                            const ellipsis = document.createElement('span');
+                            ellipsis.className = 'ellipsis';
+                            ellipsis.textContent = '...';
+                            wrapper.appendChild(ellipsis);
+
+                            const btn = document.createElement('button');
+                            btn.className = 'expand-btn';
+                            btn.textContent = '展开';
+                            btn.addEventListener('click', function(e) {
+                                e.stopPropagation();
+                                if (activeTooltip && activeTooltip._source === wrapper) {
+                                    hideTooltipImmediately();
+                                    return;
+                                }
+                                showTooltip(wrapper, wrapper.dataset.fullText, wrapper.dataset.riskLevel);
+                            });
+                            wrapper.appendChild(btn);
+                            td3.appendChild(wrapper);
+                        } else {
+                            td3.textContent = fullRisk;
+                        }
+                        tr.appendChild(td3);
+
+                        // 4. 信息来源
+                        const td4 = document.createElement('td');
+                        td4.textContent = row.source || '-';
+                        tr.appendChild(td4);
+
+                        // 5. 发布多久前
+                        const td5 = document.createElement('td');
+                        td5.textContent = row.timeAgo || '-';
+                        tr.appendChild(td5);
+
+                        // 6. 风险等级
+                        const td6 = document.createElement('td');
+                        const lc = row.riskLevel === '高' ? 'high' : row.riskLevel === '中' ? 'medium' : 'low';
+                        td6.innerHTML = `<span class="risk-tag ${lc}">${row.riskLevel}</span>`;
+                        tr.appendChild(td6);
+
+                        tbody.appendChild(tr);
                     });
                 });
 
-                html = tempDiv.innerHTML;
+                html = temp.innerHTML;
                 reportDiv.innerHTML = `<div class="report-wrapper">${html}</div>`;
 
-                // 解析数据用于统计（使用排序后的数据）
-                const parsedRows = parseReportTable(html);
-                // 重新解析排序（确保isNew正确）
-                const sortedRows = sortRows(parsedRows);
-
-                // 重新构建表格：按排序后的顺序重新排列行
-                const table = reportDiv.querySelector('.report-wrapper table');
-                if (table) {
-                    const tbody = table.querySelector('tbody');
-                    if (tbody) {
-                        const trs = tbody.querySelectorAll('tr');
-                        // 将行数据与DOM行关联
-                        const rowDataMap = [];
-                        trs.forEach((tr, idx) => {
-                            if (idx < sortedRows.length) {
-                                rowDataMap.push({ tr, data: sortedRows[idx] });
-                            }
-                        });
-                        // 按排序顺序重新排列
-                        // 由于排序已在前端完成，直接按sortedRows顺序重排DOM行
-                        const sortedTrs = rowDataMap.sort((a, b) => {
-                            const priA = sortedRows.indexOf(a.data);
-                            const priB = sortedRows.indexOf(b.data);
-                            return priA - priB;
-                        });
-                        // 重新插入
-                        sortedTrs.forEach((item, idx) => {
-                            tbody.appendChild(item.tr);
-                        });
-                    }
-                }
-
-                // 更新统计（使用排序后的数据）
+                // 更新统计
                 updateStatsAndHighRisk(sortedRows, fetchCount);
 
-                // 添加水平滚动提示
+                // 滚动提示
                 const wrapper = reportDiv.querySelector('.report-wrapper');
                 if (wrapper && wrapper.scrollWidth > wrapper.clientWidth) {
                     if (!reportDiv.querySelector('.scroll-hint')) {
@@ -1365,24 +1185,24 @@
                     }
                 }
 
-                if (currentHash !== lastReportHash) {
+                if (hash !== lastReportHash) {
                     if (showAlert) alert('✅ 报告已刷新！');
-                    localStorage.setItem('lastReportHash', currentHash);
-                    lastReportHash = currentHash;
+                    localStorage.setItem('lastReportHash', hash);
+                    lastReportHash = hash;
                 }
 
             } catch (err) {
                 reportDiv.innerHTML = `<div style="color:#f87171;background:rgba(244,67,54,0.08);padding:20px;border-radius:16px;">
                     <strong>⚠️ 加载失败</strong><br>${escapeHtml(err.message)}<br><br>
                     <button class="btn btn-primary" onclick="loadReport(true)">🔄 重试</button>
-                    <p style="margin-top:12px;font-size:0.85rem;">👉 请确认 <strong>report.md</strong> 文件已生成。<br>若尚未运行爬虫，请点击"立即更新"按钮触发任务。</p>
+                    <p style="margin-top:12px;font-size:0.85rem;">👉 请确认 <strong>report.md</strong> 文件已生成。</p>
                 </div>`;
                 if (showAlert) alert(`❌ 报告刷新失败：${err.message}`);
             }
         }
 
         // ============================================================
-        // 10. GitHub Actions 触发
+        // 10. GitHub Actions触发
         // ============================================================
         const REPO_OWNER = 'zhetian592';
         const REPO_NAME = 'my-crawler-monitor';
@@ -1392,20 +1212,18 @@
         async function fetchLastRunTime() {
             try {
                 const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/runs?per_page=1`;
-                const response = await fetch(url);
-                if (!response.ok) throw new Error('无法获取工作流运行信息');
-                const data = await response.json();
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error('无法获取工作流运行信息');
+                const data = await resp.json();
                 if (data.workflow_runs && data.workflow_runs.length > 0) {
                     const lastRun = data.workflow_runs[0];
                     const createdAt = new Date(lastRun.created_at);
                     const now = new Date();
-                    const elapsedSeconds = (now - createdAt) / 1000;
-                    const remaining = 3600 - elapsedSeconds;
+                    const remaining = 3600 - (now - createdAt) / 1000;
                     return remaining > 0 ? Math.ceil(remaining) : 0;
                 }
                 return 0;
             } catch (err) {
-                console.warn('获取工作流最后运行时间失败:', err);
                 return 0;
             }
         }
@@ -1451,7 +1269,7 @@
             btn.innerText = '⏳ 触发中...';
             btn.disabled = true;
             try {
-                const response = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/dispatches`, {
+                const resp = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/dispatches`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -1460,16 +1278,16 @@
                     },
                     body: JSON.stringify({ ref: 'main' })
                 });
-                if (response.ok) {
+                if (resp.ok) {
                     alert('✅ 已触发爬虫任务！\n稍等几分钟后点击"刷新"查看结果。');
                     await updateButtonState();
                 } else {
-                    const error = await response.json();
-                    if (response.status === 401 || response.status === 403) {
+                    const error = await resp.json();
+                    if (resp.status === 401 || resp.status === 403) {
                         localStorage.removeItem(GITHUB_TOKEN_KEY);
                         alert('令牌无效或已过期，请重新输入。');
                     } else {
-                        alert(`❌ 触发失败 (${response.status}): ${error.message || '未知错误'}`);
+                        alert(`❌ 触发失败 (${resp.status}): ${error.message || '未知错误'}`);
                     }
                     btn.disabled = false;
                     btn.innerText = originalText;
@@ -1490,8 +1308,8 @@
             btn.innerText = '⏳ 检查中...';
             btn.disabled = true;
             try {
-                const response = await fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/reports/index.html');
-                if (response.ok) {
+                const resp = await fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/reports/index.html');
+                if (resp.ok) {
                     window.open('reports/index.html', '_blank');
                 } else {
                     alert('历史报告目录尚未生成。请先运行爬虫任务。');
@@ -1505,7 +1323,7 @@
         }
 
         // ============================================================
-        // 12. Token 提示
+        // 12. Token提示
         // ============================================================
         function promptTokenIfNeeded() {
             if (!localStorage.getItem(GITHUB_TOKEN_KEY)) {
@@ -1521,12 +1339,7 @@
             }
         }
 
-        // 暴露函数给全局
         window.loadReport = loadReport;
-
-        // ============================================================
-        // 启动
-        // ============================================================
         checkLogin();
     </script>
 </body>
