@@ -63,9 +63,9 @@ MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
 AI_REQUEST_DELAY = 2
-DISABLE_FAILED_THRESHOLD = 3          # 连续失败多少次后禁用
-DISABLE_COOLDOWN_MINUTES = 60 * 12    # 禁用冷却时间（分钟），默认12小时后自动恢复
-DISABLE_AUTO_RECOVER_DAYS = 7         # 保留原有7天强制恢复
+DISABLE_FAILED_THRESHOLD = 3
+DISABLE_COOLDOWN_MINUTES = 60 * 12
+DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
 
 EVENT_COUNTS_FILE = "event_counts.json"
@@ -73,7 +73,7 @@ HEALTHY_NITTER_FILE = "healthy_nitter.json"
 HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
-URL_DEDUP_FILE = "url_dedup.json"     # 新增：持久化URL去重缓存
+URL_DEDUP_FILE = "url_dedup.json"
 
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net",
@@ -249,7 +249,6 @@ def get_display_source(source_name: str) -> str:
 
 # ================ 新增：信源健康管理与镜像池 ================
 class SourceHealth:
-    """信源健康跟踪，用于单信源的熔断与恢复（基于冷却时间）"""
     def __init__(self, max_fails=DISABLE_FAILED_THRESHOLD, cooldown_minutes=DISABLE_COOLDOWN_MINUTES):
         self.max_fails = max_fails
         self.cooldown = cooldown_minutes * 60
@@ -259,7 +258,6 @@ class SourceHealth:
     def record_fail(self, source_key):
         self.fail_counts[source_key] = self.fail_counts.get(source_key, 0) + 1
         if self.fail_counts[source_key] >= self.max_fails:
-            # 进入冷却期
             self.disabled_until[source_key] = time.time() + self.cooldown
             logger.warning(f"信源 {source_key} 连续失败{self.fail_counts[source_key]}次，已暂时禁用 {self.cooldown//60} 分钟")
 
@@ -273,14 +271,12 @@ class SourceHealth:
         if source_key not in self.disabled_until:
             return False
         if time.time() > self.disabled_until[source_key]:
-            # 冷却结束，自动恢复
             del self.disabled_until[source_key]
             self.fail_counts[source_key] = 0
             return False
         return True
 
 class MirrorPool:
-    """多镜像池（如Nitter/RSSHub实例），支持轮转与故障移除"""
     def __init__(self, urls):
         self.original = list(urls)
         self.available = list(urls)
@@ -297,20 +293,16 @@ class MirrorPool:
             self.available.remove(url)
 
     def report_success(self, url):
-        pass  # 成功时可选择放回，但轮转机制已足够
+        pass
 
-# 全局健康实例（用于Nitter/RSSHub池）
-nitter_health = SourceHealth(max_fails=2, cooldown_minutes=30)   # 实例自身健康
+nitter_health = SourceHealth(max_fails=2, cooldown_minutes=30)
 rsshub_health = SourceHealth(max_fails=2, cooldown_minutes=30)
 
 def get_nitter_instances() -> List[str]:
-    """获取当前可用的Nitter实例列表，结合历史健康文件"""
     base = load_healthy_instances(HEALTHY_NITTER_FILE, FALLBACK_NITTER_INSTANCES)
-    # 过滤掉被标记为不健康的实例（基于SourceHealth）
     return [inst for inst in base if not nitter_health.is_disabled(inst)]
 
 def update_nitter_health(instance_url: str, success: bool):
-    """更新Nitter实例的健康状态"""
     if success:
         nitter_health.record_success(instance_url)
     else:
@@ -339,22 +331,19 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
 
 # ================ 新增：持久化URL去重缓存 ================
 class URLDedupCache:
-    """基于布隆过滤器的URL去重缓存（可选，若未安装bloom-filter则用集合）"""
     def __init__(self, cache_file=URL_DEDUP_FILE):
         self.cache_file = cache_file
-        self.url_set = set()  # 回退方案
+        self.url_set = set()
         self.bloom = None
         try:
             from bloom_filter import BloomFilter
             self.bloom = BloomFilter(max_elements=1_000_000, error_rate=0.001)
-            # 尝试加载已有缓存
             if os.path.exists(cache_file):
                 with open(cache_file, 'r') as f:
                     self.bloom = BloomFilter.from_base64(f.read())
             logger.info("URL去重使用布隆过滤器")
         except ImportError:
             logger.info("bloom-filter未安装，URL去重使用内存集合（重启后失效）")
-        # 若用集合，尝试加载
         if not self.bloom and os.path.exists(cache_file):
             try:
                 with open(cache_file, 'r') as f:
@@ -383,7 +372,6 @@ class URLDedupCache:
 
 # ================ 原有失败信源管理（保留并扩展） ================
 def load_disabled_sources() -> Dict[str, dict]:
-    """原有逻辑保留，作为信源长期禁用记录（兼容）"""
     if os.path.exists(DISABLED_SOURCES_FILE):
         try:
             with open(DISABLED_SOURCES_FILE, 'r', encoding='utf-8') as f:
@@ -405,7 +393,6 @@ def save_disabled_sources(disabled: Dict[str, dict]):
         json.dump(disabled, f, indent=2, ensure_ascii=False)
 
 def update_disabled_sources(failed_sources: List[Tuple[str, str]]):
-    """原有函数保留，结合新的SourceHealth提供更灵活冷却"""
     disabled = load_disabled_sources()
     today = datetime.utcnow().date().isoformat()
     for url, _ in failed_sources:
@@ -458,10 +445,9 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心（增强多层重试与镜像切换） =================
+# ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances)
-    # 原有映射逻辑完全保留
     if "voachinese.com" in url:
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
@@ -519,26 +505,20 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     return url
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
-    """
-    抓取单个RSS，加入URL去重缓存检查（优化：已抓取过的URL不再重复处理）
-    """
     try:
         resp = fetch_url(rss_url, timeout=25)
         feed = feedparser.parse(resp.content)
         cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
         items = []
         for entry in feed.entries:
-            # 时间过滤
             published_str = entry.get("published", entry.get("updated", ""))
             pub_dt = parse_published_strict(published_str)
             if pub_dt is not None and pub_dt < cutoff:
                 continue
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
-            # URL去重：若已成功抓取过，跳过
             if url_cache.seen(link):
                 continue
-            # 内容哈希去重（原有）
             title = clean_html(entry.get("title", ""))
             summary = clean_html(entry.get("summary", ""))
             if not summary:
@@ -549,7 +529,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
             if h in processed_hashes:
                 continue
             processed_hashes.add(h)
-            # 生成来源名
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -570,7 +549,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
                 "time_ago": time_ago,
                 "fetched_at": datetime.utcnow().isoformat()
             })
-            # 标记URL为已处理（持久化缓存）
             url_cache.add(link)
         return items
     except Exception as e:
@@ -578,11 +556,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
         return []
 
 def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
-    """
-    增强的信源抓取，使用镜像池和动态健康管理。
-    - X信源：遍历Nitter实例，失败时自动更新实例健康列表。
-    - 普通信源：尝试所有RSS候选，同样更新RSSHub实例健康。
-    """
     if is_source_disabled(original_url):
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
@@ -607,13 +580,11 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
                     update_nitter_health(instance, False)
                     nitter_pool.report_failure(instance)
             except Exception:
-                # 已经尝试过所有镜像
                 break
             time.sleep(0.5)
         logger.debug(f"X {username} 所有实例均失败")
         return []
 
-    # 普通信源，生成RSS候选列表
     rsshub_instances = get_rsshub_instances()
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if not rss_candidates:
@@ -623,9 +594,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
         rss_candidates = [rss_candidates]
 
     for rss_url in rss_candidates:
-        # 记录使用的RSSHub实例
         instance_used = None
-        # 如果URL包含rsshub域名，提取实例
         for inst in rsshub_instances:
             if inst in rss_url:
                 instance_used = inst
@@ -653,7 +622,7 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源（时间窗口各异）")
     all_items = []
     processed_hashes = set()
-    url_cache = URLDedupCache()  # 新增持久化URL去重
+    url_cache = URLDedupCache()
     failed_sources = []
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -675,12 +644,11 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
                 failed_sources.append((url, str(e)))
                 logger.error(f"✗ {url} 异常: {e}")
 
-    # 持久化URL去重缓存
     url_cache.save()
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希+URL去重）")
     return all_items, failed_sources
 
-# ================= 原有：持久化失败记录 =================
+# ================= 失败记录 =================
 def log_failed_sources(failed_sources: List[Tuple[str, str]]):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     data = {}
@@ -698,7 +666,7 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         json.dump(data, f, ensure_ascii=False, indent=2)
     update_disabled_sources(failed_sources)
 
-# ================= 原有：历史事件加载、去重、AI分析、报告生成（完全保留） =================
+# ================= 历史事件管理 =================
 def load_previous_events() -> List[str]:
     events = []
     if not os.path.exists("report.md"):
@@ -760,7 +728,7 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析部分（新 Prompt，列数6，风险等级） =================
+# ================= AI 分析部分 =================
 def estimate_tokens(text: str) -> int:
     if TIKTOKEN_AVAILABLE:
         enc = tiktoken.encoding_for_model("gpt-4o-mini")
@@ -800,7 +768,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
-    # 最终版 Prompt（无标签前缀，两个示例，明确风险等级复合条件）
     prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
 
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
@@ -885,7 +852,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                 if line.startswith(table_header):
                     continue
                 cells = [c.strip() for c in line.split("|")[1:-1]]
-                # 要求6列
                 if len(cells) == 6:
                     all_table_rows.append(line)
         time.sleep(AI_REQUEST_DELAY)
@@ -897,9 +863,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     final_table = "\n".join([table_header, table_sep] + unique_rows)
     return final_table, events_in_report
 
-# ================= 去重标记函数（适配6列） =================
+# ================= 去重标记函数 =================
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
-    # 解析每行，每行有6列：事件简述，链接，风险点，来源，时间，风险等级
     events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
@@ -910,8 +875,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         risk = cells[2]
         source = cells[3]
         time_ago = cells[4]
-        risk_level = cells[5]  # 风险等级，暂不用于去重，但保留在输出中
-        # 解析发布时间（用于排序）
+        risk_level = cells[5]
         pub_dt = None
         if "小时前" in time_ago:
             try:
@@ -951,7 +915,6 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
     unique_rows = []
     events_in_report = []
     for group in merged:
-        # 选择最佳项：按发布时间最新，其次按信源优先级
         best_item = None
         best_pub = None
         best_priority = 999
@@ -990,7 +953,6 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         event_text = first_event
         if source_count > 1:
             event_text = f"{event_text}（{source_count}个信源）"
-        # 构建新行：保持6列
         new_cells = [event_text, first_link, first_risk, source_display, first_time_ago, first_risk_level]
         is_new = True
         for old in old_events:
@@ -1004,7 +966,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         events_in_report.append(first_event)
     return unique_rows, events_in_report
 
-# ================= 重复计数过滤（适配6列） =================
+# ================= 重复计数过滤 =================
 def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
     today = datetime.utcnow().date()
     new_counts = {}
@@ -1038,7 +1000,7 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
             new_counts[event] = record
     return new_rows, new_counts
 
-# ================= HTML 报告生成（适配6列） =================
+# ================= HTML 报告生成 =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
@@ -1046,9 +1008,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     for line in lines:
         if line.startswith("|") and "|" in line:
             if not in_table:
-                # 生成表头
                 html_table += '<table>\n<thead>\n<tr>\n'
-                # 解析表头
                 header_cells = [c.strip() for c in line.split("|")[1:-1]]
                 for h in header_cells:
                     html_table += f"<th>{h}</th>\n"
@@ -1062,7 +1022,6 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 continue
             html_table += "<tr>\n"
             for cell in cells:
-                # 处理链接
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
                 if link_match:
                     text, url = link_match.group(1), link_match.group(2)
@@ -1122,10 +1081,15 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 </body>
 </html>"""
 
+# ================= 保存报告（新增"抓取数据"行） =================
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
-    final_content = timestamp_str + report_text
+    raw_count = len(all_articles)
+
+    # 报告头部包含抓取数据
+    timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
+    fetch_info = f"抓取数据：{raw_count}条\n\n"
+    final_content = timestamp_str + fetch_info + report_text
 
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(final_content)
