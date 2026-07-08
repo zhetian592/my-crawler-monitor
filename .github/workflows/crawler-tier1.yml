@@ -1,8 +1,6 @@
 name: Tier1 - Manual
-
 on:
   workflow_dispatch:
-
 jobs:
   crawl:
     runs-on: ubuntu-latest
@@ -23,12 +21,17 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Start RSS proxy
+        run: |
+          python rss_proxy.py --port 1200 &
+          sleep 3
+          curl -s http://localhost:1200/health
+
       - name: Run crawler
         env:
           GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         run: python crawler.py
 
-      # 生成带日期的 commit 消息（解决 with 中无法执行命令的问题）
       - name: Generate commit message
         id: msg
         run: |
