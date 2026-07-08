@@ -447,10 +447,11 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
 
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    rsshub = "http://localhost:1200"  # 改动1：固定使用本地 RSSHub
-    if "voachinese.com" in url:
-        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
-    if "bbc.com/zhongwen/simp" in url:
+    rsshub = "http://localhost:1200"
+    # 已经是 RSS/Feed URL 的直接返回，不代理
+    if any(x in url for x in ["/rss", "/feed", ".xml", "feeds."]):
+        return url
+    if "bbc.com/zhongwen" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
     if "dw.com/zh" in url:
         return "https://rss.dw.com/rdf/rss-chi-all"
@@ -459,33 +460,13 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     if "cn.nytimes.com" in url:
         return "https://cn.nytimes.com/rss/news.xml"
     if "ntdtv.com" in url:
-        return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
+        return f"{rsshub}/ntdtv"
     if "epochtimes.com" in url:
-        return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
+        return f"{rsshub}/epochtimes"
     if "x.com/" in url:
         return None
-    if "reuters.com/world/china" in url:
-        return f"{rsshub}/reuters/world/china"
-    if "wsj.com/news/china" in url:
-        return f"{rsshub}/wsj/china"
-    if "ft.com/china" in url:
-        return f"{rsshub}/ft/china"
-    if "apnews.com/hub/china" in url:
-        return f"{rsshub}/apnews/topics/china"
-    if "asia.nikkei.com" in url:
-        return "https://asia.nikkei.com/rss.xml"
-    if "brookings.edu/topics/china" in url:
+    if "brookings.edu" in url:
         return "https://www.brookings.edu/feed/?topic=china"
-    if "csis.org/regions/asia/china" in url:
-        return f"{rsshub}/csis/asia/china"
-    if "pewresearch.org/topic/international-affairs/global-image-of-countries/china-global-image" in url:
-        return "https://www.pewresearch.org/feed/?post_type=publication&topic=china"
-    if "merics.org" in url:
-        return "https://merics.org/en/rss.xml"
-    if "asiasociety.org/policy-institute/center-china-analysis" in url:
-        return f"{rsshub}/asiasociety/center-china-analysis"
-    if "rsf.org/en/country/china" in url:
-        return "https://rsf.org/en/rss.xml"
     if "uscc.gov" in url:
         return "https://www.uscc.gov/rss.xml"
     if "hrw.org" in url:
@@ -496,12 +477,18 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return "https://www.aspistrategist.org.au/feed/"
     if "amnesty.org" in url:
         return "https://www.amnesty.org/en/feed/"
+    if "fdd.org" in url:
+        return "https://www.fdd.org/feed/"
     if "chinapower.csis.org" in url:
         return "https://chinapower.csis.org/feed/"
     if "carnegieendowment.org" in url:
         return "https://carnegieendowment.org/rss"
     if "chathamhouse.org" in url:
-        return "https://www.chathamhouse.org/rss-feeds"
+        return "https://www.chathamhouse.org/rss"
+    if "zaobao.com" in url or "zaobao" in url:
+        if "realtime" in url:
+            return f"{rsshub}/zaobao/realtime"
+        return f"{rsshub}/zaobao/znews"
     return url
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
@@ -560,7 +547,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
 
-    # 改动2：Twitter/X 分支替换为直接使用本地 RSSHub
+    # Twitter/X 分支：直接使用本地 RSSHub
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         rss_url = f"http://localhost:1200/twitter/{username}"
