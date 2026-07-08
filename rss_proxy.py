@@ -109,7 +109,7 @@ RSS_DIRECT = {
     "fdd":        "https://www.fdd.org/feed/",
     "chinapower": "https://chinapower.csis.org/feed/",
     "carnegie":   "https://carnegieendowment.org/rss",
-    "chathamhouse": "https://www.chathamhouse.org/rss-feeds",
+    "chathamhouse": "https://www.chathamhouse.org/rss",   # 修复：移除 -feeds
     "epochtimes": "https://feed.theepochtimes.com/china/feed",
 }
 
