@@ -447,7 +447,7 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
 
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    rsshub = random.choice(rsshub_instances)
+    rsshub = "http://localhost:1200"  # 改动1：固定使用本地 RSSHub
     if "voachinese.com" in url:
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
@@ -560,30 +560,11 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
 
+    # 改动2：Twitter/X 分支替换为直接使用本地 RSSHub
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
-        nitter_pool = MirrorPool(get_nitter_instances())
-        while True:
-            try:
-                instance = nitter_pool.get_next() if nitter_pool.available else None
-                if not instance:
-                    break
-                test_url = f"{instance}/{username}/rss"
-                logger.debug(f"尝试 X {username} 使用 {instance}")
-                items = fetch_single_rss(test_url, original_url, processed_hashes, url_cache, time_window_hours)
-                if items:
-                    logger.debug(f"X {username} 成功 via {instance} (条数: {len(items)})")
-                    update_nitter_health(instance, True)
-                    return items
-                else:
-                    logger.debug(f"X {username} 失败 via {instance}")
-                    update_nitter_health(instance, False)
-                    nitter_pool.report_failure(instance)
-            except Exception:
-                break
-            time.sleep(0.5)
-        logger.debug(f"X {username} 所有实例均失败")
-        return []
+        rss_url = f"http://localhost:1200/twitter/{username}"
+        return fetch_single_rss(rss_url, original_url, processed_hashes, url_cache, time_window_hours)
 
     rsshub_instances = get_rsshub_instances()
     rss_candidates = url_to_rss(original_url, rsshub_instances)
