@@ -1,43 +1,650 @@
-            --tooltip-bg: rgba(15, 23, 42, 0.92);
-            --tooltip-text: #f8fafc;
-            --tooltip-border: rgba(255, 255, 255, 0.08);
-            --accent-glow: rgba(192, 132, 252, 0.08);
-            --accent-glow2: rgba(56, 189, 248, <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dawn">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <title>🛡️ 内容安全舆情监控系统</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <style>
-        /* ===== 全局重置 & 基础变量 ===== */
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-            --bg-body: #0b1121;
-            --bg-card: rgba(255, 255, 255, 0.06);
-            --bg-card-solid: rgba(15, 23, 42, 0.80);
-            --text-primary: #f1f5f9;
-            --text-secondary: #cbd5e1;
-            --border-color: rgba(255, 255, 255, 0.10);
-            --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            --shadow-hover: 0 12px 48px rgba(56, 189, 248, 0.15);
-            --glass-border: rgba(255, 255, 255, 0.08);
-            --glass-bg: rgba(255, 255, 255, 0.04);
-            --table-header-bg: rgba(255, 255, 255, 0.05);
-            --table-hover-bg: rgba(255, 255, 255, 0.03);
-            --table-bg: rgba(0, 0, 0, 0.25);
-            --table-blur: blur(16px);
-            --link-color: #a78bfa;
-            --link-hover: #c4b5fd;
-            --gradient-primary: linear-gradient(135deg, #c084fc, #38bdf8);
             --gradient-danger: linear-gradient(135deg, #fca5a5, #f87171);
             --gradient-warning: linear-gradient(135deg, #fcd34d, #fbbf24);
             --gradient-success: linear-gradient(135deg, #6ee7b7, #34d399);
-            --risk-high: #fca5a5;
+            --risk-high: #fca5a5;<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>🛡️ 内容安全舆情监控系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root, [data-theme="dark"] {
+            --bg-body: #0b1121;
+            --bg-card: rgba(26,35,50,0.30);
+            --bg-card-solid: rgba(26,35,50,0.85);
+            --text-primary: #ffffff;
+            --text-secondary: #d0d8e0;
+            --border-color: rgba(255,255,255,0.12);
+            --shadow: 0 8px 32px rgba(0,0,0,0.5);
+            --shadow-hover: 0 12px 48px rgba(0,0,0,0.7);
+            --glass-border: rgba(255,255,255,0.06);
+            --glass-bg: rgba(26,35,50,0.30);
+            --table-header-bg: rgba(30,41,59,0.5);
+            --table-hover-bg: rgba(30,41,59,0.3);
+            --table-bg: rgba(26,35,50,0.40);
+            --table-blur: blur(12px);
+            --link-color: #6ea8fe;
+            --link-hover: #9ec8ff;
+            --gradient-primary: linear-gradient(135deg, #38bdf8, #818cf8);
+            --gradient-danger: linear-gradient(135deg, #f87171, #f43f5e);
+            --gradient-warning: linear-gradient(135deg, #fbbf24, #f59e0b);
+            --gradient-success: linear-gradient(135deg, #34d399, #60a5fa);
+            --risk-high: #f43f5e;
+            --risk-medium: #f59e0b;
+            --risk-low: #34d399;
+            --tooltip-bg: rgba(26,35,50,0.96);
+            --tooltip-text: #f0f4f8;
+            --tooltip-shadow: 0 12px 48px rgba(0,0,0,0.6);
+            --tooltip-border: rgba(255,255,255,0.1);
+            --accent-glow: rgba(56,189,248,0.06);
+            --accent-glow2: rgba(244,114,182,0.04);
+            --stat-number-bg: linear-gradient(135deg, #38bdf8, #818cf8);
+        }
+        [data-theme="cyan"] {
+            --bg-body: #0c1824;
+            --bg-card: rgba(15,30,50,0.30);
+            --bg-card-solid: rgba(15,30,50,0.85);
+            --text-primary: #e6f7ff;
+            --text-secondary: #b0d4e8;
+            --border-color: rgba(0,255,255,0.10);
+            --shadow: 0 8px 32px rgba(0,0,0,0.5);
+            --shadow-hover: 0 12px 48px rgba(0,200,255,0.08);
+            --glass-border: rgba(0,255,255,0.08);
+            --glass-bg: rgba(0,200,255,0.06);
+            --table-header-bg: rgba(0,200,255,0.08);
+            --table-hover-bg: rgba(0,200,255,0.05);
+            --table-bg: rgba(0,40,60,0.40);
+            --link-color: #22d3ee;
+            --link-hover: #67e8f9;
+            --gradient-primary: linear-gradient(135deg, #06b6d4, #3b82f6);
+            --gradient-danger: linear-gradient(135deg, #f87171, #f43f5e);
+            --gradient-warning: linear-gradient(135deg, #fbbf24, #f59e0b);
+            --gradient-success: linear-gradient(135deg, #34d399, #06b6d4);
+            --risk-high: #f43f5e;
+            --risk-medium: #f59e0b;
+            --risk-low: #22d3ee;
+            --tooltip-bg: rgba(0,30,50,0.96);
+            --tooltip-text: #e6f7ff;
+            --accent-glow: rgba(0,255,255,0.06);
+            --accent-glow2: rgba(56,189,248,0.04);
+            --stat-number-bg: linear-gradient(135deg, #06b6d4, #3b82f6);
+        }
+        [data-theme="orange"] {
+            --bg-body: #1a0e08;
+            --bg-card: rgba(40,20,10,0.30);
+            --bg-card-solid: rgba(40,20,10,0.85);
+            --text-primary: #fff5ed;
+            --text-secondary: #e8d5c8;
+            --border-color: rgba(255,150,50,0.10);
+            --shadow: 0 8px 32px rgba(0,0,0,0.5);
+            --shadow-hover: 0 12px 48px rgba(255,150,50,0.08);
+            --glass-border: rgba(255,150,50,0.08);
+            --glass-bg: rgba(255,150,50,0.06);
+            --table-header-bg: rgba(255,150,50,0.08);
+            --table-hover-bg: rgba(255,150,50,0.05);
+            --table-bg: rgba(50,25,10,0.40);
+            --link-color: #fb923c;
+            --link-hover: #fdba74;
+            --gradient-primary: linear-gradient(135deg, #f97316, #f43f5e);
+            --gradient-danger: linear-gradient(135deg, #f87171, #dc2626);
+            --gradient-warning: linear-gradient(135deg, #fbbf24, #f97316);
+            --gradient-success: linear-gradient(135deg, #34d399, #f97316);
+            --risk-high: #f43f5e;
+            --risk-medium: #f97316;
+            --risk-low: #fb923c;
+            --tooltip-bg: rgba(40,20,10,0.96);
+            --tooltip-text: #fff5ed;
+            --accent-glow: rgba(255,150,50,0.06);
+            --accent-glow2: rgba(244,114,182,0.04);
+            --stat-number-bg: linear-gradient(135deg, #f97316, #f43f5e);
+        }
+        body {
+            background-image: url('clipboard-image-1783081059.jpg');
+            background-size: cover; background-position: center;
+            background-attachment: fixed; background-color: #0b1121;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+            color: var(--text-primary); margin: 0; padding: 20px;
+            line-height: 1.6; min-height: 100vh; position: relative;
+            text-shadow: 0 1px 8px rgba(255,255,255,0.08), 0 0 30px rgba(0,0,0,0.12);
+        }
+        body::before { content: ''; position: fixed; top: -30%; left: -20%; width: 70%; height: 70%; background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%); pointer-events: none; z-index: 0; }
+        body::after { content: ''; position: fixed; bottom: -30%; right: -20%; width: 70%; height: 70%; background: radial-gradient(circle, var(--accent-glow2) 0%, transparent 70%); pointer-events: none; z-index: 0; }
+        .container { max-width: 1400px; margin: 0 auto; position: relative; z-index: 1; }
+        .card { background: var(--bg-card); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px 28px; margin-bottom: 24px; transition: all 0.3s ease; }
+        .card:hover { box-shadow: var(--shadow-hover); }
+        .navbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 12px 0 4px; }
+        .navbar-brand { display: flex; align-items: center; gap: 12px; font-size: 1.5rem; font-weight: 700; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; text-shadow: none; }
+        .navbar-brand .logo-icon { font-size: 2rem; -webkit-text-fill-color: initial; }
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); background: var(--glass-bg); padding: 4px 12px; border-radius: 30px; border: 1px solid var(--glass-border); }
+        .status-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block; animation: pulse-dot 2s infinite; }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+        .navbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--glass-bg); backdrop-filter: blur(8px); border: 1px solid var(--glass-border); padding: 8px 18px; border-radius: 40px; font-size: 0.85rem; font-weight: 500; color: var(--text-primary); cursor: pointer; transition: all 0.25s ease; text-decoration: none; user-select: none; text-shadow: none; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); border-color: var(--link-color); }
+        .btn-primary { background: var(--gradient-primary); color: white; border: none; }
+        .btn-danger { background: var(--gradient-danger); color: white; border: none; }
+        .btn-success { background: var(--gradient-success); color: white; border: none; }
+        .btn-outline { background: transparent; border: 1px solid var(--border-color); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: var(--bg-card); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border-radius: 16px; padding: 16px 20px; border: 1px solid var(--glass-border); box-shadow: var(--shadow); text-align: center; }
+        .stat-number { font-size: 2.2rem; font-weight: 700; background: var(--stat-number-bg); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; line-height: 1.2; }
+        .stat-number.danger { background: var(--gradient-danger); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .stat-number.warning { background: var(--gradient-warning); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .stat-number.success { background: var(--gradient-success); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+        .high-risk-summary { background: var(--bg-card-solid); border-radius: 16px; padding: 16px 20px; border-left: 4px solid #f43f5e; margin-bottom: 24px; }
+        .high-risk-summary h3 { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--text-secondary); margin-bottom: 8px; }
+        .high-risk-summary ul { list-style: none; padding: 0; margin: 0; }
+        .high-risk-summary li { padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; display: flex; justify-content: space-between; gap: 16px; }
+        .high-risk-summary li:last-child { border-bottom: none; }
+        .high-risk-summary .risk-link { color: var(--link-color); text-decoration: none; font-weight: 500; }
+        .high-risk-summary .risk-link:hover { color: var(--link-hover); }
+        .high-risk-summary .source-tag { font-size: 0.7rem; background: var(--glass-bg); padding: 2px 10px; border-radius: 20px; color: var(--text-secondary); white-space: nowrap; }
+        .high-risk-summary .new-badge { font-size: 0.6rem; background: rgba(56,189,248,0.2); color: var(--link-color); padding: 1px 8px; border-radius: 20px; margin-right: 6px; }
+        .report-wrapper { overflow-x: auto; margin-top: 8px; background: var(--table-bg); backdrop-filter: var(--table-blur); -webkit-backdrop-filter: var(--table-blur); border-radius: 12px; padding: 4px 0; border: 1px solid var(--glass-border); box-shadow: var(--shadow); }
+        .report-wrapper table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .report-wrapper th { background: var(--table-header-bg); font-weight: 600; padding: 12px 14px; text-align: left; border-bottom: 2px solid var(--border-color); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
+        .report-wrapper td { padding: 10px 14px; border-bottom: 1px solid var(--border-color); vertical-align: top; }
+        .report-wrapper tbody tr:hover { background: var(--table-hover-bg); }
+        .report-wrapper a { color: var(--link-color); text-decoration: none; }
+        .report-wrapper a:hover { color: var(--link-hover); }
+        .risk-tag { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 2px 12px; border-radius: 30px; }
+        .risk-tag.high { background: rgba(244,67,54,0.15); color: #f43f5e; }
+        .risk-tag.medium { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .risk-tag.low { background: rgba(52,211,153,0.15); color: #34d399; }
+        .risk-cell { position: relative; display: inline-block; max-width: 100%; cursor: pointer; }
+        .risk-cell .risk-text { display: inline; border-bottom: 1.5px dashed var(--border-color); }
+        .risk-cell:hover .risk-text { border-color: var(--link-color); }
+        .risk-cell .ellipsis { color: var(--text-secondary); font-weight: 600; }
+        .risk-cell .expand-btn { color: var(--link-color); cursor: pointer; font-size: 0.7rem; margin-left: 4px; background: none; border: none; padding: 0; font-family: inherit; }
+        .risk-tooltip { position: fixed; max-width: 460px; min-width: 220px; padding: 14px 18px; background: var(--tooltip-bg); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--tooltip-border); border-radius: 14px; box-shadow: var(--tooltip-shadow); color: var(--tooltip-text); font-size: 0.85rem; line-height: 1.7; z-index: 9999; opacity: 0; visibility: hidden; transition: opacity 0.25s, transform 0.25s, visibility 0.25s; transform: translateY(-8px) scale(0.96); pointer-events: none; word-break: break-word; }
+        .risk-tooltip.visible { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
+        .risk-tooltip::after { content: ''; position: absolute; bottom: -8px; left: 24px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid var(--tooltip-bg); }
+        .risk-tooltip.arrow-top::after { bottom: auto; top: -8px; border-top: none; border-bottom: 8px solid var(--tooltip-bg); }
+        .risk-tooltip .tooltip-label { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px; }
+        .risk-tooltip .tooltip-risk-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; padding: 1px 10px; border-radius: 30px; margin-left: 8px; }
+        .risk-tooltip .tooltip-risk-badge.high { background: rgba(244,67,54,0.15); color: #f43f5e; }
+        .risk-tooltip .tooltip-risk-badge.medium { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .risk-tooltip .tooltip-risk-badge.low { background: rgba(52,211,153,0.15); color: #34d399; }
+        .footer-bar { margin-top: 30px; text-align: center; font-size: 0.8rem; color: var(--text-secondary); display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; padding: 16px 0; border-top: 1px solid var(--border-color); }
+        ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: var(--bg-body); } ::-webkit-scrollbar-thumb { background: var(--text-secondary); border-radius: 10px; }
+        .loader { border: 3px solid var(--border-color); border-top: 3px solid #38bdf8; border-radius: 50%; width: 36px; height: 36px; animation: spin 0.8s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .login-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(11,17,33,0.7); backdrop-filter: blur(16px); display: flex; align-items: center; justify-content: center; z-index: 999; }
+        .login-card { background: var(--bg-card-solid); padding: 40px 36px; border-radius: 24px; box-shadow: 0 24px 80px rgba(0,0,0,0.3); text-align: center; max-width: 340px; width: 100%; border: 1px solid var(--border-color); }
+        .login-card h2 { margin-bottom: 8px; font-size: 1.6rem; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .login-card p { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px; }
+        .login-card input { width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 40px; background: var(--bg-body); color: var(--text-primary); font-size: 1rem; margin-bottom: 16px; outline: none; }
+        .login-card input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,0.2); }
+        .login-card .btn { width: 100%; justify-content: center; }
+        .error-msg { color: #f87171; margin-top: 12px; font-size: 0.85rem; }
+        @media (max-width: 700px) { body { padding: 12px; } .card { padding: 16px; } .navbar-brand { font-size: 1.2rem; } .stats-grid { grid-template-columns: repeat(3,1fr); } .stat-number { font-size: 1.6rem; } .report-wrapper td, .report-wrapper th { font-size: 0.75rem; padding: 6px 8px; } }
+    </style>
+</head>
+<body>
+    <div id="loginOverlay" class="login-overlay" style="display:none;">
+        <div class="login-card">
+            <h2>🔐 系统登录</h2>
+            <p>请输入访问密码</p>
+            <input type="password" id="passwordInput" placeholder="请输入密码" autofocus>
+            <button id="loginBtn" class="btn btn-primary">确认</button>
+            <div id="loginError" class="error-msg"></div>
+        </div>
+    </div>
+
+    <div id="app" style="display:none;">
+        <div class="container">
+            <div class="card" style="padding: 16px 24px;">
+                <div class="navbar">
+                    <div class="navbar-brand">
+                        <span class="logo-icon">🛡️</span> 内容安全舆情监控
+                        <span class="status-badge"><span class="dot"></span> 运行中</span>
+                    </div>
+                    <div class="navbar-actions">
+                        <span id="report-time-display" style="font-size:0.8rem; color:var(--text-secondary); margin-right:4px;"></span>
+                        <button id="refresh-btn" class="btn btn-outline">🔄 刷新</button>
+                        <button id="trigger-action-btn" class="btn btn-danger">🚀 立即更新</button>
+                        <button id="history-btn" class="btn btn-success">📚 历史</button>
+                        <button id="themeToggleBtn" class="btn btn-outline">🌙 深色</button>
+                        <button id="logoutBtn" class="btn btn-outline" style="font-size:0.75rem;">退出</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-grid" id="statsGrid" style="display:none;"></div>
+            <div id="highRiskSummary" class="high-risk-summary" style="display:none;">
+                <h3>⚠️ 高风险事件 TOP 5</h3>
+                <ul id="highRiskList"></ul>
+            </div>
+            <div class="card">
+                <div id="report-content"><div class="loader"></div></div>
+            </div>
+            <div class="footer-bar">
+                <span>⚡ 数据来自定期爬取 | 自动生成涉华负面报告</span>
+                <span id="trigger-limit-info"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const PASSWORD = 'dzx12123', SESSION_KEY = 'logged_in';
+        function checkLogin() {
+            if (sessionStorage.getItem(SESSION_KEY) === 'true') {
+                document.getElementById('app').style.display = 'block';
+                document.getElementById('loginOverlay').style.display = 'none';
+                initApp();
+            } else {
+                document.getElementById('loginOverlay').style.display = 'flex';
+                const input = document.getElementById('passwordInput');
+                const btn = document.getElementById('loginBtn');
+                const errDiv = document.getElementById('loginError');
+                const doLogin = () => {
+                    if (input.value === PASSWORD) {
+                        sessionStorage.setItem(SESSION_KEY, 'true');
+                        document.getElementById('loginOverlay').style.display = 'none';
+                        document.getElementById('app').style.display = 'block';
+                        initApp();
+                    } else {
+                        errDiv.textContent = '密码错误，请重试。';
+                        input.value = ''; input.focus();
+                    }
+                };
+                btn.onclick = doLogin;
+                input.onkeypress = (e) => { if (e.key === 'Enter') doLogin(); };
+                input.focus();
+            }
+        }
+
+        const THEMES = ['dark', 'cyan', 'orange'];
+        const THEME_LABELS = { dark: '🌙 深色', cyan: '💠 青色', orange: '🔥 橙色' };
+        let currentTheme = localStorage.getItem('theme') || 'dark';
+        let countdownInterval = null;
+        let activeTooltip = null;
+
+        function initApp() {
+            applyTheme();
+            document.getElementById('themeToggleBtn').addEventListener('click', cycleTheme);
+            document.getElementById('logoutBtn').addEventListener('click', () => { sessionStorage.removeItem(SESSION_KEY); location.reload(); });
+            document.getElementById('refresh-btn').addEventListener('click', () => loadReport(true));
+            document.getElementById('trigger-action-btn').addEventListener('click', triggerWorkflow);
+            document.getElementById('history-btn').addEventListener('click', openHistory);
+            loadReport(false);
+            updateButtonState();
+            promptTokenIfNeeded();
+        }
+
+        function applyTheme() {
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            localStorage.setItem('theme', currentTheme);
+            const btn = document.getElementById('themeToggleBtn');
+            if (btn) btn.textContent = THEME_LABELS[currentTheme] || '🌙 深色';
+        }
+        function cycleTheme() { const i = THEMES.indexOf(currentTheme); currentTheme = THEMES[(i+1)%THEMES.length]; applyTheme(); }
+
+        function convertUtcToBeijing(utc) {
+            const m = utc.replace(' UTC','').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+            if (!m) return utc;
+            const d = new Date(Date.UTC(+m[1], m[2]-1, +m[3], +m[4], +m[5], +m[6]));
+            const bj = new Date(d.getTime() + 8*3600*1000);
+            return bj.getUTCFullYear()+'-'+String(bj.getUTCMonth()+1).padStart(2,'0')+'-'+String(bj.getUTCDate()).padStart(2,'0')+' '+String(bj.getUTCHours()).padStart(2,'0')+':'+String(bj.getUTCMinutes()).padStart(2,'0')+':'+String(bj.getUTCSeconds()).padStart(2,'0');
+        }
+        function extractReportTime(t) { const p = [/生成时间[：:]\s*([^\n]+)/, /报告时间[：:]\s*([^\n]+)/, /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*UTC)/]; for (let r of p) { const m = t.match(r); if (m) return m[1].trim(); } return null; }
+        function extractFetchCount(t) { const m = t.match(/抓取数据[：:]\s*(\d+)\s*条/); return m ? +m[1] : 0; }
+        function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        function parseReportTableFromMarkdown(text) {
+            const rows = []; let inTable = false;
+            for (let line of text.split('\n')) {
+                if (line.startsWith('|') && line.includes('|')) {
+                    if (!inTable) { inTable = true; continue; }
+                    if (/^\|[\s\-:]+\|$/.test(line)) continue;
+                    const cells = line.split('|').map(c => c.trim()).filter(c => c.length);
+                    if (cells.length >= 6) {
+                        let ev = cells[0], link = '';
+                        const lm = cells[1].match(/\[([^\]]*)\]\(([^)]*)\)/);
+                        if (lm) link = lm[2];
+                        let risk = cells[2], source = cells[3], timeAgo = cells[4];
+                        let level = cells[5]; if (level.includes('高')) level='高'; else if (level.includes('中')) level='中'; else if (level.includes('低')) level='低'; else level='未知';
+                        rows.push({ eventText: ev, link, risk, source, timeAgo, riskLevel: level, isNew: ev.includes('🆕') });
+                    }
+                } else if (inTable) break;
+            }
+            return rows;
+        }
+        function sortRows(rows) {
+            const pri = r => { const n = r.isNew; if (n&&r.riskLevel==='高') return 1; if (n&&r.riskLevel==='中') return 2; if (n&&r.riskLevel==='低') return 3; if (!n&&r.riskLevel==='高') return 4; if (!n&&r.riskLevel==='中') return 5; if (!n&&r.riskLevel==='低') return 6; return 7; };
+            return [...rows].sort((a,b)=>pri(a)-pri(b));
+        }
+        function updateStatsAndHighRisk(rows, fetchCount) {
+            const statsGrid = document.getElementById('statsGrid'), sum = document.getElementById('highRiskSummary'), list = document.getElementById('highRiskList');
+            if (!rows.length) { statsGrid.style.display='none'; sum.style.display='none'; return; }
+            const s = sortRows(rows);
+            const total = s.length, high = s.filter(r=>r.riskLevel==='高').length, med = s.filter(r=>r.riskLevel==='中').length, low = s.filter(r=>r.riskLevel==='低').length, nw = s.filter(r=>r.isNew).length;
+            statsGrid.style.display='grid';
+            statsGrid.innerHTML = `<div class="stat-card"><div class="stat-number info">${fetchCount||0}</div><div class="stat-label">📥 抓取数据</div></div><div class="stat-card"><div class="stat-number">${total}</div><div class="stat-label">🎯 AI筛选总涉华事件</div></div><div class="stat-card"><div class="stat-number danger">${high}</div><div class="stat-label">🔴 高风险</div></div><div class="stat-card"><div class="stat-number warning">${med}</div><div class="stat-label">🟠 中风险</div></div><div class="stat-card"><div class="stat-number success">${low}</div><div class="stat-label">🟢 低风险</div></div><div class="stat-card"><div class="stat-number">${nw}</div><div class="stat-label">🆕 新增</div></div>`;
+            const top5 = s.filter(r=>r.riskLevel==='高').slice(0,5);
+            if (top5.length) {
+                sum.style.display='block';
+                list.innerHTML = top5.map(r=>{
+                    const txt = r.eventText.replace('🆕','').trim();
+                    const badge = r.isNew ? '<span class="new-badge">🆕</span>' : '';
+                    return `<li>${r.link?`<a href="${r.link}" target="_blank" class="risk-link">${badge}${escapeHtml(txt)}</a>`:`<span>${badge}${escapeHtml(txt)}</span>`}<span class="source-tag">${escapeHtml(r.source)}</span></li>`;
+                }).join('');
+            } else sum.style.display='none';
+        }
+
+        let tooltipInstance = null;
+        function createTooltip() {
+            if (tooltipInstance) return tooltipInstance;
+            const el = document.createElement('div'); el.className='risk-tooltip';
+            el.innerHTML = '<div class="tooltip-label">📌 风险分析</div><div class="tooltip-body"></div><button class="tooltip-close">收起</button>';
+            document.body.appendChild(el);
+            tooltipInstance = el;
+            el.querySelector('.tooltip-close').addEventListener('click', e=>{ e.stopPropagation(); hideTooltipImmediately(); });
+            return el;
+        }
+        function showTooltip(src, text, level) {
+            if (!text) return;
+            const t = createTooltip();
+            const lc = level==='高'?'high':level==='中'?'medium':'low';
+            t.querySelector('.tooltip-body').innerHTML = `${escapeHtml(text)} <span class="tooltip-risk-badge ${lc}">${level}</span>`;
+            const r = src.getBoundingClientRect(), tw = Math.min(460, innerWidth-40);
+            let left = r.left + r.width/2 - tw/2, top = r.top - (t.offsetHeight||200) - 14;
+            if (left<20) left=20; if (left+tw>innerWidth-20) left=innerWidth-tw-20;
+            if (top<20) { top = r.bottom+14; t.classList.add('arrow-top'); } else t.classList.remove('arrow-top');
+            t.style.left=left+'px'; t.style.top=top+'px'; t.style.maxWidth=tw+'px';
+            t.classList.add('visible'); t._source=src; activeTooltip=t;
+        }
+        function hideTooltipImmediately() { if (tooltipInstance) { tooltipInstance.classList.remove('visible'); tooltipInstance._source=null; activeTooltip=null; } }
+        document.addEventListener('click', e=>{ if (activeTooltip && !e.target.closest('.risk-cell') && !e.target.closest('.risk-tooltip')) hideTooltipImmediately(); });
+
+        let lastReportHash = localStorage.getItem('lastReportHash')||'';
+        function simpleHash(s) { return s.slice(0,200)+s.length; }
+
+        // ========== 修改后的 loadReport（去掉了 Authorization 头） ==========
+        async function loadReport(showAlert) {
+            const div = document.getElementById('report-content');
+            div.innerHTML = '<div class="loader"></div>';
+            hideTooltipImmediately();
+            try {
+                // ✅ 关键改动：不再携带 Authorization 头，避免触发预检（preflight）
+                const resp = await fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/report.md');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const text = await resp.text();
+                const hash = simpleHash(text);
+                const rawTime = extractReportTime(text);
+                document.getElementById('report-time-display').textContent = `📅 ${rawTime ? convertUtcToBeijing(rawTime) : '未知'}`;
+                const fetchCount = extractFetchCount(text);
+                const tableStart = text.indexOf('| 事件简述');
+                const tableText = tableStart > 0 ? text.substring(tableStart) : text;
+                let html = marked.parse(tableText);
+                const temp = document.createElement('div');
+                temp.innerHTML = html;
+                temp.querySelectorAll('a').forEach(a => {
+                    if (a.href && !a.href.startsWith('#')) {
+                        a.setAttribute('target', '_blank');
+                        a.setAttribute('rel', 'noopener noreferrer');
+                    }
+                });
+                const rows = parseReportTableFromMarkdown(tableText);
+                const sorted = sortRows(rows);
+                temp.querySelectorAll('table').forEach(table => {
+                    const tbody = table.querySelector('tbody');
+                    if (!tbody) return;
+                    tbody.innerHTML = '';
+                    sorted.forEach(row => {
+                        const tr = document.createElement('tr');
+                        const td1 = document.createElement('td');
+                        const txt = row.eventText.replace('🆕', '').trim();
+                        const nw = row.isNew ? '🆕 ' : '';
+                        if (row.link) td1.innerHTML = `<a href="${escapeHtml(row.link)}" target="_blank">${nw}${escapeHtml(txt)}</a>`;
+                        else td1.textContent = nw + txt;
+                        tr.appendChild(td1);
+                        const td2 = document.createElement('td');
+                        td2.innerHTML = row.link ? `<a href="${escapeHtml(row.link)}" target="_blank">查看</a>` : '-';
+                        tr.appendChild(td2);
+                        const td3 = document.createElement('td');
+                        const full = row.risk || '';
+                        if (full.length > 10) {
+                            const wrap = document.createElement('span');
+                            wrap.className = 'risk-cell';
+                            wrap.dataset.fullText = full;
+                            wrap.dataset.riskLevel = row.riskLevel;
+                            const span = document.createElement('span');
+                            span.className = 'risk-text';
+                            span.textContent = full.substring(0, 10);
+                            wrap.appendChild(span);
+                            const dots = document.createElement('span');
+                            dots.className = 'ellipsis';
+                            dots.textContent = '...';
+                            wrap.appendChild(dots);
+                            const btn = document.createElement('button');
+                            btn.className = 'expand-btn';
+                            btn.textContent = '展开';
+                            btn.addEventListener('click', e => {
+                                e.stopPropagation();
+                                if (activeTooltip && activeTooltip._source === wrap) hideTooltipImmediately();
+                                else showTooltip(wrap, full, row.riskLevel);
+                            });
+                            wrap.appendChild(btn);
+                            td3.appendChild(wrap);
+                        } else td3.textContent = full;
+                        tr.appendChild(td3);
+                        const td4 = document.createElement('td');
+                        td4.textContent = row.source || '-';
+                        tr.appendChild(td4);
+                        const td5 = document.createElement('td');
+                        td5.textContent = row.timeAgo || '-';
+                        tr.appendChild(td5);
+                        const td6 = document.createElement('td');
+                        const lc = row.riskLevel === '高' ? 'high' : row.riskLevel === '中' ? 'medium' : 'low';
+                        td6.innerHTML = `<span class="risk-tag ${lc}">${row.riskLevel}</span>`;
+                        tr.appendChild(td6);
+                        tbody.appendChild(tr);
+                    });
+                });
+                div.innerHTML = `<div class="report-wrapper">${temp.innerHTML}</div>`;
+                updateStatsAndHighRisk(sorted, fetchCount);
+                if (hash !== lastReportHash) {
+                    if (showAlert) alert('✅ 报告已刷新！');
+                    localStorage.setItem('lastReportHash', hash);
+                    lastReportHash = hash;
+                }
+            } catch (e) {
+                div.innerHTML = `<div style="color:#f87171;background:rgba(244,67,54,0.08);padding:20px;border-radius:16px;"><strong>⚠️ 加载失败</strong><br>${escapeHtml(e.message)}<br><br><button class="btn btn-primary" onclick="loadReport(true)">🔄 重试</button></div>`;
+                if (showAlert) alert(`❌ 报告刷新失败：${e.message}`);
+            }
+        }
+
+        const REPO_OWNER='zhetian592', REPO_NAME='my-crawler-monitor', WORKFLOW_ID='crawler-tier1.yml', GITHUB_TOKEN_KEY='github_pat';
+
+        async function updateButtonState() {
+            const btn = document.getElementById('trigger-action-btn');
+            const info = document.getElementById('trigger-limit-info');
+            try {
+                const headers = {};
+                const token = localStorage.getItem(GITHUB_TOKEN_KEY);
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/runs?per_page=3`;
+                const resp = await fetch(url, { headers });
+                if (!resp.ok) throw new Error('无法获取状态');
+                const data = await resp.json();
+                const runs = data.workflow_runs || [];
+
+                const active = runs.find(r => r.status==='in_progress' || r.status==='queued');
+                if (active) {
+                    btn.disabled = true;
+                    if (active.status === 'in_progress') {
+                        btn.textContent = '🔄 运行中...';
+                        if (info) info.textContent = '当前有任务正在执行，请等待完成';
+                    } else {
+                        btn.textContent = '⏳ 排队中...';
+                        if (info) info.textContent = '任务已排队，等待上一个完成后自动执行';
+                    }
+                    if (countdownInterval) clearInterval(countdownInterval);
+                    countdownInterval = setInterval(updateButtonState, 15000);
+                    return;
+                }
+
+                const lastRun = runs[0];
+                if (lastRun) {
+                    const createdAt = new Date(lastRun.created_at);
+                    const now = new Date();
+                    const cooldown = 3600;
+                    const remaining = cooldown - (now - createdAt) / 1000;
+                    if (remaining > 0) {
+                        btn.disabled = true;
+                        if (info) info.textContent = '每小时限触发一次';
+                        if (countdownInterval) clearInterval(countdownInterval);
+                        const cooldownEnd = createdAt.getTime() + cooldown * 1000;
+                        countdownInterval = setInterval(() => {
+                            const r = cooldownEnd - Date.now();
+                            if (r <= 0) {
+                                btn.disabled = false;
+                                btn.textContent = '🚀 立即更新';
+                                if (info) info.textContent = '可以触发新的爬虫任务';
+                                clearInterval(countdownInterval);
+                                updateButtonState();
+                            } else {
+                                const mins = Math.floor(r / 60000);
+                                const secs = Math.floor((r % 60000) / 1000);
+                                btn.textContent = `⏳ 冷却 ${mins}分${secs}秒`;
+                            }
+                        }, 1000);
+                        return;
+                    }
+                }
+
+                btn.disabled = false;
+                btn.textContent = '🚀 立即更新';
+                if (info) info.textContent = '可以触发新的爬虫任务';
+                if (countdownInterval) clearInterval(countdownInterval);
+            } catch {
+                btn.disabled = false;
+                btn.textContent = '🚀 立即更新';
+                if (info) info.textContent = '状态检查失败，仍可尝试触发';
+                if (countdownInterval) clearInterval(countdownInterval);
+            }
+        }
+
+        async function triggerWorkflow() {
+            const btn = document.getElementById('trigger-action-btn');
+            const info = document.getElementById('trigger-limit-info');
+
+            await updateButtonState();
+            if (btn.disabled) return;
+
+            let token = localStorage.getItem(GITHUB_TOKEN_KEY);
+            if (!token) {
+                token = prompt('请填写 GitHub Personal Access Token（需要 repo 权限）：\n生成地址：https://github.com/settings/tokens');
+                if (!token) return;
+                localStorage.setItem(GITHUB_TOKEN_KEY, token);
+            }
+
+            const originalText = btn.innerText;
+            btn.innerText = '⏳ 触发中...';
+            btn.disabled = true;
+
+            try {
+                const resp = await fetch(
+                    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/dispatches`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ ref: 'main' })
+                    }
+                );
+
+                if (resp.ok) {
+                    alert('✅ 已触发爬虫任务！稍等几分钟后点击“刷新”查看结果。');
+
+                    btn.disabled = true;
+                    btn.textContent = '🔄 触发成功，等待确认...';
+                    if (info) info.textContent = '任务已提交，正在检查运行状态...';
+
+                    let attempts = 0;
+                    const maxAttempts = 6;
+                    const checkInterval = setInterval(async () => {
+                        await updateButtonState();
+                        attempts++;
+                        if (btn.disabled && btn.textContent !== '🔄 触发成功，等待确认...') {
+                            clearInterval(checkInterval);
+                        } else if (attempts >= maxAttempts) {
+                            btn.disabled = true;
+                            btn.textContent = `⏳ 冷却 59分59秒`;
+                            if (info) info.textContent = '每小时限触发一次（API 延迟，本地推算）';
+                            if (countdownInterval) clearInterval(countdownInterval);
+                            const cooldownEnd = Date.now() + 3600 * 1000;
+                            countdownInterval = setInterval(() => {
+                                const r = cooldownEnd - Date.now();
+                                if (r <= 0) {
+                                    btn.disabled = false;
+                                    btn.textContent = '🚀 立即更新';
+                                    if (info) info.textContent = '可以触发新的爬虫任务';
+                                    clearInterval(countdownInterval);
+                                    updateButtonState();
+                                } else {
+                                    const mins = Math.floor(r / 60000);
+                                    const secs = Math.floor((r % 60000) / 1000);
+                                    btn.textContent = `⏳ 冷却 ${mins}分${secs}秒`;
+                                }
+                            }, 1000);
+                            clearInterval(checkInterval);
+                        }
+                    }, 5000);
+                } else {
+                    const error = await resp.json();
+                    if (resp.status === 401 || resp.status === 403) {
+                        localStorage.removeItem(GITHUB_TOKEN_KEY);
+                        alert('令牌无效或已过期，请重新输入。');
+                    } else {
+                        alert(`❌ 触发失败 (${resp.status}): ${error.message || '未知错误'}`);
+                    }
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                }
+            } catch (err) {
+                alert(`网络错误：${err.message}`);
+                btn.disabled = false;
+                btn.innerText = originalText;
+            }
+        }
+
+        async function openHistory() {
+            const btn = document.getElementById('history-btn');
+            const orig = btn.innerText;
+            btn.innerText = '⏳ 检查中...'; btn.disabled = true;
+            try {
+                const resp = await fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/reports/index.html');
+                if (resp.ok) window.open('reports/index.html', '_blank');
+                else alert('历史报告目录尚未生成。');
+            } catch { alert('无法访问历史报告目录。'); }
+            finally { btn.innerText = orig; btn.disabled = false; }
+        }
+
+        function promptTokenIfNeeded() {
+            if (!localStorage.getItem(GITHUB_TOKEN_KEY)) {
+                setTimeout(() => {
+                    if (!localStorage.getItem(GITHUB_TOKEN_KEY)) {
+                        const t = prompt('为提高体验，请填写 GitHub Personal Access Token（只需一次）。\n生成地址：https://github.com/settings/tokens（需 repo 权限）');
+                        if (t) { localStorage.setItem(GITHUB_TOKEN_KEY, t); alert('✅ 令牌已保存。'); }
+                    }
+                }, 2000);
+            }
+        }
+
+        window.loadReport = loadReport;
+        checkLogin();
+    </script>
+</body>
+</html>
             --risk-medium: #fcd34d;
             --risk-low: #7dd3fc;
             --tooltip-bg: rgba(15, 23, 42, 0.92);
