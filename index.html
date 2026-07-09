@@ -6,9 +6,7 @@
     <title>🛡️ 内容安全舆情监控系统</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        /* ========== CSS 变量 & 重置 ========== */
         * { box-sizing: border-box; margin: 0; padding: 0; }
-
         :root, [data-theme="dark"] {
             --bg-body: #0b1121;
             --bg-card: rgba(26,35,50,0.30);
@@ -99,180 +97,88 @@
             --accent-glow2: rgba(244,114,182,0.04);
             --stat-number-bg: linear-gradient(135deg, #f97316, #f43f5e);
         }
-
         body {
             background-image: url('clipboard-image-1783081059.jpg');
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-            background-color: #0b1121;
+            background-size: cover; background-position: center;
+            background-attachment: fixed; background-color: #0b1121;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
-            color: var(--text-primary);
-            margin: 0; padding: 20px;
-            line-height: 1.6;
-            min-height: 100vh;
-            position: relative;
+            color: var(--text-primary); margin: 0; padding: 20px;
+            line-height: 1.6; min-height: 100vh; position: relative;
             text-shadow: 0 1px 8px rgba(255,255,255,0.08), 0 0 30px rgba(0,0,0,0.12);
         }
-        body::before {
-            content: ''; position: fixed; top: -30%; left: -20%;
-            width: 70%; height: 70%;
-            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
-            pointer-events: none; z-index: 0;
-        }
-        body::after {
-            content: ''; position: fixed; bottom: -30%; right: -20%;
-            width: 70%; height: 70%;
-            background: radial-gradient(circle, var(--accent-glow2) 0%, transparent 70%);
-            pointer-events: none; z-index: 0;
-        }
+        body::before { content: ''; position: fixed; top: -30%; left: -20%; width: 70%; height: 70%; background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%); pointer-events: none; z-index: 0; }
+        body::after { content: ''; position: fixed; bottom: -30%; right: -20%; width: 70%; height: 70%; background: radial-gradient(circle, var(--accent-glow2) 0%, transparent 70%); pointer-events: none; z-index: 0; }
         .container { max-width: 1400px; margin: 0 auto; position: relative; z-index: 1; }
-        .card {
-            background: var(--bg-card); backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border: 1px solid var(--glass-border); border-radius: var(--radius);
-            box-shadow: var(--shadow); padding: 24px 28px; margin-bottom: 24px;
-            transition: all 0.3s ease;
-        }
+        .card { background: var(--bg-card); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px 28px; margin-bottom: 24px; transition: all 0.3s ease; }
         .card:hover { box-shadow: var(--shadow-hover); }
-        .card-solid {
-            background: var(--bg-card-solid); backdrop-filter: none;
-            border: 1px solid var(--border-color); box-shadow: var(--shadow);
-        }
-        .navbar {
-            display: flex; align-items: center; justify-content: space-between;
-            flex-wrap: wrap; gap: 16px; padding: 12px 0 4px;
-        }
-        .navbar-brand {
-            display: flex; align-items: center; gap: 12px;
-            font-size: 1.5rem; font-weight: 700;
-            background: var(--gradient-primary);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text; text-shadow: none;
-        }
+        .navbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 12px 0 4px; }
+        .navbar-brand { display: flex; align-items: center; gap: 12px; font-size: 1.5rem; font-weight: 700; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; text-shadow: none; }
         .navbar-brand .logo-icon { font-size: 2rem; -webkit-text-fill-color: initial; }
-        .status-badge {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 0.75rem; font-weight: 500; color: var(--text-secondary);
-            background: var(--glass-bg); padding: 4px 12px; border-radius: 30px;
-            border: 1px solid var(--glass-border); -webkit-text-fill-color: var(--text-secondary);
-        }
+        .status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); background: var(--glass-bg); padding: 4px 12px; border-radius: 30px; border: 1px solid var(--glass-border); }
         .status-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block; animation: pulse-dot 2s infinite; }
         @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
         .navbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .btn {
-            display: inline-flex; align-items: center; gap: 6px;
-            background: var(--glass-bg); backdrop-filter: blur(8px);
-            border: 1px solid var(--glass-border); padding: 8px 18px;
-            border-radius: 40px; font-size: 0.85rem; font-weight: 500;
-            color: var(--text-primary); cursor: pointer; transition: all 0.25s ease;
-            text-decoration: none; user-select: none; text-shadow: none;
-        }
+        .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--glass-bg); backdrop-filter: blur(8px); border: 1px solid var(--glass-border); padding: 8px 18px; border-radius: 40px; font-size: 0.85rem; font-weight: 500; color: var(--text-primary); cursor: pointer; transition: all 0.25s ease; text-decoration: none; user-select: none; text-shadow: none; }
         .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); border-color: var(--link-color); }
-        .btn-primary { background: var(--gradient-primary); color: white; border: none; text-shadow: 0 1px 4px rgba(0,0,0,0.15); }
-        .btn-primary:hover { box-shadow: 0 8px 28px var(--link-color); }
-        .btn-danger { background: var(--gradient-danger); color: white; border: none; text-shadow: 0 1px 4px rgba(0,0,0,0.15); }
-        .btn-danger:hover { box-shadow: 0 8px 28px rgba(244,67,54,0.35); }
-        .btn-success { background: var(--gradient-success); color: white; border: none; text-shadow: 0 1px 4px rgba(0,0,0,0.15); }
-        .btn-success:hover { box-shadow: 0 8px 28px rgba(52,211,153,0.35); }
+        .btn-primary { background: var(--gradient-primary); color: white; border: none; }
+        .btn-danger { background: var(--gradient-danger); color: white; border: none; }
+        .btn-success { background: var(--gradient-success); color: white; border: none; }
         .btn-outline { background: transparent; border: 1px solid var(--border-color); }
-        .btn-outline:hover { background: var(--glass-bg); }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
-
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat-card {
-            background: var(--bg-card); backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px); border-radius: 16px;
-            padding: 16px 20px; border: 1px solid var(--glass-border);
-            box-shadow: var(--shadow); transition: all 0.3s ease; text-align: center;
-        }
-        .stat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
-        .stat-number {
-            font-size: 2.2rem; font-weight: 700;
-            background: var(--stat-number-bg); -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent; background-clip: text;
-            line-height: 1.2; text-shadow: none;
-        }
+        .stat-card { background: var(--bg-card); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border-radius: 16px; padding: 16px 20px; border: 1px solid var(--glass-border); box-shadow: var(--shadow); text-align: center; }
+        .stat-number { font-size: 2.2rem; font-weight: 700; background: var(--stat-number-bg); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; line-height: 1.2; }
         .stat-number.danger { background: var(--gradient-danger); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .stat-number.warning { background: var(--gradient-warning); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .stat-number.success { background: var(--gradient-success); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .stat-number.info { background: var(--stat-number-bg); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; font-weight: 500; }
-
-        .high-risk-summary {
-            background: var(--bg-card-solid); border-radius: 16px; padding: 16px 20px;
-            border-left: 4px solid #f43f5e; margin-bottom: 24px; box-shadow: var(--shadow);
-        }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+        .high-risk-summary { background: var(--bg-card-solid); border-radius: 16px; padding: 16px 20px; border-left: 4px solid #f43f5e; margin-bottom: 24px; }
         .high-risk-summary h3 { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--text-secondary); margin-bottom: 8px; }
         .high-risk-summary ul { list-style: none; padding: 0; margin: 0; }
-        .high-risk-summary li { padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center; }
+        .high-risk-summary li { padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; display: flex; justify-content: space-between; gap: 16px; }
         .high-risk-summary li:last-child { border-bottom: none; }
         .high-risk-summary .risk-link { color: var(--link-color); text-decoration: none; font-weight: 500; }
-        .high-risk-summary .risk-link:hover { color: var(--link-hover); text-decoration: underline; }
+        .high-risk-summary .risk-link:hover { color: var(--link-hover); }
         .high-risk-summary .source-tag { font-size: 0.7rem; background: var(--glass-bg); padding: 2px 10px; border-radius: 20px; color: var(--text-secondary); white-space: nowrap; }
         .high-risk-summary .new-badge { font-size: 0.6rem; background: rgba(56,189,248,0.2); color: var(--link-color); padding: 1px 8px; border-radius: 20px; margin-right: 6px; }
-
-        .report-wrapper {
-            overflow-x: auto; margin-top: 8px; background: var(--table-bg);
-            backdrop-filter: var(--table-blur); -webkit-backdrop-filter: var(--table-blur);
-            border-radius: 12px; padding: 4px 0; border: 1px solid var(--glass-border);
-            box-shadow: var(--shadow);
-        }
-        .report-wrapper table { width: 100%; border-collapse: collapse; font-size: 0.9rem; border-radius: 12px; overflow: hidden; }
+        .report-wrapper { overflow-x: auto; margin-top: 8px; background: var(--table-bg); backdrop-filter: var(--table-blur); -webkit-backdrop-filter: var(--table-blur); border-radius: 12px; padding: 4px 0; border: 1px solid var(--glass-border); box-shadow: var(--shadow); }
+        .report-wrapper table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         .report-wrapper th { background: var(--table-header-bg); font-weight: 600; padding: 12px 14px; text-align: left; border-bottom: 2px solid var(--border-color); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
-        .report-wrapper td { padding: 10px 14px; border-bottom: 1px solid var(--border-color); vertical-align: top; transition: background 0.15s ease; }
+        .report-wrapper td { padding: 10px 14px; border-bottom: 1px solid var(--border-color); vertical-align: top; }
         .report-wrapper tbody tr:hover { background: var(--table-hover-bg); }
         .report-wrapper a { color: var(--link-color); text-decoration: none; }
-        .report-wrapper a:hover { color: var(--link-hover); text-decoration: underline; }
-
-        .risk-tag { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 2px 12px; border-radius: 30px; text-transform: uppercase; letter-spacing: 0.03em; }
-        .risk-tag.high { background: rgba(244,67,54,0.15); color: #f43f5e; box-shadow: 0 0 12px rgba(244,67,54,0.08); }
-        .risk-tag.medium { background: rgba(245,158,11,0.15); color: #f59e0b; box-shadow: 0 0 12px rgba(245,158,11,0.08); }
-        .risk-tag.low { background: rgba(52,211,153,0.15); color: #34d399; box-shadow: 0 0 12px rgba(52,211,153,0.08); }
-
+        .report-wrapper a:hover { color: var(--link-hover); }
+        .risk-tag { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 2px 12px; border-radius: 30px; }
+        .risk-tag.high { background: rgba(244,67,54,0.15); color: #f43f5e; }
+        .risk-tag.medium { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .risk-tag.low { background: rgba(52,211,153,0.15); color: #34d399; }
         .risk-cell { position: relative; display: inline-block; max-width: 100%; cursor: pointer; }
-        .risk-cell .risk-text { display: inline; border-bottom: 1.5px dashed var(--border-color); padding-bottom: 1px; transition: border-color 0.2s; }
+        .risk-cell .risk-text { display: inline; border-bottom: 1.5px dashed var(--border-color); }
         .risk-cell:hover .risk-text { border-color: var(--link-color); }
         .risk-cell .ellipsis { color: var(--text-secondary); font-weight: 600; }
-        .risk-cell .expand-btn { color: var(--link-color); cursor: pointer; font-size: 0.7rem; margin-left: 4px; text-decoration: none; border-bottom: 1px dashed var(--link-color); display: inline-block; background: none; border: none; padding: 0; font-family: inherit; }
-        .risk-cell .expand-btn:hover { color: var(--link-hover); }
-
-        .risk-tooltip {
-            position: fixed; max-width: 460px; min-width: 220px; padding: 14px 18px;
-            background: var(--tooltip-bg); backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px); border: 1px solid var(--tooltip-border);
-            border-radius: 14px; box-shadow: var(--tooltip-shadow); color: var(--tooltip-text);
-            font-size: 0.85rem; line-height: 1.7; z-index: 9999; opacity: 0; visibility: hidden;
-            transition: opacity 0.25s ease, transform 0.25s ease, visibility 0.25s;
-            transform: translateY(-8px) scale(0.96); pointer-events: none; word-break: break-word;
-            white-space: pre-wrap; text-shadow: none;
-        }
+        .risk-cell .expand-btn { color: var(--link-color); cursor: pointer; font-size: 0.7rem; margin-left: 4px; background: none; border: none; padding: 0; font-family: inherit; }
+        .risk-tooltip { position: fixed; max-width: 460px; min-width: 220px; padding: 14px 18px; background: var(--tooltip-bg); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--tooltip-border); border-radius: 14px; box-shadow: var(--tooltip-shadow); color: var(--tooltip-text); font-size: 0.85rem; line-height: 1.7; z-index: 9999; opacity: 0; visibility: hidden; transition: opacity 0.25s, transform 0.25s, visibility 0.25s; transform: translateY(-8px) scale(0.96); pointer-events: none; word-break: break-word; }
         .risk-tooltip.visible { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
-        .risk-tooltip::after { content: ''; position: absolute; bottom: -8px; left: 24px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid var(--tooltip-bg); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.06)); }
+        .risk-tooltip::after { content: ''; position: absolute; bottom: -8px; left: 24px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid var(--tooltip-bg); }
         .risk-tooltip.arrow-top::after { bottom: auto; top: -8px; border-top: none; border-bottom: 8px solid var(--tooltip-bg); }
-        .risk-tooltip .tooltip-label { display: inline-block; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-bottom: 4px; opacity: 0.7; }
-        .risk-tooltip .tooltip-risk-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; padding: 1px 10px; border-radius: 30px; margin-left: 8px; text-transform: uppercase; }
+        .risk-tooltip .tooltip-label { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px; }
+        .risk-tooltip .tooltip-risk-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; padding: 1px 10px; border-radius: 30px; margin-left: 8px; }
         .risk-tooltip .tooltip-risk-badge.high { background: rgba(244,67,54,0.15); color: #f43f5e; }
         .risk-tooltip .tooltip-risk-badge.medium { background: rgba(245,158,11,0.15); color: #f59e0b; }
         .risk-tooltip .tooltip-risk-badge.low { background: rgba(52,211,153,0.15); color: #34d399; }
-
         .footer-bar { margin-top: 30px; text-align: center; font-size: 0.8rem; color: var(--text-secondary); display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; padding: 16px 0; border-top: 1px solid var(--border-color); }
-
         ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: var(--bg-body); } ::-webkit-scrollbar-thumb { background: var(--text-secondary); border-radius: 10px; }
         .loader { border: 3px solid var(--border-color); border-top: 3px solid #38bdf8; border-radius: 50%; width: 36px; height: 36px; animation: spin 0.8s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11,17,33,0.7); backdrop-filter: blur(16px); display: flex; align-items: center; justify-content: center; z-index: 999; }
+        .login-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(11,17,33,0.7); backdrop-filter: blur(16px); display: flex; align-items: center; justify-content: center; z-index: 999; }
         .login-card { background: var(--bg-card-solid); padding: 40px 36px; border-radius: 24px; box-shadow: 0 24px 80px rgba(0,0,0,0.3); text-align: center; max-width: 340px; width: 100%; border: 1px solid var(--border-color); }
         .login-card h2 { margin-bottom: 8px; font-size: 1.6rem; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .login-card p { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px; }
-        .login-card input { width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 40px; background: var(--bg-body); color: var(--text-primary); font-size: 1rem; margin-bottom: 16px; outline: none; transition: border 0.2s; }
+        .login-card input { width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 40px; background: var(--bg-body); color: var(--text-primary); font-size: 1rem; margin-bottom: 16px; outline: none; }
         .login-card input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,0.2); }
         .login-card .btn { width: 100%; justify-content: center; }
         .error-msg { color: #f87171; margin-top: 12px; font-size: 0.85rem; }
-
-        @media (max-width: 700px) { body { padding: 12px; } .card { padding: 16px; } .navbar-brand { font-size: 1.2rem; } .stats-grid { grid-template-columns: repeat(3,1fr); } .stat-number { font-size: 1.6rem; } .report-wrapper td, .report-wrapper th { font-size: 0.75rem; padding: 6px 8px; } .high-risk-summary li { font-size: 0.8rem; } .risk-tooltip { max-width: 300px; padding: 12px 14px; font-size: 0.8rem; } }
-        @media (max-width: 480px) { .stats-grid { grid-template-columns: 1fr 1fr 1fr; gap: 8px; } .stat-card { padding: 10px 8px; } .stat-number { font-size: 1.3rem; } .stat-label { font-size: 0.6rem; } .navbar-actions .btn { font-size: 0.65rem; padding: 4px 10px; } .risk-tooltip { max-width: 260px; padding: 10px 12px; font-size: 0.75rem; } }
+        @media (max-width: 700px) { body { padding: 12px; } .card { padding: 16px; } .navbar-brand { font-size: 1.2rem; } .stats-grid { grid-template-columns: repeat(3,1fr); } .stat-number { font-size: 1.6rem; } .report-wrapper td, .report-wrapper th { font-size: 0.75rem; padding: 6px 8px; } }
     </style>
 </head>
 <body>
@@ -321,9 +227,7 @@
     </div>
 
     <script>
-        const PASSWORD = 'dzx12123';
-        const SESSION_KEY = 'logged_in';
-
+        const PASSWORD = 'dzx12123', SESSION_KEY = 'logged_in';
         function checkLogin() {
             if (sessionStorage.getItem(SESSION_KEY) === 'true') {
                 document.getElementById('app').style.display = 'block';
@@ -333,7 +237,7 @@
                 document.getElementById('loginOverlay').style.display = 'flex';
                 const input = document.getElementById('passwordInput');
                 const btn = document.getElementById('loginBtn');
-                const errorDiv = document.getElementById('loginError');
+                const errDiv = document.getElementById('loginError');
                 const doLogin = () => {
                     if (input.value === PASSWORD) {
                         sessionStorage.setItem(SESSION_KEY, 'true');
@@ -341,7 +245,7 @@
                         document.getElementById('app').style.display = 'block';
                         initApp();
                     } else {
-                        errorDiv.textContent = '密码错误，请重试。';
+                        errDiv.textContent = '密码错误，请重试。';
                         input.value = ''; input.focus();
                     }
                 };
@@ -375,11 +279,7 @@
             const btn = document.getElementById('themeToggleBtn');
             if (btn) btn.textContent = THEME_LABELS[currentTheme] || '🌙 深色';
         }
-        function cycleTheme() {
-            const idx = THEMES.indexOf(currentTheme);
-            currentTheme = THEMES[(idx + 1) % THEMES.length];
-            applyTheme();
-        }
+        function cycleTheme() { const i = THEMES.indexOf(currentTheme); currentTheme = THEMES[(i+1)%THEMES.length]; applyTheme(); }
 
         function convertUtcToBeijing(utc) {
             const m = utc.replace(' UTC','').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
@@ -388,12 +288,8 @@
             const bj = new Date(d.getTime() + 8*3600*1000);
             return bj.getUTCFullYear()+'-'+String(bj.getUTCMonth()+1).padStart(2,'0')+'-'+String(bj.getUTCDate()).padStart(2,'0')+' '+String(bj.getUTCHours()).padStart(2,'0')+':'+String(bj.getUTCMinutes()).padStart(2,'0')+':'+String(bj.getUTCSeconds()).padStart(2,'0');
         }
-        function extractReportTime(text) {
-            const patterns = [/生成时间[：:]\s*([^\n]+)/, /报告时间[：:]\s*([^\n]+)/, /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*UTC)/];
-            for (let p of patterns) { const m = text.match(p); if (m) return m[1].trim(); }
-            return null;
-        }
-        function extractFetchCount(text) { const m = text.match(/抓取数据[：:]\s*(\d+)\s*条/); return m ? +m[1] : 0; }
+        function extractReportTime(t) { const p = [/生成时间[：:]\s*([^\n]+)/, /报告时间[：:]\s*([^\n]+)/, /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*UTC)/]; for (let r of p) { const m = t.match(r); if (m) return m[1].trim(); } return null; }
+        function extractFetchCount(t) { const m = t.match(/抓取数据[：:]\s*(\d+)\s*条/); return m ? +m[1] : 0; }
         function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
         function parseReportTableFromMarkdown(text) {
@@ -411,7 +307,7 @@
                         let level = cells[5]; if (level.includes('高')) level='高'; else if (level.includes('中')) level='中'; else if (level.includes('低')) level='低'; else level='未知';
                         rows.push({ eventText: ev, link, risk, source, timeAgo, riskLevel: level, isNew: ev.includes('🆕') });
                     }
-                } else { if (inTable) break; }
+                } else if (inTable) break;
             }
             return rows;
         }
@@ -420,12 +316,12 @@
             return [...rows].sort((a,b)=>pri(a)-pri(b));
         }
         function updateStatsAndHighRisk(rows, fetchCount) {
-            const stats = document.getElementById('statsGrid'), sum = document.getElementById('highRiskSummary'), list = document.getElementById('highRiskList');
-            if (!rows.length) { stats.style.display='none'; sum.style.display='none'; return; }
+            const statsGrid = document.getElementById('statsGrid'), sum = document.getElementById('highRiskSummary'), list = document.getElementById('highRiskList');
+            if (!rows.length) { statsGrid.style.display='none'; sum.style.display='none'; return; }
             const s = sortRows(rows);
             const total = s.length, high = s.filter(r=>r.riskLevel==='高').length, med = s.filter(r=>r.riskLevel==='中').length, low = s.filter(r=>r.riskLevel==='低').length, nw = s.filter(r=>r.isNew).length;
-            stats.style.display='grid';
-            stats.innerHTML = `<div class="stat-card"><div class="stat-number info">${fetchCount||0}</div><div class="stat-label">📥 抓取数据</div></div><div class="stat-card"><div class="stat-number">${total}</div><div class="stat-label">🎯 AI筛选总涉华事件</div></div><div class="stat-card"><div class="stat-number danger">${high}</div><div class="stat-label">🔴 高风险</div></div><div class="stat-card"><div class="stat-number warning">${med}</div><div class="stat-label">🟠 中风险</div></div><div class="stat-card"><div class="stat-number success">${low}</div><div class="stat-label">🟢 低风险</div></div><div class="stat-card"><div class="stat-number">${nw}</div><div class="stat-label">🆕 新增</div></div>`;
+            statsGrid.style.display='grid';
+            statsGrid.innerHTML = `<div class="stat-card"><div class="stat-number info">${fetchCount||0}</div><div class="stat-label">📥 抓取数据</div></div><div class="stat-card"><div class="stat-number">${total}</div><div class="stat-label">🎯 AI筛选总涉华事件</div></div><div class="stat-card"><div class="stat-number danger">${high}</div><div class="stat-label">🔴 高风险</div></div><div class="stat-card"><div class="stat-number warning">${med}</div><div class="stat-label">🟠 中风险</div></div><div class="stat-card"><div class="stat-number success">${low}</div><div class="stat-label">🟢 低风险</div></div><div class="stat-card"><div class="stat-number">${nw}</div><div class="stat-label">🆕 新增</div></div>`;
             const top5 = s.filter(r=>r.riskLevel==='高').slice(0,5);
             if (top5.length) {
                 sum.style.display='block';
@@ -441,7 +337,7 @@
         function createTooltip() {
             if (tooltipInstance) return tooltipInstance;
             const el = document.createElement('div'); el.className='risk-tooltip';
-            el.innerHTML = `<div class="tooltip-label">📌 风险分析</div><div class="tooltip-body"></div><button class="tooltip-close">收起</button>`;
+            el.innerHTML = '<div class="tooltip-label">📌 风险分析</div><div class="tooltip-body"></div><button class="tooltip-close">收起</button>';
             document.body.appendChild(el);
             tooltipInstance = el;
             el.querySelector('.tooltip-close').addEventListener('click', e=>{ e.stopPropagation(); hideTooltipImmediately(); });
@@ -553,7 +449,6 @@
                 const data = await resp.json();
                 const runs = data.workflow_runs || [];
 
-                // 1) 检查活跃任务（in_progress 或 queued）
                 const active = runs.find(r => r.status==='in_progress' || r.status==='queued');
                 if (active) {
                     btn.disabled = true;
@@ -565,16 +460,15 @@
                         if (info) info.textContent = '任务已排队，等待上一个完成后自动执行';
                     }
                     if (countdownInterval) clearInterval(countdownInterval);
-                    countdownInterval = setInterval(updateButtonState, 15000); // 15秒检查一次
+                    countdownInterval = setInterval(updateButtonState, 15000);
                     return;
                 }
 
-                // 2) 无活跃任务，检查冷却时间（本地倒计时，不再轮询API）
                 const lastRun = runs[0];
                 if (lastRun) {
                     const createdAt = new Date(lastRun.created_at);
                     const now = new Date();
-                    const cooldown = 3600; // 1小时
+                    const cooldown = 3600;
                     const remaining = cooldown - (now - createdAt) / 1000;
                     if (remaining > 0) {
                         btn.disabled = true;
@@ -588,7 +482,6 @@
                                 btn.textContent = '🚀 立即更新';
                                 if (info) info.textContent = '可以触发新的爬虫任务';
                                 clearInterval(countdownInterval);
-                                // 冷却结束后同步一次活跃任务状态（避免期间有新任务启动）
                                 updateButtonState();
                             } else {
                                 const mins = Math.floor(r / 60000);
@@ -600,13 +493,11 @@
                     }
                 }
 
-                // 3) 可以触发
                 btn.disabled = false;
                 btn.textContent = '🚀 立即更新';
                 if (info) info.textContent = '可以触发新的爬虫任务';
                 if (countdownInterval) clearInterval(countdownInterval);
-
-            } catch (err) {
+            } catch {
                 btn.disabled = false;
                 btn.textContent = '🚀 立即更新';
                 if (info) info.textContent = '状态检查失败，仍可尝试触发';
@@ -616,8 +507,10 @@
 
         async function triggerWorkflow() {
             const btn = document.getElementById('trigger-action-btn');
-            await updateButtonState();          // 同步最新状态
-            if (btn.disabled) return;           // 按钮已禁用则中止
+            const info = document.getElementById('trigger-limit-info');
+
+            await updateButtonState();
+            if (btn.disabled) return;
 
             let token = localStorage.getItem(GITHUB_TOKEN_KEY);
             if (!token) {
@@ -625,29 +518,75 @@
                 if (!token) return;
                 localStorage.setItem(GITHUB_TOKEN_KEY, token);
             }
+
             const originalText = btn.innerText;
             btn.innerText = '⏳ 触发中...';
             btn.disabled = true;
+
             try {
-                const resp = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/dispatches`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ref: 'main' })
-                });
+                const resp = await fetch(
+                    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/dispatches`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ ref: 'main' })
+                    }
+                );
+
                 if (resp.ok) {
-                    alert('✅ 已触发爬虫任务！稍等几分钟后点击"刷新"查看结果。');
-                    await updateButtonState();   // 立即切换为运行中/排队中
+                    alert('✅ 已触发爬虫任务！稍等几分钟后点击“刷新”查看结果。');
+
+                    btn.disabled = true;
+                    btn.textContent = '🔄 触发成功，等待确认...';
+                    if (info) info.textContent = '任务已提交，正在检查运行状态...';
+
+                    let attempts = 0;
+                    const maxAttempts = 6;
+                    const checkInterval = setInterval(async () => {
+                        await updateButtonState();
+                        attempts++;
+                        if (btn.disabled && btn.textContent !== '🔄 触发成功，等待确认...') {
+                            clearInterval(checkInterval);
+                        } else if (attempts >= maxAttempts) {
+                            btn.disabled = true;
+                            btn.textContent = `⏳ 冷却 59分59秒`;
+                            if (info) info.textContent = '每小时限触发一次（API 延迟，本地推算）';
+                            if (countdownInterval) clearInterval(countdownInterval);
+                            const cooldownEnd = Date.now() + 3600 * 1000;
+                            countdownInterval = setInterval(() => {
+                                const r = cooldownEnd - Date.now();
+                                if (r <= 0) {
+                                    btn.disabled = false;
+                                    btn.textContent = '🚀 立即更新';
+                                    if (info) info.textContent = '可以触发新的爬虫任务';
+                                    clearInterval(countdownInterval);
+                                    updateButtonState();
+                                } else {
+                                    const mins = Math.floor(r / 60000);
+                                    const secs = Math.floor((r % 60000) / 1000);
+                                    btn.textContent = `⏳ 冷却 ${mins}分${secs}秒`;
+                                }
+                            }, 1000);
+                            clearInterval(checkInterval);
+                        }
+                    }, 5000);
                 } else {
-                    const err = await resp.json();
-                    if (resp.status===401||resp.status===403) {
+                    const error = await resp.json();
+                    if (resp.status === 401 || resp.status === 403) {
                         localStorage.removeItem(GITHUB_TOKEN_KEY);
                         alert('令牌无效或已过期，请重新输入。');
-                    } else alert(`❌ 触发失败 (${resp.status}): ${err.message||'未知错误'}`);
+                    } else {
+                        alert(`❌ 触发失败 (${resp.status}): ${error.message || '未知错误'}`);
+                    }
                     btn.disabled = false;
                     btn.innerText = originalText;
                 }
-            } catch (e) {
-                alert(`网络错误：${e.message}`);
+            } catch (err) {
+                alert(`网络错误：${err.message}`);
                 btn.disabled = false;
                 btn.innerText = originalText;
             }
@@ -660,7 +599,7 @@
             try {
                 const resp = await fetch('https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/reports/index.html');
                 if (resp.ok) window.open('reports/index.html', '_blank');
-                else alert('历史报告目录尚未生成。请先运行爬虫任务。');
+                else alert('历史报告目录尚未生成。');
             } catch { alert('无法访问历史报告目录。'); }
             finally { btn.innerText = orig; btn.disabled = false; }
         }
