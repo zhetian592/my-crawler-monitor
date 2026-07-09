@@ -1,11 +1,6 @@
 name: Tier1 - Manual
 on:
   workflow_dispatch:
-
-concurrency:
-  group: crawler
-  cancel-in-progress: false
-
 jobs:
   crawl:
     runs-on: ubuntu-latest
@@ -15,34 +10,27 @@ jobs:
         with:
           token: ${{ secrets.PAT_TOKEN }}
           fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-
       - name: Start RSS proxy
         run: |
           python rss_proxy.py --port 1200 &
-          for i in $(seq 1 10); do
-            curl -sf http://localhost:1200/health && break
-            sleep 1
-          done
-
+          sleep 3
+          curl -s http://localhost:1200/health
       - name: Run crawler
         env:
           GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         run: python crawler.py
-
       - name: Generate commit message
+        id: msg
         run: |
           echo "COMMIT_MSG=Manual update $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
-
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
