@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   crawl:
-    runs-on: ubuntu-22.04   # 改用稳定标签，排队概率更低
+    runs-on: ubuntu-latest   # 改用稳定标签，排队概率更低
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
