@@ -3,16 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <!-- 强制禁用缓存（针对 HTML 本身） -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>🛡️ 内容安全舆情监控系统</title>
+    <!-- 外部 JS 库（会在页面加载时通过 JS 自动加版本号） -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         /* ===== 全局重置 & 基础变量 ===== */
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
+            /* 这些变量会被主题覆盖，仅作为后备 */
             --bg-body: #0b1121;
             --bg-card: rgba(255, 255, 255, 0.06);
             --bg-card-solid: rgba(15, 23, 42, 0.80);
@@ -42,6 +45,7 @@
             --accent-glow: rgba(192, 132, 252, 0.08);
             --accent-glow2: rgba(56, 189, 248, 0.05);
             --stat-number-bg: linear-gradient(135deg, #f472b6, #a78bfa);
+            --bg-overlay: linear-gradient(145deg, rgba(11, 17, 33, 0.60), rgba(30, 27, 75, 0.40));
         }
 
         /* ===== 晨曦主题（dawn）- 浅色透明风格 ===== */
@@ -78,7 +82,7 @@
             --bg-overlay: linear-gradient(145deg, rgba(255, 210, 150, 0.10), rgba(255, 255, 255, 0.05));
         }
 
-        /* ===== 暮光主题（dusk）- 深色沉浸风格（不变） ===== */
+        /* ===== 暮光主题（dusk）- 深色沉浸风格 ===== */
         [data-theme="dusk"] {
             --bg-body: #0a0615;
             --bg-card: rgba(255, 255, 255, 0.03);
@@ -138,12 +142,11 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            /* 移除模糊，保持清晰 */
-            filter: none;
+            filter: none;      /* 无模糊 */
             transform: none;
         }
 
-        /* 半透明遮罩 - 仅用于微调氛围，不压暗 */
+        /* 半透明遮罩 - 仅用于微调氛围 */
         .bg-overlay {
             position: fixed;
             top: 0;
@@ -619,6 +622,27 @@
 
     <script>
         // ============================================================
+        //  0. 动态给外部资源加时间戳（绕过缓存）
+        // ============================================================
+        (function() {
+            const ts = Date.now();
+            // 给所有 <link> 样式表加版本
+            document.querySelectorAll('link[rel="stylesheet"]').forEach(el => {
+                let url = el.href;
+                if (url && !url.includes('?v=') && !url.includes('&v=')) {
+                    el.href = url + (url.includes('?') ? '&' : '?') + 'v=' + ts;
+                }
+            });
+            // 给所有 <script> 外部脚本加版本（包括 marked.min.js）
+            document.querySelectorAll('script[src]').forEach(el => {
+                let url = el.src;
+                if (url && !url.includes('?v=') && !url.includes('&v=')) {
+                    el.src = url + (url.includes('?') ? '&' : '?') + 'v=' + ts;
+                }
+            });
+        })();
+
+        // ============================================================
         //  1. 登录逻辑
         // ============================================================
         const PASSWORD = 'dzx12123', SESSION_KEY = 'logged_in';
@@ -650,7 +674,7 @@
         }
 
         // ============================================================
-        //  2. 主题切换（晨曦/暮光）+ 背景图切换
+        //  2. 主题切换（晨曦/暮光）+ 背景图切换（带时间戳防缓存）
         // ============================================================
         const THEMES = ['dawn', 'dusk'];
         const THEME_LABELS = { dawn: '🌅 晨曦', dusk: '🌃 暮光' };
@@ -678,7 +702,14 @@
             localStorage.setItem('theme', theme);
             const img = document.getElementById('bg-img');
             if (img) {
-                img.src = getBackgroundUrl(theme);
+                let src = getBackgroundUrl(theme);
+                // 加上时间戳，强制重新加载图片，避免缓存
+                src += (src.includes('?') ? '&' : '?') + 't=' + Date.now();
+                img.src = src;
+                // 如果图片加载失败，用纯色背景（不显示破损图标）
+                img.onerror = function() {
+                    this.style.display = 'none';
+                };
             }
             const btn = document.getElementById('themeToggleBtn');
             if (btn) btn.textContent = THEME_LABELS[theme] || '🌅 晨曦';
@@ -698,7 +729,9 @@
                 const theme = document.documentElement.getAttribute('data-theme') || 'dawn';
                 const img = document.getElementById('bg-img');
                 if (img) {
-                    img.src = getBackgroundUrl(theme);
+                    let src = getBackgroundUrl(theme);
+                    src += (src.includes('?') ? '&' : '?') + 't=' + Date.now();
+                    img.src = src;
                 }
             }, 200);
         });
