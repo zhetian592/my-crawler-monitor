@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# crawler.py - 舆情爬虫（与自建 RSS 代理配合）
+# crawler.py - 稳定版（保留最近2天数据/报告）+ 信源抓取优化
 import os
 import json
 import re
@@ -8,7 +8,6 @@ import random
 import hashlib
 import logging
 import sys
-import threading
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -20,13 +19,14 @@ import openai
 from bs4 import BeautifulSoup
 import difflib
 
+# 尝试导入 tiktoken
 try:
     import tiktoken
     TIKTOKEN_AVAILABLE = True
 except ImportError:
     TIKTOKEN_AVAILABLE = False
 
-# ================= 日志 =================
+# ================= 日志配置（轮转） =================
 LOG_FILE = "crawler.log"
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
@@ -62,9 +62,9 @@ SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
-AI_REQUEST_DELAY = 10
+AI_REQUEST_DELAY = 2
 DISABLE_FAILED_THRESHOLD = 3
-DISABLE_COOLDOWN_MINUTES = 30
+DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
 
@@ -75,11 +75,6 @@ FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 URL_DEDUP_FILE = "url_dedup.json"
 
-# 只保留可用实例
-FALLBACK_RSSHUB_INSTANCES = [
-    "https://rsshub.ktachibana.party",
-]
-
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net",
     "https://nitter.poast.org",
@@ -87,13 +82,18 @@ FALLBACK_NITTER_INSTANCES = [
     "https://lightbrd.com",
     "https://nitter.space",
     "https://nitter.tiekoetter.com",
+    "https://nitter.catsarch.com",
     "https://xcancel.com"
+]
+FALLBACK_RSSHUB_INSTANCES = [
+    "https://rsshub.app",
+    "https://rsshub.ktachibana.party"
 ]
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/133.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/132.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
 # ================= 辅助函数 =================
@@ -247,7 +247,7 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================ 健康管理 ================
+# ================ 信源健康管理 ================
 class SourceHealth:
     def __init__(self, max_fails=DISABLE_FAILED_THRESHOLD, cooldown_minutes=DISABLE_COOLDOWN_MINUTES):
         self.max_fails = max_fails
@@ -296,7 +296,7 @@ class MirrorPool:
         pass
 
 nitter_health = SourceHealth(max_fails=2, cooldown_minutes=30)
-rsshub_health = SourceHealth(max_fails=3, cooldown_minutes=30)
+rsshub_health = SourceHealth(max_fails=2, cooldown_minutes=30)
 
 def get_nitter_instances() -> List[str]:
     base = load_healthy_instances(HEALTHY_NITTER_FILE, FALLBACK_NITTER_INSTANCES)
@@ -329,39 +329,11 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
             logger.warning(f"读取 {file_path} 失败: {e}")
     return fallback
 
-def save_healthy_instances(file_path: str, instances: List[str]):
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(instances, f, indent=2)
-
-# ================ 启动预检 ================
-def precheck_rsshub_instances():
-    instances = get_rsshub_instances()
-    if not instances:
-        return
-    logger.info("开始预检 RSSHub 实例...")
-    alive = []
-    for inst in instances:
-        try:
-            resp = requests.get(inst, timeout=5, headers={"User-Agent": random.choice(USER_AGENTS)})
-            if resp.status_code < 400:
-                alive.append(inst)
-                logger.info(f"✓ {inst} 可用")
-            else:
-                logger.warning(f"✗ {inst} 不可用 (状态码 {resp.status_code})")
-        except Exception as e:
-            logger.warning(f"✗ {inst} 不可用 ({e})")
-    if alive:
-        save_healthy_instances(HEALTHY_RSSHUB_FILE, alive)
-        logger.info(f"预检完成，可用实例: {alive}")
-    else:
-        logger.warning("所有 RSSHub 实例预检失败，将使用原始列表（可能全部失败）")
-
-# ================ URL去重缓存（线程安全） ================
+# ================ URL去重缓存 ================
 class URLDedupCache:
     def __init__(self, cache_file=URL_DEDUP_FILE):
         self.cache_file = cache_file
         self.url_set = set()
-        self.lock = threading.Lock()
         self.bloom = None
         try:
             from bloom_filter import BloomFilter
@@ -380,26 +352,23 @@ class URLDedupCache:
                 pass
 
     def seen(self, url: str) -> bool:
-        with self.lock:
-            if self.bloom:
-                return url in self.bloom
-            return url in self.url_set
+        if self.bloom:
+            return url in self.bloom
+        return url in self.url_set
 
     def add(self, url: str):
-        with self.lock:
-            if self.bloom:
-                self.bloom.add(url)
-            else:
-                self.url_set.add(url)
+        if self.bloom:
+            self.bloom.add(url)
+        else:
+            self.url_set.add(url)
 
     def save(self):
-        with self.lock:
-            if self.bloom:
-                with open(self.cache_file, 'w') as f:
-                    f.write(self.bloom.to_base64())
-            else:
-                with open(self.cache_file, 'w') as f:
-                    json.dump(list(self.url_set), f)
+        if self.bloom:
+            with open(self.cache_file, 'w') as f:
+                f.write(self.bloom.to_base64())
+        else:
+            with open(self.cache_file, 'w') as f:
+                json.dump(list(self.url_set), f)
 
 # ================ 失败信源管理 ================
 def load_disabled_sources() -> Dict[str, dict]:
@@ -471,93 +440,71 @@ def retry_on_exception(max_retries=3, delay=1, backoff=2):
 
 @retry_on_exception(max_retries=3, delay=1, backoff=2)
 def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> requests.Response:
-    default_headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-    }
-    final_headers = default_headers.copy()
-    if headers:
-        final_headers.update(headers)
-    resp = requests.get(url, headers=final_headers, timeout=timeout, proxies=PROXIES)
+    headers = headers or {"User-Agent": random.choice(USER_AGENTS)}
+    resp = requests.get(url, headers=headers, timeout=timeout, proxies=PROXIES)
     resp.raise_for_status()
     return resp
 
 # ================= 抓取核心 =================
+def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
+    rsshub = random.choice(rsshub_instances)
+    if "voachinese.com" in url:
+        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
+    if "bbc.com/zhongwen/simp" in url:
+        return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
+    if "dw.com/zh" in url:
+        return "https://rss.dw.com/rdf/rss-chi-all"
+    if "rfi.fr/cn" in url:
+        return "https://www.rfi.fr/cn/general/rss"
+    if "cn.nytimes.com" in url:
+        return "https://cn.nytimes.com/rss/news.xml"
+    if "ntdtv.com" in url:
+        return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
+    if "epochtimes.com" in url:
+        return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
+    if "x.com/" in url:
+        return None
+    if "reuters.com/world/china" in url:
+        return f"{rsshub}/reuters/world/china"
+    if "wsj.com/news/china" in url:
+        return f"{rsshub}/wsj/china"
+    if "ft.com/china" in url:
+        return f"{rsshub}/ft/china"
+    if "apnews.com/hub/china" in url:
+        return f"{rsshub}/apnews/topics/china"
+    if "asia.nikkei.com" in url:
+        return "https://asia.nikkei.com/rss.xml"
+    if "brookings.edu/topics/china" in url:
+        return "https://www.brookings.edu/feed/?topic=china"
+    if "csis.org/regions/asia/china" in url:
+        return f"{rsshub}/csis/asia/china"
+    if "pewresearch.org/topic/international-affairs/global-image-of-countries/china-global-image" in url:
+        return "https://www.pewresearch.org/feed/?post_type=publication&topic=china"
+    if "merics.org" in url:
+        return "https://merics.org/en/rss.xml"
+    if "asiasociety.org/policy-institute/center-china-analysis" in url:
+        return f"{rsshub}/asiasociety/center-china-analysis"
+    if "rsf.org/en/country/china" in url:
+        return "https://rsf.org/en/rss.xml"
+    if "uscc.gov" in url:
+        return "https://www.uscc.gov/rss.xml"
+    if "hrw.org" in url:
+        return "https://www.hrw.org/rss/news"
+    if "freedomhouse.org" in url:
+        return "https://freedomhouse.org/rss.xml"
+    if "aspistrategist.org.au" in url:
+        return "https://www.aspistrategist.org.au/feed/"
+    if "amnesty.org" in url:
+        return "https://www.amnesty.org/en/feed/"
+    if "chinapower.csis.org" in url:
+        return "https://chinapower.csis.org/feed/"
+    if "carnegieendowment.org" in url:
+        return "https://carnegieendowment.org/rss"
+    if "chathamhouse.org" in url:
+        return "https://www.chathamhouse.org/rss-feeds"
+    return url
 
-def get_direct_rss(url: str) -> Optional[str]:
-    """返回直接可用的 RSS 地址（不通过 RSSHub）"""
-    direct_map = {
-        "bbc.com/zhongwen": "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml",
-        "dw.com/zh": "https://rss.dw.com/rdf/rss-chi-all",
-        "rfi.fr/cn": "https://www.rfi.fr/cn/general/rss",
-        "cn.nytimes.com": "https://cn.nytimes.com/rss/news.xml",
-        "brookings.edu": "https://www.brookings.edu/feed/?topic=china",
-        # "uscc.gov": "https://www.uscc.gov/rss.xml",   # 已失效（404）
-        "hrw.org": "https://www.hrw.org/rss/news",
-        "freedomhouse.org": "https://freedomhouse.org/rss.xml",
-        "aspistrategist.org.au": "https://www.aspistrategist.org.au/feed/",
-        "amnesty.org": "https://www.amnesty.org/en/feed/",
-        "fdd.org": "https://www.fdd.org/feed/",
-        "chinapower.csis.org": "https://chinapower.csis.org/feed/",
-        "carnegieendowment.org": "https://carnegieendowment.org/rss",
-        # "chathamhouse.org": "https://www.chathamhouse.org/rss",   # 已失效（403）
-        "epochtimes.com": "https://feed.theepochtimes.com/china/feed",
-    }
-    for pattern, rss in direct_map.items():
-        if pattern in url:
-            return rss
-    return None
-
-def url_to_rss_candidates(url: str, rsshub_instances: List[str]) -> List[str]:
-    """
-    返回候选 RSS 地址列表（优先直接 RSS，再本地代理，再公共实例）
-    """
-    # 1. 检查是否有直接 RSS
-    direct = get_direct_rss(url)
-    if direct:
-        return [direct]
-
-    # 2. 非直接 RSS 的，走 RSSHub 代理
-    local = "http://localhost:1200"
-
-    route_map = {
-        "voachinese.com": "/voachinese/china",
-        "reuters.com/world/china": "/reuters/world/china",
-        "wsj.com/news/china": "/wsj/china",
-        "ft.com/china": "/ft/china",
-        "apnews.com/hub/china": "/apnews/topics/china",
-        "asia.nikkei.com": "/nikkei/asia",
-        "csis.org/regions/asia/china": "/csis/asia/china",
-        "pewresearch.org": "/pewresearch/topic/china",
-        "merics.org": "/merics/en",
-        "asiasociety.org/policy-institute/center-china-analysis": "/asiasociety/center-china-analysis",
-        "rsf.org/en/country/china": "/rsf/country/china",
-        "ntdtv.com": "/ntdtv/instant-news",
-        "zaobao.com/realtime": "/zaobao/realtime",
-        "zaobao.com/news/china": "/zaobao/znews",
-    }
-
-    route = None
-    for pattern, r in route_map.items():
-        if pattern in url:
-            route = r
-            break
-
-    if route is None:
-        # 没有映射，直接返回原 URL（可能会失败，但这是最后的尝试）
-        return [url]
-
-    candidates = []
-    candidates.append(local + route)
-    for inst in rsshub_instances:
-        candidates.append(inst + route)
-    return candidates
-
-def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, processed_lock: threading.Lock,
-                     url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
+def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
     try:
         resp = fetch_url(rss_url, timeout=25)
         feed = feedparser.parse(resp.content)
@@ -579,10 +526,9 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, pro
             if not summary:
                 summary = title
             h = content_hash(title, summary)
-            with processed_lock:
-                if h in processed_hashes:
-                    continue
-                processed_hashes.add(h)
+            if h in processed_hashes:
+                continue
+            processed_hashes.add(h)
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -609,78 +555,79 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, pro
         logger.error(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
         return []
 
-def fetch_with_retry(original_url: str, processed_hashes: set, processed_lock: threading.Lock,
-                     url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
+def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
 
-    rsshub_instances = get_rsshub_instances()
-
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
-        candidates = []
-        candidates.append(f"http://localhost:1200/twitter/user/{username}")
-        candidates.append(f"http://localhost:1200/twitter/{username}")
-        for inst in rsshub_instances:
-            candidates.append(f"{inst}/twitter/user/{username}")
-            candidates.append(f"{inst}/twitter/{username}")
-
-        for rss_url in candidates:
-            items = fetch_single_rss(rss_url, original_url, processed_hashes, processed_lock, url_cache, time_window_hours)
-            if items:
-                for inst in rsshub_instances:
-                    if inst in rss_url:
-                        update_rsshub_health(inst, True)
-                        break
-                return items
+        nitter_pool = MirrorPool(get_nitter_instances())
+        while True:
+            try:
+                instance = nitter_pool.get_next() if nitter_pool.available else None
+                if not instance:
+                    break
+                test_url = f"{instance}/{username}/rss"
+                logger.debug(f"尝试 X {username} 使用 {instance}")
+                items = fetch_single_rss(test_url, original_url, processed_hashes, url_cache, time_window_hours)
+                if items:
+                    logger.debug(f"X {username} 成功 via {instance} (条数: {len(items)})")
+                    update_nitter_health(instance, True)
+                    return items
+                else:
+                    logger.debug(f"X {username} 失败 via {instance}")
+                    update_nitter_health(instance, False)
+                    nitter_pool.report_failure(instance)
+            except Exception:
+                break
             time.sleep(0.5)
-        logger.debug(f"X {username} 所有候选均失败")
+        logger.debug(f"X {username} 所有实例均失败")
         return []
 
-    candidates = url_to_rss_candidates(original_url, rsshub_instances)
-    if not candidates:
+    rsshub_instances = get_rsshub_instances()
+    rss_candidates = url_to_rss(original_url, rsshub_instances)
+    if not rss_candidates:
         logger.debug(f"无法生成 RSS 地址: {original_url}")
         return []
+    if isinstance(rss_candidates, str):
+        rss_candidates = [rss_candidates]
 
-    for rss_url in candidates:
+    for rss_url in rss_candidates:
         instance_used = None
-        if "localhost" in rss_url:
-            instance_used = "localhost"
-        else:
-            for inst in rsshub_instances:
-                if inst in rss_url:
-                    instance_used = inst
-                    break
-
-        items = fetch_single_rss(rss_url, original_url, processed_hashes, processed_lock, url_cache, time_window_hours)
-        if items:
-            logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {rss_url}")
-            if instance_used and instance_used != "localhost":
-                update_rsshub_health(instance_used, True)
-            return items
-        else:
-            logger.debug(f"{original_url} 失败 via {rss_url}")
-            if instance_used and instance_used != "localhost":
+        for inst in rsshub_instances:
+            if inst in rss_url:
+                instance_used = inst
+                break
+        try:
+            items = fetch_single_rss(rss_url, original_url, processed_hashes, url_cache, time_window_hours)
+            if items:
+                logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {rss_url}")
+                if instance_used:
+                    update_rsshub_health(instance_used, True)
+                return items
+            else:
+                logger.debug(f"{original_url} 失败 via {rss_url}")
+                if instance_used:
+                    update_rsshub_health(instance_used, False)
+        except Exception as e:
+            logger.debug(f"{original_url} 异常 via {rss_url}: {e}")
+            if instance_used:
                 update_rsshub_health(instance_used, False)
         time.sleep(0.5)
-
-    logger.debug(f"{original_url} 所有候选 RSS 地址均失败")
+    logger.debug(f"{original_url} 所有 RSS 地址均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
-    precheck_rsshub_instances()
-
     logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源（时间窗口各异）")
     all_items = []
     processed_hashes = set()
-    processed_lock = threading.Lock()
     url_cache = URLDedupCache()
     failed_sources = []
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
-            executor.submit(fetch_with_retry, url, processed_hashes, processed_lock, url_cache, TIME_WINDOW_MAP.get(url, 24)): url
+            executor.submit(fetch_with_retry, url, processed_hashes, url_cache, TIME_WINDOW_MAP.get(url, 24)): url
             for url in RAW_SOURCES
         }
         for future in as_completed(future_to_url):
@@ -804,14 +751,8 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
                 return content
         except Exception as e:
             logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
-            if attempt == max_retries - 1:
-                return None
-            if "429" in str(e) or "rate limit" in str(e).lower():
-                wait = 60
-            else:
-                wait = 10 * (2 ** attempt)
-            logger.info(f"等待 {wait} 秒后重试...")
-            time.sleep(wait)
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
     return None
 
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
@@ -827,6 +768,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
+    # ===== V9 版本：风险点3条简短分点 =====
     prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
 
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
@@ -847,32 +789,25 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 - 原文链接列使用 `[查看](URL)` 格式。
 - "信息来源"列直接使用输入中提供的来源名称。
 - "发布多久前"列直接使用输入中的发布时间。
-- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性（高风险需同时具备高敏感性和较强传播力）：
-  - **高**：涉及重大政治敏感议题，且传播力强、煽动性高，极易引发舆论风暴或境外炒作。
-  - **中**：涉及较敏感社会议题，有一定传播空间，可能引发局部讨论。
-  - **低**：一般性批评或事实报道，传播范围有限，风险可控。
+- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性：
+  - **高**：涉及重大政治敏感议题，且传播力强、煽动性高。
+  - **中**：涉及较敏感社会议题，有一定传播空间。
+  - **低**：一般性批评或事实报道，传播范围有限。
 - 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
 - 不要添加任何额外解释、标题或总结。
 
 **四、风险点撰写要求（核心）**：
-请按以下结构撰写"潜在风险点"（一段文字，但需清晰包含两部分）：
+"潜在风险点"用**3条简短分点**描述，格式如下：
+1. 涉及XX事件（简述事件）
+2. 可能引发XX影响（分析影响）
+3. 情绪化内容可能引发XX（分析传播性/煽动性）
 
-**第一部分（简述具体风险）**：用一句话概括该内容的主要风险性质（如涉及哪类事件、主要危害）。
+每条不超过20字，总字数控制在50字以内。
 
-**第二部分（综合分析五个维度）**：紧接着用自然连贯的语言，从以下五个维度进行综合研判，**不要使用"传播性：""敏感性："等标签**，而是将所有维度融合成一段通顺的分析文字：
-- 传播潜力（账号影响力、平台热度、转发趋势）
-- 议题敏感性（政治、社会、外交、民族等敏感程度）
-- 语言煽动性（是否情绪化、对立化、号召性）
-- 可被利用性（是否容易被境内外势力放大或歪曲）
-- 历史关联性（是否与当前热点或历史敏感事件相关，是否存在叠加效应）
-
-**格式示例1（中敏感+社会议题）**：
-"该内容涉及×地执法争议，可能削弱公众对基层治理的信任。发布账号粉丝量较大且已被境外多家媒体引用，语言情绪化明显，极易激发共鸣；事件触及维稳议题属中高敏感，存在被恶意包装为'人权危机'的空间，且与近期类似事件形成叠加，需警惕舆论共振风险。"
-
-**格式示例2（高敏感+政治议题）**：
-"该内容由境外反华账号发布，直接攻击中国政治制度，基调极其负面。该账号在境外平台影响力大，原文已被大量转发，扩散趋势明显；语言极具煽动性和对抗性，极易被国内自媒体二次传播放大，并与当前外交摩擦形成联动，属于典型的认知战内容，需高度警惕并准备应对预案。"
-
-请确保每个风险点的描述总字数控制在 **80~120字**，既有总体概括，又有分维度细节，语言流畅无标签堆砌。
+**格式示例**：
+"1. 涉及广西洪水灾害
+2. 可能引发公众对政府救援能力的质疑
+3. 情绪化内容引发共鸣，可能激起公众的不满情绪"
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
