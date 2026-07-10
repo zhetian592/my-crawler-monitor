@@ -1,8 +1,13 @@
-requests>=2.28.0
-feedparser>=6.0.10
-openai>=1.0.0
-beautifulsoup4>=4.11.0
-python-dateutil>=2.8.2
-tiktoken>=0.5.0
-difflib
-bloom-filter>=2.0.0
+[
+  "https://nitter.net",
+  "https://nitter.privacyredirect.com"
+]
+  "https://nitter.poast.org",
+  "https://nitter.privacyredirect.com",
+  "https://lightbrd.com",
+  "https://nitter.space",
+  "https://nitter.tiekoetter.com",
+  "https://nitter.catsarch.com",
+  "https://nuku.trabun.org",
+  "https://xcancel.com"
+]
