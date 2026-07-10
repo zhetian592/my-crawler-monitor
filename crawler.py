@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-# crawler.py - 最终稳定版：修复所有已知 Bug，优化 X.com 抓取速度，增加超时保护
+# crawler.py - 稳定版（保留最近2天数据/报告）+ 信源抓取优化
 import os
 import json
 import re
@@ -8,7 +7,6 @@ import random
 import hashlib
 import logging
 import sys
-import threading
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -20,19 +18,14 @@ import openai
 from bs4 import BeautifulSoup
 import difflib
 
+# 尝试导入 tiktoken
 try:
     import tiktoken
     TIKTOKEN_AVAILABLE = True
 except ImportError:
     TIKTOKEN_AVAILABLE = False
 
-try:
-    from dateutil import parser as dateutil_parser
-    DATEUTIL_AVAILABLE = True
-except ImportError:
-    DATEUTIL_AVAILABLE = False
-
-# ================= 日志配置 =================
+# ================= 日志配置（轮转） =================
 LOG_FILE = "crawler.log"
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
@@ -65,7 +58,6 @@ if os.environ.get("HTTP_PROXY"):
 
 KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
-TITLE_DEDUP_THRESHOLD = 0.72
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
@@ -81,7 +73,6 @@ HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 URL_DEDUP_FILE = "url_dedup.json"
-AI_CACHE_FILE = "ai_cache.json"
 
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net",
@@ -104,11 +95,6 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# ================= 线程安全锁 =================
-dedup_lock = threading.Lock()
-ai_cache_lock = threading.Lock()
-ai_rate_lock = threading.Lock()          # AI API 调用限速锁
-
 # ================= 辅助函数 =================
 def clean_html(text: Optional[str]) -> str:
     if not text:
@@ -125,8 +111,6 @@ def parse_published_strict(published_str: Optional[str]) -> Optional[datetime]:
         "%Y-%m-%dT%H:%M:%SZ",
         "%Y-%m-%d %H:%M:%S",
         "%a, %d %b %Y %H:%M:%S %z",
-        "%Y-%m-%dT%H:%M:%S.%f%z",
-        "%Y-%m-%dT%H:%M:%S.%fZ",
     ]
     for fmt in formats:
         try:
@@ -136,14 +120,6 @@ def parse_published_strict(published_str: Optional[str]) -> Optional[datetime]:
             return dt
         except:
             continue
-    if DATEUTIL_AVAILABLE:
-        try:
-            dt = dateutil_parser.parse(published_str)
-            if dt.tzinfo:
-                dt = dt.replace(tzinfo=None)
-            return dt
-        except:
-            pass
     return None
 
 def format_time_ago(pub_dt: Optional[datetime]) -> str:
@@ -163,12 +139,8 @@ def format_time_ago(pub_dt: Optional[datetime]) -> str:
     return f"{int(seconds // 604800)}周前"
 
 def content_hash(title: str, summary: str) -> str:
-    text = title + " " + summary
-    if len(text) <= 500:
-        sample = text
-    else:
-        sample = text[:250] + text[-250:]
-    return hashlib.md5(sample.encode('utf-8')).hexdigest()
+    text = (title + " " + summary)[:500]
+    return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 def convert_to_official_x_link(link: str) -> str:
     if not link:
@@ -186,60 +158,12 @@ def convert_to_official_x_link(link: str) -> str:
 
 def normalize_event_text(text: str) -> str:
     text = re.sub(r'[^\w\u4e00-\u9fff]', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip().lower()
-    stopwords = {
-        '的', '了', '是', '在', '和', '与', '或', '一个', '这个', '那个',
-        '有', '被', '把', '让', '给', '从', '到', '对', '向', '于',
-        '就', '都', '也', '还', '要', '会', '能', '可以', '可能',
-        '已经', '更', '最', '很', '太', '非常', '特别', '十分',
-        '一些', '这些', '那些', '这样', '那样', '如何', '为何',
-        '什么', '哪里', '哪个', '谁', '为什么', '怎么', '怎样',
-        '但', '而', '且', '虽', '然', '所', '为', '以', '之', '其',
-    }
+    stopwords = {'的', '了', '是', '在', '和', '与', '或', '一个', '这个', '那个', '有', '被', '把', '让', '给', '从', '到', '对', '向', '在', '于', '就', '都', '也', '还', '要', '会', '能', '可以', '可能', '已经', '还', '更', '最', '很', '太', '非常', '特别', '十分', '有点', '一些', '这些', '那些', '这样', '那样', '如何', '为何', '什么', '哪里', '哪个', '谁', '为什么', '怎么', '怎样'}
     words = text.split()
-    words = [w for w in words if w not in stopwords and len(w) > 1]
+    words = [w for w in words if w not in stopwords]
     return ' '.join(words)
 
-def text_jaccard_similarity(a: str, b: str, n: int = 2) -> float:
-    def ngrams(text, n):
-        tokens = []
-        i = 0
-        while i < len(text):
-            if '\u4e00' <= text[i] <= '\u9fff':
-                tokens.append(text[i])
-                i += 1
-            elif text[i].isalnum():
-                j = i
-                while j < len(text) and text[j].isalnum():
-                    j += 1
-                tokens.append(text[i:j])
-                i = j
-            else:
-                i += 1
-        if len(tokens) < n:
-            return set([''.join(tokens)]) if tokens else set()
-        return set(''.join(tokens[i:i+n]) for i in range(len(tokens)-n+1))
-    a_ngrams = ngrams(a, n)
-    b_ngrams = ngrams(b, n)
-    if not a_ngrams or not b_ngrams:
-        return 0.0
-    intersection = a_ngrams & b_ngrams
-    union = a_ngrams | b_ngrams
-    return len(intersection) / len(union) if union else 0.0
-
 def is_similar(a: str, b: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
-    if a == b:
-        return True
-    len_a, len_b = len(a), len(b)
-    if len_a == 0 or len_b == 0:
-        return False
-    if max(len_a, len_b) / min(len_a, len_b) > 3:
-        return False
-    jaccard = text_jaccard_similarity(a, b, n=2)
-    if jaccard >= threshold:
-        return True
-    if jaccard < threshold * 0.5:
-        return False
     a_norm = normalize_event_text(a)
     b_norm = normalize_event_text(b)
     return difflib.SequenceMatcher(None, a_norm, b_norm).ratio() >= threshold
@@ -322,37 +246,32 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================ 信源健康管理（线程安全） ================
+# ================ 信源健康管理 ================
 class SourceHealth:
     def __init__(self, max_fails=DISABLE_FAILED_THRESHOLD, cooldown_minutes=DISABLE_COOLDOWN_MINUTES):
         self.max_fails = max_fails
         self.cooldown = cooldown_minutes * 60
         self.fail_counts = {}
         self.disabled_until = {}
-        self.lock = threading.Lock()
 
     def record_fail(self, source_key):
-        with self.lock:
-            self.fail_counts[source_key] = self.fail_counts.get(source_key, 0) + 1
-            if self.fail_counts[source_key] >= self.max_fails:
-                self.disabled_until[source_key] = time.time() + self.cooldown
-                logger.warning(f"信源 {source_key} 连续失败{self.fail_counts[source_key]}次，已暂时禁用 {self.cooldown//60} 分钟")
+        self.fail_counts[source_key] = self.fail_counts.get(source_key, 0) + 1
+        if self.fail_counts[source_key] >= self.max_fails:
+            self.disabled_until[source_key] = time.time() + self.cooldown
+            logger.warning(f"信源 {source_key} 连续失败{self.fail_counts[source_key]}次，已暂时禁用 {self.cooldown//60} 分钟")
 
     def record_success(self, source_key):
-        with self.lock:
-            if source_key in self.disabled_until:
-                logger.info(f"信源 {source_key} 已恢复可用")
-                del self.disabled_until[source_key]
-            self.fail_counts[source_key] = 0
+        if source_key in self.disabled_until:
+            logger.info(f"信源 {source_key} 已恢复可用")
+            del self.disabled_until[source_key]
+        self.fail_counts[source_key] = 0
 
     def is_disabled(self, source_key):
         if source_key not in self.disabled_until:
             return False
         if time.time() > self.disabled_until[source_key]:
-            with self.lock:
-                if source_key in self.disabled_until:
-                    del self.disabled_until[source_key]
-                    self.fail_counts[source_key] = 0
+            del self.disabled_until[source_key]
+            self.fail_counts[source_key] = 0
             return False
         return True
 
@@ -365,7 +284,15 @@ class MirrorPool:
         if not self.available:
             logger.warning("所有镜像均已失败，重置池")
             self.available = list(self.original)
-        return self.available.pop(0)
+        url = self.available.pop(0)
+        return url
+
+    def report_failure(self, url):
+        if url in self.available:
+            self.available.remove(url)
+
+    def report_success(self, url):
+        pass
 
 nitter_health = SourceHealth(max_fails=2, cooldown_minutes=30)
 rsshub_health = SourceHealth(max_fails=2, cooldown_minutes=30)
@@ -401,13 +328,12 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
             logger.warning(f"读取 {file_path} 失败: {e}")
     return fallback
 
-# ================ URL去重缓存（线程安全） ================
+# ================ URL去重缓存 ================
 class URLDedupCache:
     def __init__(self, cache_file=URL_DEDUP_FILE):
         self.cache_file = cache_file
         self.url_set = set()
         self.bloom = None
-        self.lock = threading.Lock()
         try:
             from bloom_filter import BloomFilter
             self.bloom = BloomFilter(max_elements=1_000_000, error_rate=0.001)
@@ -425,26 +351,23 @@ class URLDedupCache:
                 pass
 
     def seen(self, url: str) -> bool:
-        with self.lock:
-            if self.bloom:
-                return url in self.bloom
-            return url in self.url_set
+        if self.bloom:
+            return url in self.bloom
+        return url in self.url_set
 
     def add(self, url: str):
-        with self.lock:
-            if self.bloom:
-                self.bloom.add(url)
-            else:
-                self.url_set.add(url)
+        if self.bloom:
+            self.bloom.add(url)
+        else:
+            self.url_set.add(url)
 
     def save(self):
-        with self.lock:
-            if self.bloom:
-                with open(self.cache_file, 'w') as f:
-                    f.write(self.bloom.to_base64())
-            else:
-                with open(self.cache_file, 'w') as f:
-                    json.dump(list(self.url_set), f)
+        if self.bloom:
+            with open(self.cache_file, 'w') as f:
+                f.write(self.bloom.to_base64())
+        else:
+            with open(self.cache_file, 'w') as f:
+                json.dump(list(self.url_set), f)
 
 # ================ 失败信源管理 ================
 def load_disabled_sources() -> Dict[str, dict]:
@@ -496,7 +419,7 @@ def is_source_disabled(url: str) -> bool:
     disabled = load_disabled_sources()
     return url in disabled
 
-# ================= 网络请求（增强版，含无重试版本） =================
+# ================= 网络请求重试 =================
 def retry_on_exception(max_retries=3, delay=1, backoff=2):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -521,26 +444,11 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# 专门用于 Nitter 等快速失败场景，无重试、短超时
-def fetch_url_no_retry(url: str, timeout: int = 12, headers: Optional[Dict] = None) -> requests.Response:
-    headers = headers or {"User-Agent": random.choice(USER_AGENTS)}
-    resp = requests.get(url, headers=headers, timeout=timeout, proxies=PROXIES)
-    resp.raise_for_status()
-    return resp
-
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
-    if any(url.endswith(ext) for ext in ('.xml', '/feed', '/rss')) or '/feed/' in url:
-        return url
-
     rsshub = random.choice(rsshub_instances)
-
     if "voachinese.com" in url:
-        return [
-            "https://www.voachinese.com/api/z$ygejto",
-            "https://www.voachinese.com/api/z$ygeqjto",
-            f"{rsshub}/voachinese/china"
-        ]
+        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
     if "bbc.com/zhongwen/simp" in url:
         return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
     if "dw.com/zh" in url:
@@ -551,6 +459,8 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return "https://cn.nytimes.com/rss/news.xml"
     if "ntdtv.com" in url:
         return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
+    if "epochtimes.com" in url:
+        return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
     if "x.com/" in url:
         return None
     if "reuters.com/world/china" in url:
@@ -564,7 +474,7 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     if "asia.nikkei.com" in url:
         return "https://asia.nikkei.com/rss.xml"
     if "brookings.edu/topics/china" in url:
-        return url
+        return "https://www.brookings.edu/feed/?topic=china"
     if "csis.org/regions/asia/china" in url:
         return f"{rsshub}/csis/asia/china"
     if "pewresearch.org/topic/international-affairs/global-image-of-countries/china-global-image" in url:
@@ -591,17 +501,11 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return "https://carnegieendowment.org/rss"
     if "chathamhouse.org" in url:
         return "https://www.chathamhouse.org/rss-feeds"
-    if "fdd.org" in url:
-        return "https://www.fdd.org/feed/"
     return url
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
     try:
-        # 对已知脆弱实例使用快速失败请求
-        if any(domain in rss_url for domain in ["nitter", "xcancel", "lightbrd", "nuku", "trabun"]):
-            resp = fetch_url_no_retry(rss_url, timeout=12)
-        else:
-            resp = fetch_url(rss_url, timeout=25)
+        resp = fetch_url(rss_url, timeout=25)
         feed = feedparser.parse(resp.content)
         cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
         items = []
@@ -621,10 +525,9 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
             if not summary:
                 summary = title
             h = content_hash(title, summary)
-            with dedup_lock:
-                if h in processed_hashes:
-                    continue
-                processed_hashes.add(h)
+            if h in processed_hashes:
+                continue
+            processed_hashes.add(h)
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -651,53 +554,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
         logger.error(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
         return []
 
-def fetch_voa_direct(url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
-    try:
-        resp = fetch_url(url, timeout=25)
-        soup = BeautifulSoup(resp.content, "html.parser")
-        items = []
-        cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
-        for article in soup.select('a[href*="/a/"]'):
-            link = article.get("href", "")
-            if not link:
-                continue
-            if not link.startswith("http"):
-                link = "https://www.voachinese.com" + link
-            link = convert_to_official_x_link(link)
-            if url_cache.seen(link):
-                continue
-            title = article.get_text(strip=True)
-            if not title or len(title) < 10:
-                continue
-            h = content_hash(title, "")
-            with dedup_lock:
-                if h in processed_hashes:
-                    continue
-                processed_hashes.add(h)
-            pub_dt = None
-            parent = article.find_parent(['div', 'li', 'article'])
-            if parent:
-                time_elem = parent.find('time')
-                if time_elem and time_elem.get("datetime"):
-                    pub_dt = parse_published_strict(time_elem["datetime"])
-            items.append({
-                "title": title,
-                "link": link,
-                "summary": title,
-                "source": url,
-                "source_name": "www.voachinese.com",
-                "published_str": pub_dt.isoformat() if pub_dt else "未知时间",
-                "pub_dt": pub_dt.isoformat() if pub_dt else None,
-                "time_ago": format_time_ago(pub_dt),
-                "fetched_at": datetime.utcnow().isoformat()
-            })
-            url_cache.add(link)
-        logger.info(f"VOA HTML直接抓取：{len(items)} 条")
-        return items
-    except Exception as e:
-        logger.error(f"VOA HTML抓取失败: {e}")
-        return []
-
 def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
     if is_source_disabled(original_url):
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
@@ -705,31 +561,27 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
 
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
-        max_cycles = 2
-        x_start = time.time()
-        for cycle in range(max_cycles):
-            nitter_pool = MirrorPool(get_nitter_instances())
-            while nitter_pool.available:
-                # 单个X账号总超时 90 秒
-                if time.time() - x_start > 90:
-                    logger.warning(f"X {username} 抓取超时（90秒），放弃")
-                    return []
-                instance = nitter_pool.get_next()
+        nitter_pool = MirrorPool(get_nitter_instances())
+        while True:
+            try:
+                instance = nitter_pool.get_next() if nitter_pool.available else None
+                if not instance:
+                    break
                 test_url = f"{instance}/{username}/rss"
-                logger.info(f"⏳ X {username} via {instance} (第{cycle+1}轮)")
-                try:
-                    items = fetch_single_rss(test_url, original_url, processed_hashes, url_cache, time_window_hours)
-                except Exception:
-                    items = []
+                logger.debug(f"尝试 X {username} 使用 {instance}")
+                items = fetch_single_rss(test_url, original_url, processed_hashes, url_cache, time_window_hours)
                 if items:
-                    logger.info(f"✅ X {username} 成功 via {instance}")
+                    logger.debug(f"X {username} 成功 via {instance} (条数: {len(items)})")
                     update_nitter_health(instance, True)
                     return items
                 else:
-                    logger.info(f"❌ X {username} 失败 via {instance}")
+                    logger.debug(f"X {username} 失败 via {instance}")
                     update_nitter_health(instance, False)
-                time.sleep(0.2)          # 快速切换
-        logger.warning(f"X {username} 所有实例两轮均失败")
+                    nitter_pool.report_failure(instance)
+            except Exception:
+                break
+            time.sleep(0.5)
+        logger.debug(f"X {username} 所有实例均失败")
         return []
 
     rsshub_instances = get_rsshub_instances()
@@ -762,13 +614,6 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
             if instance_used:
                 update_rsshub_health(instance_used, False)
         time.sleep(0.5)
-
-    if "voachinese.com" in original_url:
-        logger.info(f"VOA RSS 全部失败，尝试直接抓取 HTML: {original_url}")
-        html_items = fetch_voa_direct(original_url, processed_hashes, url_cache, time_window_hours)
-        if html_items:
-            return html_items
-
     logger.debug(f"{original_url} 所有 RSS 地址均失败")
     return []
 
@@ -847,21 +692,19 @@ def load_previous_events() -> List[str]:
     return events
 
 def load_event_counts() -> Dict:
-    if not os.path.exists(EVENT_COUNTS_FILE):
-        return {}
-    try:
-        with open(EVENT_COUNTS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        if isinstance(data, dict) and all(isinstance(v, int) for v in data.values()):
-            logger.info("检测到旧版 event_counts.json，执行迁移...")
-            today = datetime.utcnow().strftime("%Y-%m-%d")
-            new_data = {event: {"count": count, "last_seen": today} for event, count in data.items()}
-            save_event_counts(new_data)
-            return new_data
-        return data
-    except Exception as e:
-        logger.error(f"加载 event_counts.json 失败: {e}")
-        return {}
+    if os.path.exists(EVENT_COUNTS_FILE):
+        try:
+            with open(EVENT_COUNTS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict) and all(isinstance(v, int) for v in data.values()):
+                    new_data = {}
+                    for k, v in data.items():
+                        new_data[k] = {"count": v, "last_seen": datetime.utcnow().strftime("%Y-%m-%d")}
+                    return new_data
+                return data
+        except:
+            pass
+    return {}
 
 def save_event_counts(counts: Dict):
     with open(EVENT_COUNTS_FILE, 'w', encoding='utf-8') as f:
@@ -871,7 +714,7 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
     cutoff = datetime.utcnow().date() - timedelta(days=EVENT_EXPIRE_DAYS)
     to_delete = []
     for event, record in event_counts.items():
-        last_seen = record.get("last_seen") if isinstance(record, dict) else None
+        last_seen = record.get("last_seen")
         if last_seen:
             try:
                 last_date = datetime.strptime(last_seen, "%Y-%m-%d").date()
@@ -911,161 +754,100 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
                 time.sleep(2 ** attempt)
     return None
 
-PROMPT_V10 = """你是舆情风险分析师。从以下内容中筛选涉华负面舆情，输出 Markdown 表格。
-
-## 过滤规则
-- 忽略：纯转发(无实质评论)、纯链接、纯表情、广告娱乐、与涉华负面无关的个人内容
-- 保留：中国境内社会事件、政策批评、执法争议、言论管控、人权相关，即使未明确提及"中国"
-
-## 风险等级标准
-- 🔴 高：涉及政治敏感、人权、民族宗教，或传播力强、煽动性高
-- 🟡 中：涉及较敏感社会议题（执法、拆迁、环保、教育），有一定传播空间
-- 🟢 低：一般性批评或事实报道，传播范围有限
-
-## 输出格式（严格）
-| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |
-|----------|----------|------------|----------|------------|----------|
-| 广西暴雨致村庄被淹 | [查看](url) | 1.自然灾害应对不力 2.可能引发对预警机制的质疑 3.灾情视频易引发恐慌传播 | 来源A | 3小时前 | 🟡 中 |
-
-风险点用 1-3 条简短分点，每条≤30字，直击要害。
-无相关内容时只输出"无"。
-
-## 示例
-输入：标题：广西暴雨致10人死亡 | 来源：BBC | 3小时前
-输出：
-| 广西暴雨致10人死亡 | [查看](url) | 1.重大自然灾害伤亡 2.可能引发对防汛工作的质疑 3.伤亡数字易被外媒放大炒作 | BBC | 3小时前 | 🟡 中 |
-
-以下是待分析内容：
-"""
-
-def load_ai_cache() -> Dict[str, List[str]]:
-    if os.path.exists(AI_CACHE_FILE):
-        try:
-            with open(AI_CACHE_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            pass
-    return {}
-
-def save_ai_cache(cache: Dict[str, List[str]]):
-    if len(cache) > 500:
-        keys = list(cache.keys())[-500:]
-        cache = {k: cache[k] for k in keys}
-    with open(AI_CACHE_FILE, 'w') as f:
-        json.dump(cache, f, ensure_ascii=False)
-
-def dedup_by_title_similarity(articles: List[Dict], threshold: float = TITLE_DEDUP_THRESHOLD) -> List[Dict]:
-    if not articles:
-        return []
-    def sort_key(a):
-        prio = get_source_priority(a.get("source_name", ""))
-        pub_dt_str = a.get("pub_dt")
-        if pub_dt_str:
-            try:
-                dt = datetime.fromisoformat(pub_dt_str)
-            except:
-                dt = None
-        else:
-            dt = None
-        ts = dt.timestamp() if dt else 0.0
-        return (prio, -ts)
-    articles = sorted(articles, key=sort_key)
-    kept = []
-    for art in articles:
-        title = art.get("title", "")
-        is_dup = False
-        for existing in kept:
-            if is_similar(title, existing.get("title", ""), threshold=threshold):
-                is_dup = True
-                break
-        if not is_dup:
-            kept.append(art)
-    logger.info(f"标题相似度去重: {len(articles)} → {len(kept)} 条")
-    return kept
-
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
     if not articles:
         return "无相关内容。\n", []
 
-    articles = dedup_by_title_similarity(articles)
-
     blocks = []
-    block_keys = []
     for art in articles:
         meta = f"发布时间：{art.get('time_ago', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks.append(block)
-        block_keys.append(content_hash(art['title'], art['summary']))
 
     batches = []
     current_batch = []
-    current_batch_keys = []
     current_tokens = 0
-    prompt_tokens = estimate_tokens(PROMPT_V10)
+    # ===== V9 版本：风险点3条简短分点 =====
+    prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
+
+**一、请严格遵守以下过滤规则（忽略极低价值内容）**：
+- 纯转发（RT/转发）且无新增实质性评论。
+- 仅包含链接，无任何文字说明或文字少于10个字符。
+- 仅含表情符号、无意义的感叹或口号（如"太可怕了""支持"等）。
+- 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
+- 与涉华负面舆情无关的个人生活、娱乐、广告等。
+
+**二、必须保留的内容（不得忽略）**：
+- 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
+- 即使内容没有直接提及"中国"或"中共"，但事件发生在中国境内或涉及中国公民，也应保留。
+- 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
+
+**三、输出格式要求**：
+- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |`
+- 每行一条负面内容，按风险等级（高>中>低）和来源优先级排序。
+- 原文链接列使用 `[查看](URL)` 格式。
+- "信息来源"列直接使用输入中提供的来源名称。
+- "发布多久前"列直接使用输入中的发布时间。
+- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性：
+  - **高**：涉及重大政治敏感议题，且传播力强、煽动性高。
+  - **中**：涉及较敏感社会议题，有一定传播空间。
+  - **低**：一般性批评或事实报道，传播范围有限。
+- 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
+- 不要添加任何额外解释、标题或总结。
+
+**四、风险点撰写要求（核心）**：
+"潜在风险点"用**3条简短分点**描述，格式如下：
+1. 涉及XX事件（简述事件）
+2. 可能引发XX影响（分析影响）
+3. 情绪化内容可能引发XX（分析传播性/煽动性）
+
+每条不超过20字，总字数控制在50字以内。
+
+**格式示例**：
+"1. 涉及广西洪水灾害
+2. 可能引发公众对政府救援能力的质疑
+3. 情绪化内容引发共鸣，可能激起公众的不满情绪"
+
+以下是抓取到的部分内容：\n\n"""
+    prompt_tokens = estimate_tokens(prompt_prefix)
     max_content_tokens = 10000
-    for block, key in zip(blocks, block_keys):
+    for block in blocks:
         block_tokens = estimate_tokens(block)
         if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
-            batches.append((current_batch, current_batch_keys))
+            batches.append(current_batch)
             current_batch = []
-            current_batch_keys = []
             current_tokens = 0
         current_batch.append(block)
-        current_batch_keys.append(key)
         current_tokens += block_tokens
     if current_batch:
-        batches.append((current_batch, current_batch_keys))
+        batches.append(current_batch)
 
-    logger.info(f"共 {len(batches)} 批，启用并行 AI 分析（严格限速）")
-    ai_cache = load_ai_cache()
+    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
+
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
     table_sep = "|----------|----------|------------|----------|------------|------------|"
-
-    def process_batch(batch_idx, batch_tuple):
-        batch_texts, batch_keys = batch_tuple
-        cache_key = hashlib.md5(('|'.join(sorted(batch_keys))).encode()).hexdigest()
-        with ai_cache_lock:
-            if cache_key in ai_cache:
-                logger.info(f"批次 {batch_idx} 命中 AI 缓存")
-                return ai_cache[cache_key]
-        combined = "\n".join(batch_texts)
-        prompt = PROMPT_V10 + combined
-        with ai_rate_lock:
-            time.sleep(AI_REQUEST_DELAY)
-            content = call_ai_with_retry(prompt)
+    for batch_idx, batch in enumerate(batches, 1):
+        combined = "\n".join(batch)
+        prompt = prompt_prefix + combined
+        content = call_ai_with_retry(prompt)
         if content is None:
-            return []
-        rows = []
-        for line in content.split('\n'):
-            if line.startswith("|") and not re.match(r'^\|[\s\-:]+\|$', line):
+            logger.error(f"AI 分析批次 {batch_idx} 重试失败，跳过")
+            continue
+        lines = content.split("\n")
+        in_table = False
+        for line in lines:
+            if line.startswith("|") and "|" in line:
+                if not in_table:
+                    in_table = True
+                if re.match(r'^\|[\s\-:]+\|$', line):
+                    continue
+                if line.startswith(table_header):
+                    continue
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 if len(cells) == 6:
-                    rows.append(line)
-        return (cache_key, rows)
-
-    results_to_cache = {}
-    with ThreadPoolExecutor(max_workers=min(3, len(batches))) as executor:
-        futures = {
-            executor.submit(process_batch, idx, batch): idx
-            for idx, batch in enumerate(batches, 1)
-        }
-        for future in as_completed(futures):
-            try:
-                res = future.result()
-                if isinstance(res, tuple):
-                    key, rows = res
-                    results_to_cache[key] = rows
-                    all_table_rows.extend(rows)
-                elif isinstance(res, list):
-                    all_table_rows.extend(res)
-            except Exception as e:
-                logger.error(f"并行批次处理异常: {e}")
-
-    with ai_cache_lock:
-        for key, rows in results_to_cache.items():
-            ai_cache[key] = rows
-    save_ai_cache(ai_cache)
+                    all_table_rows.append(line)
+        time.sleep(AI_REQUEST_DELAY)
 
     if not all_table_rows:
         return "无相关内容。\n", []
