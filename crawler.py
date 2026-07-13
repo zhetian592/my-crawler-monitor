@@ -48,7 +48,7 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 # ================= 配置常量 =================
-GH_TOKEN = os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
+GH_TOKEN = os.environ.get("GH_MODELS_TOKEN_NEW") or os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
 AI_BASE_URL = "https://models.inference.ai.azure.com"
 AI_MODEL = "gpt-4o-mini"
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
