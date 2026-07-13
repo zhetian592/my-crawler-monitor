@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   crawl:
-    runs-on: ubuntu-latest   # 改用稳定标签，排队概率更低
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -35,7 +35,8 @@ jobs:
 
       - name: Run crawler
         env:
-          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+          # 🔑 关键修改：使用新令牌 Secret（GH_MODELS_TOKEN_NEW）
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN_NEW }}
         run: python crawler.py
 
       - name: Generate commit message
