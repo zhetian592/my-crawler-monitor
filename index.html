@@ -1,25 +1,23 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dawn">
+<html lang="zh-CN" data-theme="mint">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <!-- 缓存控制：HTML 本身建议部署时在 URL 加 ?v=版本号，如 index.html?v=2.0 -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>🛡️ 内容安全舆情监控系统</title>
-    <!-- 库资源（通过 JS 动态加版本号） -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
             --bg-body: #0b1121;
-            --bg-card: rgba(255, 255, 255, 0.06);
-            --bg-card-solid: rgba(15, 23, 42, 0.80);
+            --bg-card: rgba(255,255,255,0.06);
+            --bg-card-solid: rgba(15,23,42,0.80);
             --text-primary: #f1f5f9;
             --text-secondary: #cbd5e1;
-            --border-color: rgba(255, 255, 255, 0.10);
+            --border-color: rgba(255,255,255,0.10);
             --shadow: 0 8px 32px rgba(0,0,0,0.5);
             --shadow-hover: 0 12px 48px rgba(56,189,248,0.15);
             --glass-border: rgba(255,255,255,0.08);
@@ -113,73 +111,7 @@
             --bg-overlay: linear-gradient(145deg, rgba(10,6,21,0.70), rgba(30,27,75,0.50));
         }
 
-        /* 霓虹紫 (neon) */
-        [data-theme="neon"] {
-            --bg-body: #1a0f2e;
-            --bg-card: rgba(40,25,60,0.45);
-            --bg-card-solid: rgba(40,25,60,0.92);
-            --text-primary: #ede4ff;
-            --text-secondary: #c0b0e8;
-            --border-color: rgba(180,140,255,0.15);
-            --shadow: 0 8px 32px rgba(0,0,0,0.4);
-            --shadow-hover: 0 12px 48px rgba(150,100,255,0.15);
-            --glass-border: rgba(180,140,255,0.1);
-            --glass-bg: rgba(70,40,110,0.45);
-            --table-header-bg: rgba(60,40,90,0.55);
-            --table-hover-bg: rgba(60,40,90,0.30);
-            --table-bg: rgba(40,25,60,0.45);
-            --table-blur: blur(14px);
-            --link-color: #c084fc;
-            --link-hover: #e0b0ff;
-            --gradient-primary: linear-gradient(135deg, #a855f7, #6366f1);
-            --gradient-danger: linear-gradient(135deg, #f87171, #e11d48);
-            --gradient-warning: linear-gradient(135deg, #facc15, #f97316);
-            --gradient-success: linear-gradient(135deg, #4ade80, #22d3ee);
-            --risk-high: #fb7185;
-            --risk-medium: #fbbf24;
-            --risk-low: #4ade80;
-            --tooltip-bg: rgba(30,15,50,0.97);
-            --tooltip-text: #ede4ff;
-            --accent-glow: rgba(168,85,247,0.12);
-            --accent-glow2: rgba(99,102,241,0.08);
-            --stat-number-bg: linear-gradient(135deg, #a855f7, #6366f1);
-            --bg-overlay: linear-gradient(145deg, rgba(26,15,46,0.7), rgba(40,25,60,0.5));
-        }
-
-        /* 珊瑚海 (coral) */
-        [data-theme="coral"] {
-            --bg-body: #fff5f5;
-            --bg-card: rgba(255,245,245,0.75);
-            --bg-card-solid: rgba(255,245,245,0.92);
-            --text-primary: #4a2c2c;
-            --text-secondary: #7d5a5a;
-            --border-color: rgba(255,160,140,0.18);
-            --shadow: 0 4px 20px rgba(0,0,0,0.05);
-            --shadow-hover: 0 8px 32px rgba(255,140,120,0.12);
-            --glass-border: rgba(255,160,140,0.15);
-            --glass-bg: rgba(255,230,220,0.60);
-            --table-header-bg: rgba(255,200,180,0.25);
-            --table-hover-bg: rgba(255,200,180,0.15);
-            --table-bg: rgba(255,245,245,0.65);
-            --table-blur: blur(10px);
-            --link-color: #e05a4f;
-            --link-hover: #b8383a;
-            --gradient-primary: linear-gradient(135deg, #f97316, #f43f5e);
-            --gradient-danger: linear-gradient(135deg, #f87171, #dc2626);
-            --gradient-warning: linear-gradient(135deg, #fbbf24, #f59e0b);
-            --gradient-success: linear-gradient(135deg, #34d399, #06b6d4);
-            --risk-high: #e11d48;
-            --risk-medium: #f59e0b;
-            --risk-low: #10b981;
-            --tooltip-bg: rgba(255,240,235,0.97);
-            --tooltip-text: #4a2c2c;
-            --accent-glow: rgba(255,120,100,0.08);
-            --accent-glow2: rgba(255,180,150,0.05);
-            --stat-number-bg: linear-gradient(135deg, #f97316, #f43f5e);
-            --bg-overlay: linear-gradient(145deg, rgba(255,210,180,0.15), rgba(255,255,255,0.1));
-        }
-
-        /* 薄荷苏打 (mint) */
+        /* 薄荷苏打 (mint) - 清新翠绿 */
         [data-theme="mint"] {
             --bg-body: #f0fdf4;
             --bg-card: rgba(240,253,244,0.75);
@@ -400,7 +332,7 @@
                         <button id="refresh-btn" class="btn btn-outline">🔄 刷新</button>
                         <button id="trigger-action-btn" class="btn btn-danger">🚀 立即更新</button>
                         <button id="history-btn" class="btn btn-success">📚 历史</button>
-                        <button id="themeToggleBtn" class="btn btn-outline">🌅 晨曦</button>
+                        <button id="themeToggleBtn" class="btn btn-outline">🌿 薄荷苏打</button>
                         <button id="logoutBtn" class="btn btn-outline" style="font-size:0.75rem;">退出</button>
                     </div>
                 </div>
@@ -422,10 +354,9 @@
     </div>
 
     <script>
-        // ==================== 全局版本号（修改此项即可强制刷新所有缓存） ====================
-        const APP_VERSION = '2.0.0';   // 每次部署更新时递增版本号
+        // 全局版本号（修改此值强制刷新所有缓存）
+        const APP_VERSION = '3.0.0';
 
-        // 动态给外部资源加版本号
         (function() {
             document.querySelectorAll('link[rel="stylesheet"]').forEach(el => {
                 let url = el.href;
@@ -437,7 +368,7 @@
             });
         })();
 
-        // ==================== 登录逻辑 ====================
+        // 登录
         const PASSWORD = 'dzx12123', SESSION_KEY = 'logged_in';
         function checkLogin() {
             if (sessionStorage.getItem(SESSION_KEY) === 'true') {
@@ -466,15 +397,16 @@
             }
         }
 
-        // ==================== 主题 & 背景管理 ====================
-        const THEMES = ['dawn', 'dusk', 'neon', 'coral', 'mint'];
+        // 主题配置（仅保留三个，mint 为主）
+        const THEMES = ['mint', 'dawn', 'dusk'];
         const THEME_LABELS = {
-            dawn: '🌅 晨曦', dusk: '🌃 暮光',
-            neon: '💜 霓虹紫', coral: '🧡 珊瑚海', mint: '🌿 薄荷苏打'
+            mint: '🌿 薄荷苏打',
+            dawn: '🌅 晨曦',
+            dusk: '🌃 暮光'
         };
-        let currentTheme = localStorage.getItem('theme') || 'dawn';
+        let currentTheme = localStorage.getItem('theme') || 'mint';
 
-        // 背景图配置：dawn/dusk 用 Unsplash，其他用 CSS 渐变（通过 bg-layer 背景色实现）
+        // 三套背景图（mint 使用清新绿叶图片）
         const BG_IMAGES = {
             dawn: {
                 mobile: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80',
@@ -483,11 +415,15 @@
             dusk: {
                 mobile: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=400&q=80',
                 desktop: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1920&q=80'
+            },
+            mint: {
+                mobile: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=80',
+                desktop: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=1920&q=80'
             }
         };
 
         function getBackgroundUrl(theme) {
-            if (!BG_IMAGES[theme]) return null;   // 渐变主题不使用 img
+            if (!BG_IMAGES[theme]) return null;
             const isMobile = window.innerWidth <= 600;
             return isMobile ? BG_IMAGES[theme].mobile : BG_IMAGES[theme].desktop;
         }
@@ -497,26 +433,22 @@
             localStorage.setItem('theme', theme);
             const img = document.getElementById('bg-img');
             const layer = document.querySelector('.bg-layer');
-            if (BG_IMAGES[theme]) {
-                // 图片主题
-                let src = getBackgroundUrl(theme);
+
+            // 所有主题均使用图片背景
+            let src = getBackgroundUrl(theme);
+            if (src) {
                 src += (src.includes('?')?'&':'?') + 'v=' + APP_VERSION;
                 img.src = src;
                 img.style.display = 'block';
                 layer.style.background = 'none';
                 img.onerror = function() { this.style.display = 'none'; };
             } else {
-                // 渐变主题：隐藏图片，给 bg-layer 设置渐变
                 img.style.display = 'none';
-                const gradients = {
-                    neon: 'linear-gradient(135deg, #2d1b4e, #1a0f2e)',
-                    coral: 'linear-gradient(135deg, #fff0ee, #ffe4db)',
-                    mint: 'linear-gradient(135deg, #e2f5e9, #c8ede0)'
-                };
-                layer.style.background = gradients[theme] || 'none';
+                layer.style.background = 'none';
             }
+
             const btn = document.getElementById('themeToggleBtn');
-            if (btn) btn.textContent = THEME_LABELS[theme] || '🌅 晨曦';
+            if (btn) btn.textContent = THEME_LABELS[theme] || '🌿 薄荷苏打';
         }
 
         function cycleTheme() {
@@ -525,22 +457,22 @@
             applyTheme(currentTheme);
         }
 
-        // 窗口大小改变时，若为图片主题则重新适配分辨率
+        // 窗口大小改变时自动适配图片分辨率
         let resizeTimer;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimer);
             resizeTimer = setTimeout(() => {
-                const theme = document.documentElement.getAttribute('data-theme') || 'dawn';
-                if (BG_IMAGES[theme]) {
-                    const img = document.getElementById('bg-img');
-                    let src = getBackgroundUrl(theme);
+                const theme = document.documentElement.getAttribute('data-theme') || 'mint';
+                const img = document.getElementById('bg-img');
+                let src = getBackgroundUrl(theme);
+                if (src) {
                     src += (src.includes('?')?'&':'?') + 'v=' + APP_VERSION;
                     img.src = src;
                 }
             }, 200);
         });
 
-        // ==================== 仪表盘核心 ====================
+        // ---------- 仪表盘核心逻辑（与之前一致，略作精简）----------
         let countdownInterval = null;
         let activeTooltip = null;
 
@@ -559,7 +491,6 @@
             promptTokenIfNeeded();
         }
 
-        // 工具函数
         function convertUtcToBeijing(utc) {
             const m = utc.replace(' UTC','').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
             if (!m) return utc;
@@ -641,7 +572,7 @@
             } else sum.style.display='none';
         }
 
-        // Tooltip
+        // Tooltip 交互
         let tooltipInstance = null;
         function createTooltip() {
             if (tooltipInstance) return tooltipInstance;
@@ -669,7 +600,7 @@
         }
         document.addEventListener('click', e=>{ if (activeTooltip && !e.target.closest('.risk-cell') && !e.target.closest('.risk-tooltip')) hideTooltipImmediately(); });
 
-        // 加载报告（带版本号防缓存）
+        // 加载报告（带版本号和时间戳）
         let lastReportHash = localStorage.getItem('lastReportHash')||'';
         function simpleHash(s) { return s.slice(0,200)+s.length; }
 
@@ -760,7 +691,7 @@
             }
         }
 
-        // 工作流触发逻辑
+        // 工作流触发
         const REPO_OWNER='zhetian592', REPO_NAME='my-crawler-monitor', WORKFLOW_ID='crawler-tier1.yml', GITHUB_TOKEN_KEY='github_pat';
         async function updateButtonState() {
             const btn = document.getElementById('trigger-action-btn');
@@ -867,12 +798,11 @@
             }
         }
 
-        async function openHistory() {
+        function openHistory() {
             const btn = document.getElementById('history-btn');
-            const orig = btn.innerText;
             btn.innerText = '⏳ 检查中...'; btn.disabled = true;
             window.open('https://zhetian592.github.io/my-crawler-monitor/reports/index.html', '_blank');
-            btn.innerText = orig; btn.disabled = false;
+            btn.innerText = '📚 历史'; btn.disabled = false;
         }
 
         function promptTokenIfNeeded() {
