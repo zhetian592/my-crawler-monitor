@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>🛡️ 内容安全舆情监控系统</title>
+    <title>🛡️ 内容安全舆情监控</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -354,7 +354,7 @@
     </div>
 
     <script>
-        // 全局版本号（修改此值强制刷新所有缓存）
+        // 全局版本号
         const APP_VERSION = '3.0.0';
 
         (function() {
@@ -397,7 +397,7 @@
             }
         }
 
-        // 主题配置（仅保留三个，mint 为主）
+        // 主题配置
         const THEMES = ['mint', 'dawn', 'dusk'];
         const THEME_LABELS = {
             mint: '🌿 薄荷苏打',
@@ -406,19 +406,27 @@
         };
         let currentTheme = localStorage.getItem('theme') || 'mint';
 
-        // 三套背景图（mint 使用清新绿叶图片）
+        // ============================================================
+        // ★★★ 背景图片配置（已替换为稳定、高级感的薄荷青柠图） ★★★
+        // 如果外链加载失败，建议将图片下载到本地，将下面的URL改为相对路径
+        // 例如：'images/bg-mint.jpg'
+        // ============================================================
         const BG_IMAGES = {
             dawn: {
-                mobile: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80',
-                desktop: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80'
+                mobile: 'https://images.pexels.com/photos/1752368/pexels-photo-1752368.jpeg?auto=compress&cs=tinysrgb&w=400&dpr=2',
+                desktop: 'https://images.pexels.com/photos/1752368/pexels-photo-1752368.jpeg?auto=compress&cs=tinysrgb&w=1920'
             },
             dusk: {
-                mobile: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=400&q=80',
-                desktop: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1920&q=80'
+                mobile: 'https://images.pexels.com/photos/1284164/pexels-photo-1284164.jpeg?auto=compress&cs=tinysrgb&w=400&dpr=2',
+                desktop: 'https://images.pexels.com/photos/1284164/pexels-photo-1284164.jpeg?auto=compress&cs=tinysrgb&w=1920'
             },
             mint: {
-                mobile: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=80',
-                desktop: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=1920&q=80'
+                // 主图：薄荷莫吉托（完美贴合薄荷苏打主题）
+                mobile: 'https://images.pexels.com/photos/1284164/pexels-photo-1284164.jpeg?auto=compress&cs=tinysrgb&w=400&dpr=2',
+                desktop: 'https://images.pexels.com/photos/1284164/pexels-photo-1284164.jpeg?auto=compress&cs=tinysrgb&w=1920'
+                // 备选暗调青柠（若想换，取消下面注释并注释上面两行）：
+                // mobile: 'https://images.pexels.com/photos/1752368/pexels-photo-1752368.jpeg?auto=compress&cs=tinysrgb&w=400&dpr=2',
+                // desktop: 'https://images.pexels.com/photos/1752368/pexels-photo-1752368.jpeg?auto=compress&cs=tinysrgb&w=1920'
             }
         };
 
@@ -434,14 +442,19 @@
             const img = document.getElementById('bg-img');
             const layer = document.querySelector('.bg-layer');
 
-            // 所有主题均使用图片背景
             let src = getBackgroundUrl(theme);
             if (src) {
-                src += (src.includes('?')?'&':'?') + 'v=' + APP_VERSION;
+                // 加上缓存破坏参数，避免浏览器缓存旧图
+                src += (src.includes('?') ? '&' : '?') + 'v=' + APP_VERSION + '&t=' + Date.now();
                 img.src = src;
                 img.style.display = 'block';
                 layer.style.background = 'none';
-                img.onerror = function() { this.style.display = 'none'; };
+                img.onerror = function() {
+                    // 如果外链加载失败，提示用户下载本地图片
+                    this.style.display = 'none';
+                    layer.style.background = 'rgba(240,253,244,0.9)'; // 回退背景色
+                    console.warn('背景图加载失败，请检查网络或将图片下载到本地并修改BG_IMAGES中的路径。');
+                };
             } else {
                 img.style.display = 'none';
                 layer.style.background = 'none';
@@ -466,13 +479,13 @@
                 const img = document.getElementById('bg-img');
                 let src = getBackgroundUrl(theme);
                 if (src) {
-                    src += (src.includes('?')?'&':'?') + 'v=' + APP_VERSION;
+                    src += (src.includes('?') ? '&' : '?') + 'v=' + APP_VERSION + '&t=' + Date.now();
                     img.src = src;
                 }
             }, 200);
         });
 
-        // ---------- 仪表盘核心逻辑（与之前一致，略作精简）----------
+        // ---------- 仪表盘核心逻辑（与之前一致）----------
         let countdownInterval = null;
         let activeTooltip = null;
 
@@ -600,7 +613,7 @@
         }
         document.addEventListener('click', e=>{ if (activeTooltip && !e.target.closest('.risk-cell') && !e.target.closest('.risk-tooltip')) hideTooltipImmediately(); });
 
-        // 加载报告（带版本号和时间戳）
+        // 加载报告
         let lastReportHash = localStorage.getItem('lastReportHash')||'';
         function simpleHash(s) { return s.slice(0,200)+s.length; }
 
