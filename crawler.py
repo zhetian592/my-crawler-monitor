@@ -1,4 +1,4 @@
-# crawler.py - 最终生产版（自动模型 + 超时熔断 + 备选过滤）
+# crawler.py - 最终版（超时保护 + AI失败后备过滤）
 import os
 import json
 import re
@@ -10,7 +10,7 @@ import sys
 import threading
 import pickle
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from typing import List, Dict, Any, Tuple, Optional, Union
 from logging.handlers import RotatingFileHandler
 
@@ -56,11 +56,10 @@ if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-# 默认自动路由，避免单个免费模型限流
 AI_MODEL = os.environ.get("AI_MODEL", "openrouter/auto")
 
-# 是否启用 JSON 模式（环境变量控制）
 AI_JSON_MODE = os.environ.get("AI_JSON_MODE", "true").lower() == "true"
+AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 300))  # 整体 AI 分析超时 5 分钟
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
@@ -77,10 +76,9 @@ DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
-CACHE_TTL = 86400 * 7                 # 批次缓存有效期 7 天
+CACHE_TTL = 86400 * 7
 
-AI_CONCURRENCY_LIMIT = int(os.environ.get("AI_CONCURRENCY_LIMIT", "1"))  # 免费模型强烈建议为 1
-AI_MAX_DURATION = int(os.environ.get("AI_MAX_DURATION", "300"))          # AI 分析总时间上限（秒）
+AI_CONCURRENCY_LIMIT = int(os.environ.get("AI_CONCURRENCY_LIMIT", "1"))
 
 EVENT_COUNTS_FILE = "event_counts.json"
 HEALTHY_NITTER_FILE = "healthy_nitter.json"
@@ -159,7 +157,6 @@ def content_hash(title: str, summary: str) -> str:
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 def batch_key(blocks: List[str]) -> str:
-    """根据排序后的批次内容生成稳定哈希"""
     sorted_blocks = sorted(blocks)
     combined = "\n".join(sorted_blocks).encode('utf-8')
     return hashlib.sha256(combined).hexdigest()
@@ -749,11 +746,12 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= 🚀 AI 分析（熔断 + 备选过滤） =================
+# ================= 🚀 AI 分析（带超时和后备规则） =================
 _ai_client = None
 _client_lock = threading.Lock()
 
 AI_SEMAPHORE = threading.Semaphore(AI_CONCURRENCY_LIMIT)
+
 _AI_KWARGS_CACHE = None
 
 def build_ai_request_kwargs():
@@ -806,15 +804,11 @@ def estimate_tokens(text: str) -> int:
 
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
     if not API_KEY:
-        logger.error("未配置 API_KEY，无法调用 AI")
         return None
-
     client = get_ai_client()
     if client is None:
         return None
-
     kwargs = get_ai_kwargs()
-
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
@@ -845,7 +839,6 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
             logger.warning(f"AI调用失败 (尝试 {attempt+1}): {type(e).__name__}: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
-    logger.error(f"AI调用失败，已重试 {max_retries} 次")
     return None
 
 def extract_json(text: str) -> Optional[str]:
@@ -868,6 +861,39 @@ def should_skip(article: Dict) -> bool:
         return True
     return False
 
+# ---------- 后备规则过滤 ----------
+NEGATIVE_KEYWORDS = [
+    "打压", "镇压", "抗议", "维权", "人权", "审查", "监控", "失踪", "迫害",
+    "拘留", "逮捕", "打压", "言论自由", "封锁", "屏蔽", "防火墙", "维稳",
+    "强拆", "信访", "上访", "黑监狱", "劳教", "精神病院", "活摘", "种族灭绝",
+    "集中营", "再教育营", "新疆", "西藏", "台湾", "香港", "天安门", "法轮功",
+    "中共", "独裁", "专制", "独裁者", "一党专政", "新闻自由", "互联网审查",
+    "言论管控", "舆论控制", "洗脑", "宣传", "低人权优势", "血汗工厂",
+    "环境污染", "毒奶粉", "疫苗丑闻", "食品安全", "城管", "暴力执法",
+    "群体事件", "社会不公", "贫富差距", "996", "内卷", "躺平"
+]
+
+def rule_based_filter(articles: List[Dict]) -> List[Dict]:
+    """使用负面关键词匹配，筛选可能涉华负面的文章，返回表格行列表"""
+    rows = []
+    seen_hashes = set()
+    for art in articles:
+        text = art["title"] + " " + art["summary"]
+        if any(kw in text for kw in NEGATIVE_KEYWORDS):
+            h = content_hash(art["title"], art["summary"])
+            if h in seen_hashes:
+                continue
+            seen_hashes.add(h)
+            source_name = get_display_source(art.get("source_name", "未知"))
+            time_ago = art.get("time_ago", "未知")
+            link = art.get("link", "")
+            # 简单风险描述
+            risk = "检测到敏感关键词"
+            level = "中"
+            row = f"| {art['title'][:80]} | [查看]({link}) | {risk} | {source_name} | {time_ago} | {level} |"
+            rows.append(row)
+    return rows
+
 def load_ai_cache() -> Dict:
     if os.path.exists(AI_CACHE_FILE):
         try:
@@ -889,38 +915,6 @@ def save_ai_cache(cache: Dict):
     except Exception as e:
         logger.warning(f"保存AI缓存失败: {e}")
 
-# ---------- 备选内置过滤 ----------
-def fallback_filter(articles: List[Dict]) -> List[str]:
-    """当 AI 完全不可用时，用关键词规则生成最基础的舆情行"""
-    negative_kw = [
-        "批评", "抗议", "制裁", "打压", "争议", "丑闻", "人权", "审查",
-        "封杀", "拘留", "逮捕", "镇压", "示威", "暴政", "独裁", "监控",
-        "防火墙", "维稳", "迫害", "失踪", "酷刑", "黑监狱", "强制劳动",
-        "言论自由", "网络封锁", "打压异议", "政治犯"
-    ]
-    china_kw = [
-        "中国", "北京", "上海", "香港", "台湾", "新疆", "西藏",
-        "共产党", "中共", "习近平", "政治局", "国务院", "外交部",
-        "华为", "中芯", "一带一路", "南海", "东海", "钓鱼岛"
-    ]
-    rows = []
-    seen_titles = set()
-    for art in articles:
-        title = art.get("title", "")
-        summary = art.get("summary", "")
-        text = title + " " + summary
-        if any(k in text for k in negative_kw) and any(k in text for k in china_kw):
-            if title in seen_titles:
-                continue
-            seen_titles.add(title)
-            source = get_display_source(art.get("source_name", "未知"))
-            link = art.get("link", "")
-            time_ago = art.get("time_ago", "未知")
-            row = f"| {title} | [查看]({link}) | 需人工审核 | {source} | {time_ago} | 中 |"
-            rows.append(row)
-    return rows
-
-# ---------- 主分析流程（含熔断） ----------
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
     if not articles:
         return "无相关内容。\n", []
@@ -930,21 +924,19 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
     ai_cache = load_ai_cache()
     all_rows = []
-    ai_start_time = time.time()
 
-    # 组装块
+    # 组装待分析块
     blocks_with_meta = []
     for art in articles:
-        h = content_hash(art["title"], art["summary"])
         meta = f"发布时间：{art.get('time_ago', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
-        blocks_with_meta.append((h, block))
+        blocks_with_meta.append(block)
 
-    # 分批
     max_content_tokens = int(os.environ.get("MAX_CONTENT_TOKENS", 8000))
     batches = []
     current_blocks = []
     current_tokens = 0
+
     prompt_prefix = """根据以下内容，筛选出涉华负面舆情条目，以 JSON 数组输出。
 每个对象必须包含字段：event(简述), link(原文链接), risk(风险点，格式"1. xx 2. xx 3. xx"，每条≤20字), source(来源), time(时间), level(高/中/低)。
 严格要求：只输出一个 JSON 数组，不要任何解释、代码块标记或额外文字。没有符合内容时输出 []。
@@ -953,7 +945,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 """
     prompt_tokens = estimate_tokens(prompt_prefix)
 
-    for _, block in blocks_with_meta:
+    for block in blocks_with_meta:
         block_tokens = estimate_tokens(block)
         if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_blocks:
             batches.append(current_blocks)
@@ -966,42 +958,49 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
     logger.info(f"内容分为 {len(batches)} 批（单批上限 {max_content_tokens} tokens）")
 
+    # 处理批次（带整体超时和后备方案）
     def process_single_batch(batch_blocks):
         key = batch_key(batch_blocks)
         now = time.time()
+
+        # 检查缓存
         if key in ai_cache:
-            entry = ai_cache[key]
-            if isinstance(entry, dict) and "created_at" in entry:
-                if now - entry["created_at"] < CACHE_TTL:
-                    items = entry["items"]
+            cached_entry = ai_cache[key]
+            if isinstance(cached_entry, dict) and "created_at" in cached_entry:
+                if now - cached_entry["created_at"] < CACHE_TTL:
+                    cached_items = cached_entry["items"]
                     rows = []
-                    for item in items:
+                    for item in cached_items:
                         if all(k in item for k in ("event","link","risk","source","time","level")):
                             row = f"| {item['event']} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
                             rows.append(row)
                     return rows
+                else:
+                    logger.debug("缓存已过期，将重新调用 AI")
             else:
-                ai_cache[key] = {"items": entry, "created_at": now}
+                ai_cache[key] = {"items": cached_entry, "created_at": now}
                 rows = []
-                for item in entry:
+                for item in cached_entry:
                     if all(k in item for k in ("event","link","risk","source","time","level")):
                         row = f"| {item['event']} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
                         rows.append(row)
                 return rows
 
+        prompt = prompt_prefix + "\n".join(batch_blocks)
         with AI_SEMAPHORE:
-            raw_response = call_ai_with_retry(prompt_prefix + "\n".join(batch_blocks))
-
+            raw_response = call_ai_with_retry(prompt)
         if raw_response is None:
-            return []
+            return None  # 表示失败
+
         json_str = extract_json(raw_response)
         if json_str is None:
             logger.warning(f"批次未提取到 JSON，原始开头: {raw_response[:150]}")
-            return []
+            return None
+
         try:
             parsed = json.loads(json_str)
             if not isinstance(parsed, list):
-                raise ValueError("not a list")
+                raise ValueError("JSON 不是数组")
             ai_cache[key] = {"items": parsed, "created_at": time.time()}
             rows = []
             for item in parsed:
@@ -1010,47 +1009,63 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                     rows.append(row)
             return rows
         except Exception as e:
-            logger.warning(f"JSON 解析失败: {e}, 原文: {json_str[:200]}")
-            return []
+            logger.warning(f"批次 JSON 解析失败: {e}, 原始片段: {json_str[:200]}")
+            return None
 
-    # 先处理缓存命中的批次
+    # 先收集缓存命中的批次
     cached_rows = []
     uncached_batches = []
-    for b in batches:
-        key = batch_key(b)
-        if key in ai_cache and isinstance(ai_cache[key], dict) and time.time() - ai_cache[key].get("created_at", 0) < CACHE_TTL:
-            rows = process_single_batch(b)
-            cached_rows.extend(rows)
+    for batch_blocks in batches:
+        key = batch_key(batch_blocks)
+        if key in ai_cache and isinstance(ai_cache[key], dict) and "created_at" in ai_cache[key] and time.time() - ai_cache[key]["created_at"] < CACHE_TTL:
+            rows = process_single_batch(batch_blocks)  # 不会调 AI
+            if rows:
+                cached_rows.extend(rows)
         else:
-            uncached_batches.append(b)
+            uncached_batches.append(batch_blocks)
+
+    ai_start_time = time.time()
+    completed_rows = list(cached_rows)
+    ai_failed = False
 
     if uncached_batches:
         with ThreadPoolExecutor(max_workers=AI_CONCURRENCY_LIMIT) as executor:
             future_to_batch = {executor.submit(process_single_batch, b): b for b in uncached_batches}
-            for future in as_completed(future_to_batch):
-                elapsed = time.time() - ai_start_time
-                if elapsed > AI_MAX_DURATION:
-                    logger.warning(f"AI 分析已耗时 {elapsed:.0f} 秒，超过上限 {AI_MAX_DURATION} 秒，强制熔断")
-                    for f in future_to_batch:
-                        f.cancel()
-                    break
-                try:
-                    rows = future.result()
-                    cached_rows.extend(rows)
-                except Exception as e:
-                    logger.error(f"并发处理批次失败: {e}")
+            try:
+                for future in as_completed(future_to_batch, timeout=AI_TIMEOUT_SECONDS - (time.time() - ai_start_time)):
+                    # 计算剩余时间
+                    try:
+                        rows = future.result(timeout=30)  # 单批次额外超时
+                        if rows is not None:
+                            completed_rows.extend(rows)
+                        else:
+                            ai_failed = True
+                            logger.warning("某个批次 AI 调用返回 None")
+                    except Exception as e:
+                        ai_failed = True
+                        logger.error(f"处理批次异常: {e}")
+            except FuturesTimeoutError:
+                ai_failed = True
+                logger.error(f"AI 分析整体超时（{AI_TIMEOUT_SECONDS}s），未完成的批次将使用后备过滤方案")
+                # 取消未完成的任务
+                for future in future_to_batch:
+                    future.cancel()
 
-    all_rows = cached_rows
+    # 如果 AI 失败或部分失败，启用内置规则过滤作为补充
+    if ai_failed or len(completed_rows) == 0:
+        logger.warning("AI 分析不完整或为空，启用内置规则过滤后备")
+        # 对于所有文章（不仅是未处理的批次），运行规则过滤，但排除已从缓存得到的行可能重复的问题
+        # 简单方法：直接用规则过滤所有文章，然后和 completed_rows 合并去重
+        rule_rows = rule_based_filter(articles)
+        # 合并、去重（简单合并，表格去重由 deduplicate_and_mark_new 负责）
+        completed_rows.extend(rule_rows)
+        logger.info(f"后备规则过滤补充了 {len(rule_rows)} 行")
 
-    # ---- 备选过滤方案：如果 AI 完全无结果，启用内置规则 ----
-    if not all_rows:
-        logger.warning("AI 分析未产生任何结果，启用备选内置过滤方案")
-        all_rows = fallback_filter(articles)
-
-    if not all_rows:
+    if not completed_rows:
         return "无相关内容。\n", []
 
-    unique_rows, events_in_report = deduplicate_and_mark_new(all_rows, old_events)
+    # 去重合并
+    unique_rows, events_in_report = deduplicate_and_mark_new(completed_rows, old_events)
 
     if unique_rows:
         table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
@@ -1172,6 +1187,7 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
         count = record.get("count", 0)
         last_seen_str = record.get("last_seen")
         last_seen = datetime.strptime(last_seen_str, "%Y-%m-%d").date() if last_seen_str else None
+
         if count >= MAX_REPEAT_COUNT:
             if last_seen and (today - last_seen).days < COOLDOWN_DAYS:
                 logger.info(f"隐藏重复事件（冷却期）: {event[:50]}")
@@ -1272,18 +1288,22 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     raw_count = len(all_articles)
+
     timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
     fetch_info = f"抓取数据：{raw_count}条\n\n"
     final_content = timestamp_str + fetch_info + report_text
+
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(final_content)
     html_content = generate_html_report(report_text, all_articles)
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
+
     os.makedirs("reports", exist_ok=True)
     history_path = f"reports/report_{timestamp}.html"
     with open(history_path, "w", encoding="utf-8") as f:
         f.write(html_content)
+
     generate_index_page()
     os.makedirs("data", exist_ok=True)
     with open(f"data/raw_{timestamp}.json", "w", encoding="utf-8") as f:
@@ -1314,18 +1334,30 @@ def generate_index_page():
 
 def cleanup_old_files(days: int = KEEP_DAYS):
     cutoff = datetime.utcnow() - timedelta(days=days)
-    for dirname in ("data", "reports"):
-        if os.path.exists(dirname):
-            for f in os.listdir(dirname):
-                if f.startswith("raw_") and f.endswith(".json") or (f.startswith("report_") and f.endswith(".html")):
-                    try:
-                        ts = f.replace("raw_", "").replace("report_", "").replace(".json", "").replace(".html", "")
-                        file_time = datetime.strptime(ts, "%Y%m%d_%H%M%S")
-                        if file_time < cutoff:
-                            os.remove(os.path.join(dirname, f))
-                            logger.info(f"已删除旧文件: {f}")
-                    except:
-                        continue
+    data_dir = "data"
+    if os.path.exists(data_dir):
+        for f in os.listdir(data_dir):
+            if f.startswith("raw_") and f.endswith(".json"):
+                ts_part = f.replace("raw_", "").replace(".json", "")
+                try:
+                    file_time = datetime.strptime(ts_part, "%Y%m%d_%H%M%S")
+                    if file_time < cutoff:
+                        os.remove(os.path.join(data_dir, f))
+                        logger.info(f"已删除旧数据文件: {f}")
+                except ValueError:
+                    continue
+    reports_dir = "reports"
+    if os.path.exists(reports_dir):
+        for f in os.listdir(reports_dir):
+            if f.startswith("report_") and f.endswith(".html"):
+                ts_part = f.replace("report_", "").replace(".html", "")
+                try:
+                    file_time = datetime.strptime(ts_part, "%Y%m%d_%H%M%S")
+                    if file_time < cutoff:
+                        os.remove(os.path.join(reports_dir, f))
+                        logger.info(f"已删除旧报告: {f}")
+                except ValueError:
+                    continue
 
 # ================= 主流程 =================
 def main():
@@ -1349,7 +1381,7 @@ def main():
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    logger.info("=== 调用 AI 分析（含超时熔断与备选过滤） ===")
+    logger.info("=== 调用 AI 分析（超时保护 + 后备规则） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
 
     if report_table != "无相关内容。\n":
