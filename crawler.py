@@ -1,4 +1,4 @@
-# crawler.py - 迁移到 OpenRouter（使用最快免费模型 + 优化批次）
+# crawler.py - 最终优化版（客户端单例 + 精细错误处理 + 准确Token估算 + 线程安全）
 import os
 import json
 import re
@@ -7,6 +7,7 @@ import random
 import hashlib
 import logging
 import sys
+import threading
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -17,6 +18,9 @@ import feedparser
 import openai
 from bs4 import BeautifulSoup
 import difflib
+
+# 导入 openai 异常类型
+from openai import RateLimitError, AuthenticationError, BadRequestError, APITimeoutError
 
 # 尝试导入 tiktoken
 try:
@@ -47,15 +51,13 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# ================= 配置常量（迁移至 OpenRouter） =================
-# 优先使用 OpenRouter API Key
+# ================= 配置常量 =================
 API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
 if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-# 🚀 优化1：使用最快的免费模型（响应速度 3-5 秒）
-AI_MODEL = os.environ.get("AI_MODEL", "google/gemini-2.0-flash-lite-preview-02-05:free")
+AI_MODEL = os.environ.get("AI_MODEL", "openai/gpt-4o-mini")
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
@@ -67,7 +69,7 @@ SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
-AI_REQUEST_DELAY = 1   # 从 2 秒降到 1 秒（OpenRouter 限流较宽松）
+AI_REQUEST_DELAY = 1
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -733,46 +735,100 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析（优化批次大小） =================
+# ================= 🚀 AI 分析（最终优化版） =================
+
+# 模块级客户端（线程安全）
+_ai_client = None
+_client_lock = threading.Lock()
+
+# 缓存请求参数（避免每次调用重新构建）
+_AI_REQUEST_KWARGS = {
+    "model": AI_MODEL,
+    "temperature": 0.3,
+    "max_tokens": 4000,
+}
+if "openrouter" in AI_BASE_URL:
+    # 从环境变量读取 Referer，若无则使用默认值（请改为你的实际仓库地址）
+    _AI_REQUEST_KWARGS["extra_headers"] = {
+        "HTTP-Referer": os.environ.get(
+            "APP_REFERER",
+            "https://github.com/zhetian592/my-crawler-monitor"
+        ),
+        "X-Title": "Crawler Monitor",
+    }
+
+def get_ai_client():
+    """线程安全的客户端单例"""
+    global _ai_client
+    if _ai_client is None:
+        with _client_lock:
+            if _ai_client is None:  # double-check
+                if not API_KEY:
+                    logger.error("API_KEY 未配置，无法创建客户端")
+                    return None
+                _ai_client = openai.OpenAI(
+                    base_url=AI_BASE_URL,
+                    api_key=API_KEY,
+                    timeout=60.0,
+                    max_retries=0,
+                )
+    return _ai_client
+
 def estimate_tokens(text: str) -> int:
+    """
+    更准确的 Token 估算（区分中文和英文）
+    """
     if TIKTOKEN_AVAILABLE:
         try:
             enc = tiktoken.encoding_for_model("gpt-4o-mini")
             return len(enc.encode(text))
-        except:
-            return int(len(text) / 1.5)
-    else:
-        return int(len(text) / 1.5)
+        except Exception:
+            pass
+    # 保守估算：中文字符 1.5 token/字，其他字符 0.3 token/字符
+    cn_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+    other_chars = len(text) - cn_chars
+    return int(cn_chars * 1.5 + other_chars * 0.3)
 
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
+    """
+    带重试的 AI 调用，区分错误类型，避免无效重试
+    """
     if not API_KEY:
         logger.error("未配置 API_KEY，无法调用 AI")
         return None
+
+    client = get_ai_client()
+    if client is None:
+        return None
+
     for attempt in range(max_retries):
         try:
-            client = openai.OpenAI(
-                base_url=AI_BASE_URL,
-                api_key=API_KEY,
-                timeout=60.0,
-                max_retries=0,
-            )
             response = client.chat.completions.create(
-                model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=4000,
-                extra_headers={
-                    "HTTP-Referer": "https://github.com/your-repo",
-                    "X-Title": "Crawler Monitor",
-                } if "openrouter" in AI_BASE_URL else {}
+                **_AI_REQUEST_KWARGS
             )
             content = response.choices[0].message.content
             if content is not None:
                 return content
+        except RateLimitError as e:
+            wait_time = 30 * (attempt + 1)
+            logger.warning(f"限流（RateLimit），等待 {wait_time} 秒后重试")
+            time.sleep(wait_time)
+        except AuthenticationError as e:
+            logger.error(f"认证失败，请检查 API_KEY: {e}")
+            return None
+        except BadRequestError as e:
+            logger.error(f"请求格式错误（可能是模型不可用或参数问题）: {e}")
+            return None
+        except APITimeoutError as e:
+            logger.warning(f"请求超时，尝试 {attempt+1}/{max_retries}: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
         except Exception as e:
             logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
+    logger.error(f"AI 调用在 {max_retries} 次尝试后仍失败")
     return None
 
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
@@ -785,6 +841,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks.append(block)
 
+    max_content_tokens = int(os.environ.get("MAX_CONTENT_TOKENS", 25000))
     batches = []
     current_batch = []
     current_tokens = 0
@@ -830,8 +887,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
-    # 🚀 优化2：增大单批 token 上限，从 10000 提升到 25000，减少批次数
-    max_content_tokens = 25000
     for block in blocks:
         block_tokens = estimate_tokens(block)
         if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
@@ -843,7 +898,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     if current_batch:
         batches.append(current_batch)
 
-    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析（优化后）")
+    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析（单批上限 {max_content_tokens} tokens）")
 
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
