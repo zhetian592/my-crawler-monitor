@@ -1,4 +1,4 @@
-# crawler.py - 稳定版（保留最近2天数据/报告）+ 信源抓取优化
+# crawler.py - 迁移到 OpenRouter（使用最快免费模型 + 优化批次）
 import os
 import json
 import re
@@ -47,10 +47,16 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# ================= 配置常量 =================
-GH_TOKEN = os.environ.get("GH_MODELS_TOKEN_NEW") or os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
-AI_BASE_URL = "https://models.inference.ai.azure.com"
-AI_MODEL = "gpt-4o-mini"
+# ================= 配置常量（迁移至 OpenRouter） =================
+# 优先使用 OpenRouter API Key
+API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
+if not API_KEY:
+    logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
+
+AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
+# 🚀 优化1：使用最快的免费模型（响应速度 3-5 秒）
+AI_MODEL = os.environ.get("AI_MODEL", "google/gemini-2.0-flash-lite-preview-02-05:free")
+
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
 if os.environ.get("HTTP_PROXY"):
@@ -61,7 +67,7 @@ SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
-AI_REQUEST_DELAY = 2
+AI_REQUEST_DELAY = 1   # 从 2 秒降到 1 秒（OpenRouter 限流较宽松）
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -95,7 +101,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# ================= 辅助函数 =================
+# ================= 辅助函数（不变） =================
 def clean_html(text: Optional[str]) -> str:
     if not text:
         return ""
@@ -181,7 +187,7 @@ def get_source_priority(source_name: str) -> int:
         return 3
     return 4
 
-# ================= 信源配置加载 =================
+# ================= 信源配置加载（不变） =================
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
     default = [
@@ -246,7 +252,7 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================ 信源健康管理 ================
+# ================ 信源健康管理（不变） ================
 class SourceHealth:
     def __init__(self, max_fails=DISABLE_FAILED_THRESHOLD, cooldown_minutes=DISABLE_COOLDOWN_MINUTES):
         self.max_fails = max_fails
@@ -328,7 +334,7 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
             logger.warning(f"读取 {file_path} 失败: {e}")
     return fallback
 
-# ================ URL去重缓存 ================
+# ================ URL去重缓存（不变） ================
 class URLDedupCache:
     def __init__(self, cache_file=URL_DEDUP_FILE):
         self.cache_file = cache_file
@@ -369,7 +375,7 @@ class URLDedupCache:
             with open(self.cache_file, 'w') as f:
                 json.dump(list(self.url_set), f)
 
-# ================ 失败信源管理 ================
+# ================ 失败信源管理（不变） ================
 def load_disabled_sources() -> Dict[str, dict]:
     if os.path.exists(DISABLED_SOURCES_FILE):
         try:
@@ -419,7 +425,7 @@ def is_source_disabled(url: str) -> bool:
     disabled = load_disabled_sources()
     return url in disabled
 
-# ================= 网络请求重试 =================
+# ================= 网络请求重试（不变） =================
 def retry_on_exception(max_retries=3, delay=1, backoff=2):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -444,7 +450,7 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心 =================
+# ================= 抓取核心（不变） =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances)
     if "voachinese.com" in url:
@@ -647,7 +653,7 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希+URL去重）")
     return all_items, failed_sources
 
-# ================= 失败记录 =================
+# ================= 失败记录（不变） =================
 def log_failed_sources(failed_sources: List[Tuple[str, str]]):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     data = {}
@@ -665,7 +671,7 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         json.dump(data, f, ensure_ascii=False, indent=2)
     update_disabled_sources(failed_sources)
 
-# ================= 历史事件管理 =================
+# ================= 历史事件管理（不变） =================
 def load_previous_events() -> List[str]:
     events = []
     if not os.path.exists("report.md"):
@@ -727,23 +733,38 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析 =================
+# ================= AI 分析（优化批次大小） =================
 def estimate_tokens(text: str) -> int:
     if TIKTOKEN_AVAILABLE:
-        enc = tiktoken.encoding_for_model("gpt-4o-mini")
-        return len(enc.encode(text))
+        try:
+            enc = tiktoken.encoding_for_model("gpt-4o-mini")
+            return len(enc.encode(text))
+        except:
+            return int(len(text) / 1.5)
     else:
         return int(len(text) / 1.5)
 
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
+    if not API_KEY:
+        logger.error("未配置 API_KEY，无法调用 AI")
+        return None
     for attempt in range(max_retries):
         try:
-            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
+            client = openai.OpenAI(
+                base_url=AI_BASE_URL,
+                api_key=API_KEY,
+                timeout=60.0,
+                max_retries=0,
+            )
             response = client.chat.completions.create(
                 model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=4000,
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/your-repo",
+                    "X-Title": "Crawler Monitor",
+                } if "openrouter" in AI_BASE_URL else {}
             )
             content = response.choices[0].message.content
             if content is not None:
@@ -767,7 +788,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
-    # ===== V9 版本：风险点3条简短分点 =====
     prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
 
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
@@ -810,7 +830,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
-    max_content_tokens = 10000
+    # 🚀 优化2：增大单批 token 上限，从 10000 提升到 25000，减少批次数
+    max_content_tokens = 25000
     for block in blocks:
         block_tokens = estimate_tokens(block)
         if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
@@ -822,7 +843,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     if current_batch:
         batches.append(current_batch)
 
-    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
+    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析（优化后）")
 
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
@@ -991,7 +1012,7 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
             new_counts[event] = record
     return new_rows, new_counts
 
-# ================= HTML 报告生成 =================
+# ================= HTML 报告生成（不变） =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
