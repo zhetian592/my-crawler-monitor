@@ -1,4 +1,4 @@
-# crawler.py - 最终稳定版（Gemma 2 9B 免费，无审查）
+# crawler.py - 最终稳定版（使用 openrouter/free 自动路由）
 import os
 import json
 import re
@@ -57,8 +57,8 @@ if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-# ✅ 使用 Google Gemma 2 9B（美国，无审查，免费，中文能力较好）
-AI_MODEL = os.environ.get("AI_MODEL", "google/gemma-2-9b-it:free")
+# ✅ 使用 openrouter/free 自动路由到可用免费模型，最稳定
+AI_MODEL = os.environ.get("AI_MODEL", "openrouter/free")
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
