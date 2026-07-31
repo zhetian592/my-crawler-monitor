@@ -1,4 +1,4 @@
-# crawler.py - 稳定快速版（openrouter/free + 优化参数）
+# crawler.py - 迁移到 OpenRouter（免费模型，自动路由）
 import os
 import json
 import re
@@ -7,7 +7,6 @@ import random
 import hashlib
 import logging
 import sys
-import threading
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -18,9 +17,6 @@ import feedparser
 import openai
 from bs4 import BeautifulSoup
 import difflib
-
-# 导入 openai 异常类型
-from openai import RateLimitError, AuthenticationError, BadRequestError, APITimeoutError
 
 # 尝试导入 tiktoken
 try:
@@ -51,12 +47,14 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# ================= 配置常量 =================
+# ================= 配置常量（迁移至 OpenRouter） =================
+# 优先使用 OpenRouter API Key（你在 Actions 中已有 OPENROUTER_API_KEY）
 API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
 if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
+# 使用 openrouter/free 自动选择可用免费模型
 AI_MODEL = os.environ.get("AI_MODEL", "openrouter/free")
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
@@ -69,7 +67,7 @@ SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
-AI_REQUEST_DELAY = 0.5          # 缩短间隔
+AI_REQUEST_DELAY = 2
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -103,7 +101,7 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# ================= 辅助函数（不变） =================
+# ================= 辅助函数 =================
 def clean_html(text: Optional[str]) -> str:
     if not text:
         return ""
@@ -189,7 +187,7 @@ def get_source_priority(source_name: str) -> int:
         return 3
     return 4
 
-# ================= 信源配置加载（不变） =================
+# ================= 信源配置加载 =================
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
     default = [
@@ -254,7 +252,7 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================ 信源健康管理（不变） ================
+# ================ 信源健康管理 ================
 class SourceHealth:
     def __init__(self, max_fails=DISABLE_FAILED_THRESHOLD, cooldown_minutes=DISABLE_COOLDOWN_MINUTES):
         self.max_fails = max_fails
@@ -336,7 +334,7 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
             logger.warning(f"读取 {file_path} 失败: {e}")
     return fallback
 
-# ================ URL去重缓存（不变） ================
+# ================ URL去重缓存 ================
 class URLDedupCache:
     def __init__(self, cache_file=URL_DEDUP_FILE):
         self.cache_file = cache_file
@@ -377,7 +375,7 @@ class URLDedupCache:
             with open(self.cache_file, 'w') as f:
                 json.dump(list(self.url_set), f)
 
-# ================ 失败信源管理（不变） ================
+# ================ 失败信源管理 ================
 def load_disabled_sources() -> Dict[str, dict]:
     if os.path.exists(DISABLED_SOURCES_FILE):
         try:
@@ -427,7 +425,7 @@ def is_source_disabled(url: str) -> bool:
     disabled = load_disabled_sources()
     return url in disabled
 
-# ================= 网络请求重试（不变） =================
+# ================= 网络请求重试 =================
 def retry_on_exception(max_retries=3, delay=1, backoff=2):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -452,7 +450,7 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心（不变） =================
+# ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances)
     if "voachinese.com" in url:
@@ -655,7 +653,7 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希+URL去重）")
     return all_items, failed_sources
 
-# ================= 失败记录（不变） =================
+# ================= 失败记录 =================
 def log_failed_sources(failed_sources: List[Tuple[str, str]]):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     data = {}
@@ -673,7 +671,7 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         json.dump(data, f, ensure_ascii=False, indent=2)
     update_disabled_sources(failed_sources)
 
-# ================= 历史事件管理（不变） =================
+# ================= 历史事件管理 =================
 def load_previous_events() -> List[str]:
     events = []
     if not os.path.exists("report.md"):
@@ -735,97 +733,49 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= 🚀 AI 分析（最终优化版） =================
-
-# 模块级客户端（线程安全）
-_ai_client = None
-_client_lock = threading.Lock()
-
-# 缓存请求参数
-_AI_REQUEST_KWARGS = {
-    "model": AI_MODEL,
-    "temperature": 0.3,
-    "max_tokens": 4000,
-}
-if "openrouter" in AI_BASE_URL:
-    _AI_REQUEST_KWARGS["extra_headers"] = {
-        "HTTP-Referer": os.environ.get(
-            "APP_REFERER",
-            "https://github.com/zhetian592/my-crawler-monitor"
-        ),
-        "X-Title": "Crawler Monitor",
-    }
-
-def get_ai_client():
-    """线程安全的客户端单例，超时设为 120 秒"""
-    global _ai_client
-    if _ai_client is None:
-        with _client_lock:
-            if _ai_client is None:
-                if not API_KEY:
-                    logger.error("API_KEY 未配置，无法创建客户端")
-                    return None
-                _ai_client = openai.OpenAI(
-                    base_url=AI_BASE_URL,
-                    api_key=API_KEY,
-                    timeout=120.0,       # 增加超时时间，防止大请求被中断
-                    max_retries=0,
-                )
-    return _ai_client
-
+# ================= AI 分析（修改为 OpenRouter，使用 openrouter/free） =================
 def estimate_tokens(text: str) -> int:
-    """更准确的 Token 估算（区分中英文）"""
     if TIKTOKEN_AVAILABLE:
         try:
-            enc = tiktoken.encoding_for_model("gpt-4o-mini")
+            enc = tiktoken.encoding_for_model("gpt-4o-mini")  # 近似估算，对 openrouter/free 也适用
             return len(enc.encode(text))
-        except Exception:
-            pass
-    cn_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
-    other_chars = len(text) - cn_chars
-    return int(cn_chars * 1.5 + other_chars * 0.3)
+        except:
+            return int(len(text) / 1.5)
+    else:
+        return int(len(text) / 1.5)
 
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
-    """带重试的 AI 调用，区分错误类型，并打印详细异常"""
     if not API_KEY:
         logger.error("未配置 API_KEY，无法调用 AI")
         return None
-
-    client = get_ai_client()
-    if client is None:
-        return None
-
     for attempt in range(max_retries):
         try:
+            client = openai.OpenAI(
+                base_url=AI_BASE_URL,
+                api_key=API_KEY,
+                timeout=60.0,
+                max_retries=0,  # 我们自己控制重试
+            )
             response = client.chat.completions.create(
+                model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                **_AI_REQUEST_KWARGS
+                temperature=0.3,
+                max_tokens=4000,
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/your-repo",  # 可改为你的项目地址
+                    "X-Title": "Crawler Monitor",
+                } if "openrouter" in AI_BASE_URL else {}
             )
             content = response.choices[0].message.content
             if content is not None:
                 return content
-        except RateLimitError as e:
-            wait_time = 30 * (attempt + 1)
-            logger.warning(f"限流（RateLimit），等待 {wait_time} 秒后重试: {e}")
-            time.sleep(wait_time)
-        except AuthenticationError as e:
-            logger.error(f"认证失败，请检查 API_KEY: {e}")
-            return None
-        except BadRequestError as e:
-            logger.error(f"请求格式错误（可能是模型不可用或参数问题）: {e}")
-            return None
-        except APITimeoutError as e:
-            logger.warning(f"请求超时，尝试 {attempt+1}/{max_retries}: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
         except Exception as e:
-            # 打印完整异常信息以便排查
-            logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败 - 异常类型: {type(e).__name__}, 详情: {e}")
+            logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
-    logger.error(f"AI 调用在 {max_retries} 次尝试后仍失败")
     return None
 
+# ================= 以下函数（call_ai_unified 及后续）保持不变 =================
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
     if not articles:
         return "无相关内容。\n", []
@@ -836,8 +786,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks.append(block)
 
-    # 调整单批 token 上限为 15000，提高响应速度并避免超时
-    max_content_tokens = int(os.environ.get("MAX_CONTENT_TOKENS", 15000))
     batches = []
     current_batch = []
     current_tokens = 0
@@ -883,6 +831,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
 以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
+    max_content_tokens = 10000
     for block in blocks:
         block_tokens = estimate_tokens(block)
         if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
@@ -894,7 +843,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     if current_batch:
         batches.append(current_batch)
 
-    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析（单批上限 {max_content_tokens} tokens）")
+    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
 
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
@@ -1063,7 +1012,7 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
             new_counts[event] = record
     return new_rows, new_counts
 
-# ================= HTML 报告生成（不变） =================
+# ================= HTML 报告生成 =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
