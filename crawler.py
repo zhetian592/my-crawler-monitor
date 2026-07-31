@@ -1,4 +1,4 @@
-# crawler.py - 最终稳定版（使用 openrouter/free 自动路由）
+# crawler.py - 稳定快速版（openrouter/free + 优化参数）
 import os
 import json
 import re
@@ -57,7 +57,6 @@ if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-# ✅ 使用 openrouter/free 自动路由到可用免费模型，最稳定
 AI_MODEL = os.environ.get("AI_MODEL", "openrouter/free")
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
@@ -70,7 +69,7 @@ SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
-AI_REQUEST_DELAY = 1
+AI_REQUEST_DELAY = 0.5          # 缩短间隔
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -758,7 +757,7 @@ if "openrouter" in AI_BASE_URL:
     }
 
 def get_ai_client():
-    """线程安全的客户端单例"""
+    """线程安全的客户端单例，超时设为 120 秒"""
     global _ai_client
     if _ai_client is None:
         with _client_lock:
@@ -769,7 +768,7 @@ def get_ai_client():
                 _ai_client = openai.OpenAI(
                     base_url=AI_BASE_URL,
                     api_key=API_KEY,
-                    timeout=60.0,
+                    timeout=120.0,       # 增加超时时间，防止大请求被中断
                     max_retries=0,
                 )
     return _ai_client
@@ -787,7 +786,7 @@ def estimate_tokens(text: str) -> int:
     return int(cn_chars * 1.5 + other_chars * 0.3)
 
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
-    """带重试的 AI 调用，区分错误类型"""
+    """带重试的 AI 调用，区分错误类型，并打印详细异常"""
     if not API_KEY:
         logger.error("未配置 API_KEY，无法调用 AI")
         return None
@@ -807,7 +806,7 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
                 return content
         except RateLimitError as e:
             wait_time = 30 * (attempt + 1)
-            logger.warning(f"限流（RateLimit），等待 {wait_time} 秒后重试")
+            logger.warning(f"限流（RateLimit），等待 {wait_time} 秒后重试: {e}")
             time.sleep(wait_time)
         except AuthenticationError as e:
             logger.error(f"认证失败，请检查 API_KEY: {e}")
@@ -820,7 +819,8 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
         except Exception as e:
-            logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
+            # 打印完整异常信息以便排查
+            logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败 - 异常类型: {type(e).__name__}, 详情: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
     logger.error(f"AI 调用在 {max_retries} 次尝试后仍失败")
@@ -836,7 +836,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks.append(block)
 
-    max_content_tokens = int(os.environ.get("MAX_CONTENT_TOKENS", 25000))
+    # 调整单批 token 上限为 15000，提高响应速度并避免超时
+    max_content_tokens = int(os.environ.get("MAX_CONTENT_TOKENS", 15000))
     batches = []
     current_batch = []
     current_tokens = 0
