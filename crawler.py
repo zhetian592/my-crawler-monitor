@@ -1,4 +1,4 @@
-# crawler.py - 最终优化版（客户端单例 + 精细错误处理 + 准确Token估算 + 线程安全）
+# crawler.py - 最终稳定版（Llama 3.1 8B 免费，无审查）
 import os
 import json
 import re
@@ -57,7 +57,8 @@ if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-AI_MODEL = os.environ.get("AI_MODEL", "openai/gpt-4o-mini")
+# ✅ 使用 Meta Llama 3.1 8B（美国，无审查，免费）
+AI_MODEL = os.environ.get("AI_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
@@ -741,14 +742,13 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
 _ai_client = None
 _client_lock = threading.Lock()
 
-# 缓存请求参数（避免每次调用重新构建）
+# 缓存请求参数
 _AI_REQUEST_KWARGS = {
     "model": AI_MODEL,
     "temperature": 0.3,
     "max_tokens": 4000,
 }
 if "openrouter" in AI_BASE_URL:
-    # 从环境变量读取 Referer，若无则使用默认值（请改为你的实际仓库地址）
     _AI_REQUEST_KWARGS["extra_headers"] = {
         "HTTP-Referer": os.environ.get(
             "APP_REFERER",
@@ -762,7 +762,7 @@ def get_ai_client():
     global _ai_client
     if _ai_client is None:
         with _client_lock:
-            if _ai_client is None:  # double-check
+            if _ai_client is None:
                 if not API_KEY:
                     logger.error("API_KEY 未配置，无法创建客户端")
                     return None
@@ -775,24 +775,19 @@ def get_ai_client():
     return _ai_client
 
 def estimate_tokens(text: str) -> int:
-    """
-    更准确的 Token 估算（区分中文和英文）
-    """
+    """更准确的 Token 估算（区分中英文）"""
     if TIKTOKEN_AVAILABLE:
         try:
             enc = tiktoken.encoding_for_model("gpt-4o-mini")
             return len(enc.encode(text))
         except Exception:
             pass
-    # 保守估算：中文字符 1.5 token/字，其他字符 0.3 token/字符
     cn_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
     other_chars = len(text) - cn_chars
     return int(cn_chars * 1.5 + other_chars * 0.3)
 
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
-    """
-    带重试的 AI 调用，区分错误类型，避免无效重试
-    """
+    """带重试的 AI 调用，区分错误类型"""
     if not API_KEY:
         logger.error("未配置 API_KEY，无法调用 AI")
         return None
