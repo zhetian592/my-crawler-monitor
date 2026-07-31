@@ -2,9 +2,10 @@ name: Tier1 - Manual
 on:
   workflow_dispatch:
 
+# 防止同一工作流多次手动触发同时运行导致排队
 concurrency:
   group: tier1-manual
-  cancel-in-progress: false
+  cancel-in-progress: false   # 后触发的排队等待，不会取消正在运行的
 
 jobs:
   crawl:
@@ -13,7 +14,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # 仍可使用 PAT_TOKEN（如果需要触发其他工作流），但最好也更新此令牌
           token: ${{ secrets.PAT_TOKEN }}
           fetch-depth: 0
 
@@ -35,10 +35,8 @@ jobs:
 
       - name: Run crawler
         env:
-          # 替换为 OpenRouter API Key（你已经在 Secrets 中有了 OPENROUTER_API_KEY）
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # 可选：如需换模型，可设置 AI_MODEL
-          # AI_MODEL: "google/gemini-2.0-flash-lite-preview-02-05"
+          # 🔑 关键修改：使用新令牌 Secret（GH_MODELS_TOKEN_NEW）
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN_NEW }}
         run: python crawler.py
 
       - name: Generate commit message
@@ -54,6 +52,5 @@ jobs:
           commit_user_name: "github-actions[bot]"
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
           commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          # 使用默认的 GITHUB_TOKEN，无需额外维护
-          token: ${{ secrets.GITHUB_TOKEN }}
-        # 删除 env: GITHUB_TOKEN 部分，因为上面已经用 token 参数传递
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
