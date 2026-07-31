@@ -1,4 +1,4 @@
-# crawler.py - 迁移到 OpenRouter（免费模型，自动路由）
+# crawler.py - 稳定版（保留最近2天数据/报告）+ 信源抓取优化
 import os
 import json
 import re
@@ -47,16 +47,10 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# ================= 配置常量（迁移至 OpenRouter） =================
-# 优先使用 OpenRouter API Key（你在 Actions 中已有 OPENROUTER_API_KEY）
-API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
-if not API_KEY:
-    logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
-
-AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-# 使用 openrouter/free 自动选择可用免费模型
-AI_MODEL = os.environ.get("AI_MODEL", "openrouter/free")
-
+# ================= 配置常量 =================
+GH_TOKEN = os.environ.get("GH_MODELS_TOKEN_NEW") or os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
+AI_BASE_URL = "https://models.inference.ai.azure.com"
+AI_MODEL = "gpt-4o-mini"
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
 if os.environ.get("HTTP_PROXY"):
@@ -733,38 +727,23 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析（修改为 OpenRouter，使用 openrouter/free） =================
+# ================= AI 分析 =================
 def estimate_tokens(text: str) -> int:
     if TIKTOKEN_AVAILABLE:
-        try:
-            enc = tiktoken.encoding_for_model("gpt-4o-mini")  # 近似估算，对 openrouter/free 也适用
-            return len(enc.encode(text))
-        except:
-            return int(len(text) / 1.5)
+        enc = tiktoken.encoding_for_model("gpt-4o-mini")
+        return len(enc.encode(text))
     else:
         return int(len(text) / 1.5)
 
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
-    if not API_KEY:
-        logger.error("未配置 API_KEY，无法调用 AI")
-        return None
     for attempt in range(max_retries):
         try:
-            client = openai.OpenAI(
-                base_url=AI_BASE_URL,
-                api_key=API_KEY,
-                timeout=60.0,
-                max_retries=0,  # 我们自己控制重试
-            )
+            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
             response = client.chat.completions.create(
                 model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=4000,
-                extra_headers={
-                    "HTTP-Referer": "https://github.com/your-repo",  # 可改为你的项目地址
-                    "X-Title": "Crawler Monitor",
-                } if "openrouter" in AI_BASE_URL else {}
             )
             content = response.choices[0].message.content
             if content is not None:
@@ -775,7 +754,6 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
                 time.sleep(2 ** attempt)
     return None
 
-# ================= 以下函数（call_ai_unified 及后续）保持不变 =================
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
     if not articles:
         return "无相关内容。\n", []
@@ -789,6 +767,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
+    # ===== V9 版本：风险点3条简短分点 =====
     prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
 
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
