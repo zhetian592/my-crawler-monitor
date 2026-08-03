@@ -1,4 +1,4 @@
-# crawler.py - 最终修复版（相对链接补全 + 防404 + 稳健HTML转换）
+# crawler.py - 优化版（并发批次 + 链接防404 + 超时保护）
 import os
 import json
 import re
@@ -51,7 +51,7 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# ================= 配置常量 =================
+# ================= 配置常量（优化后） =================
 API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
 if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
@@ -60,7 +60,7 @@ AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
 AI_MODEL = os.environ.get("AI_MODEL", "openrouter/free")
 
 AI_JSON_MODE = os.environ.get("AI_JSON_MODE", "false").lower() == "true"
-AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 300))
+AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 600))   # 增加到 10 分钟
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
@@ -71,7 +71,7 @@ KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 6
+MAX_WORKERS = 3                     # 降低抓取并发，减少被屏蔽风险
 AI_REQUEST_DELAY = 0.5
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
@@ -79,7 +79,7 @@ DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
 CACHE_TTL = 86400 * 7
 
-AI_CONCURRENCY_LIMIT = int(os.environ.get("AI_CONCURRENCY_LIMIT", "1"))
+AI_CONCURRENCY_LIMIT = int(os.environ.get("AI_CONCURRENCY_LIMIT", "2"))   # 允许同时处理 2 批
 
 EVENT_COUNTS_FILE = "event_counts.json"
 HEALTHY_NITTER_FILE = "healthy_nitter.json"
@@ -530,7 +530,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
         feed = feedparser.parse(resp.content)
         cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
         items = []
-        # 获取 RSS 频道的主页链接，用于补全相对路径
         feed_base = feed.feed.get('link', '')
         for entry in feed.entries:
             published_str = entry.get("published", entry.get("updated", ""))
@@ -542,18 +541,16 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
             if not raw_link:
                 continue
 
-            # ★ 补全相对链接：优先用 RSS 频道主页，其次用 original_url
+            # 补全相对链接
             if not raw_link.startswith(("http://", "https://")):
                 base = feed_base if feed_base else original_url
                 link = urljoin(base, raw_link)
             else:
                 link = raw_link
 
-            # 如果原始信源是 x.com，则统一转换为官方 x.com 链接
             if "x.com/" in original_url:
                 link = convert_to_official_x_link(link)
 
-            # 去重检查（放在转换后）
             if url_cache.seen(link):
                 continue
 
@@ -568,7 +565,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
                 continue
             processed_hashes.add(h)
 
-            # 来源名称
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -769,10 +765,9 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= 🚀 AI 分析（超时保护 + 后备规则） =================
+# ================= AI 分析（并发优化） =================
 _ai_client = None
 _client_lock = threading.Lock()
-
 AI_SEMAPHORE = threading.Semaphore(AI_CONCURRENCY_LIMIT)
 
 _AI_KWARGS_CACHE = None
@@ -897,7 +892,6 @@ NEGATIVE_KEYWORDS = [
 ]
 
 def rule_based_filter(articles: List[Dict]) -> List[Dict]:
-    """使用负面关键词匹配，筛选可能涉华负面的文章，返回表格行列表"""
     rows = []
     seen_hashes = set()
     for art in articles:
@@ -912,7 +906,6 @@ def rule_based_filter(articles: List[Dict]) -> List[Dict]:
             link = art.get("link", "")
             risk = "检测到敏感关键词"
             level = "中"
-            # 防止事件简述含 | 破坏表格
             safe_title = art['title'][:80].replace("|", "｜")
             row = f"| {safe_title} | [查看]({link}) | {risk} | {source_name} | {time_ago} | {level} |"
             rows.append(row)
@@ -949,14 +942,14 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     ai_cache = load_ai_cache()
     all_rows = []
 
-    # 组装待分析块
     blocks_with_meta = []
     for art in articles:
         meta = f"发布时间：{art.get('time_ago', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks_with_meta.append(block)
 
-    max_content_tokens = int(os.environ.get("MAX_CONTENT_TOKENS", 8000))
+    # 减小每批大小，加快单批速度
+    max_content_tokens = int(os.environ.get("MAX_CONTENT_TOKENS", 6000))
     batches = []
     current_blocks = []
     current_tokens = 0
@@ -982,12 +975,11 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
     logger.info(f"内容分为 {len(batches)} 批（单批上限 {max_content_tokens} tokens）")
 
-    # 处理批次（带整体超时和后备方案）
+    # 处理批次
     def process_single_batch(batch_blocks):
         key = batch_key(batch_blocks)
         now = time.time()
 
-        # 检查缓存
         if key in ai_cache:
             cached_entry = ai_cache[key]
             if isinstance(cached_entry, dict) and "created_at" in cached_entry:
@@ -1039,7 +1031,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
             logger.warning(f"批次 JSON 解析失败: {e}, 原始片段: {json_str[:200]}")
             return None
 
-    # 先收集缓存命中的批次
     cached_rows = []
     uncached_batches = []
     for batch_blocks in batches:
@@ -1085,7 +1076,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     if not completed_rows:
         return "无相关内容。\n", []
 
-    # 去重合并
     unique_rows, events_in_report = deduplicate_and_mark_new(completed_rows, old_events)
 
     if unique_rows:
@@ -1179,7 +1169,6 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         first_event, first_src, first_link, first_risk, first_time, first_level, _, _ = best
         sources = sorted(set([item[1] for item in group]))
         source_display = "、".join(sources) if len(sources) <= 3 else f"{len(sources)}个信源"
-        # 转义事件简述中的 |
         safe_event = first_event.replace("|", "｜")
         if len(sources) > 1:
             safe_event += f"（{len(sources)}个信源）"
@@ -1226,7 +1215,7 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
             new_counts[event] = record
     return new_rows, new_counts
 
-# ================= HTML 报告生成（稳健链接替换） =================
+# ================= HTML 报告生成 =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
@@ -1248,7 +1237,6 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 continue
             html_table += "<tr>\n"
             for cell in cells:
-                # 使用更稳健的替换：匹配 [text](url)，url 不含 ) 字符
                 cell = re.sub(
                     r'\[([^\]]*)\]\(([^\)]+)\)',
                     r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>',
@@ -1405,7 +1393,7 @@ def main():
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    logger.info("=== 调用 AI 分析（超时保护 + 后备规则） ===")
+    logger.info("=== 调用 AI 分析（并发优化） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
 
     if report_table != "无相关内容。\n":
