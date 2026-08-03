@@ -1,4 +1,4 @@
-# crawler.py - 最终修复版（链接显示404修复 + 稳健HTML转换）
+# crawler.py - 稳定版（保留最近2天数据/报告）+ 信源抓取优化
 import os
 import json
 import re
@@ -7,13 +7,10 @@ import random
 import hashlib
 import logging
 import sys
-import threading
-import pickle
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
 from logging.handlers import RotatingFileHandler
-from urllib.parse import urljoin
 
 import requests
 import feedparser
@@ -21,15 +18,14 @@ import openai
 from bs4 import BeautifulSoup
 import difflib
 
-from openai import RateLimitError, AuthenticationError, BadRequestError, APITimeoutError
-
+# 尝试导入 tiktoken
 try:
     import tiktoken
     TIKTOKEN_AVAILABLE = True
 except ImportError:
     TIKTOKEN_AVAILABLE = False
 
-# ================= 日志配置 =================
+# ================= 日志配置（轮转） =================
 LOG_FILE = "crawler.log"
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
@@ -52,16 +48,9 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 # ================= 配置常量 =================
-API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
-if not API_KEY:
-    logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
-
-AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-AI_MODEL = os.environ.get("AI_MODEL", "openrouter/free")
-
-AI_JSON_MODE = os.environ.get("AI_JSON_MODE", "false").lower() == "true"
-AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 300))
-
+GH_TOKEN = os.environ.get("GH_MODELS_TOKEN_NEW") or os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
+AI_BASE_URL = "https://models.inference.ai.azure.com"
+AI_MODEL = "gpt-4o-mini"
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
 if os.environ.get("HTTP_PROXY"):
@@ -72,14 +61,11 @@ SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
-AI_REQUEST_DELAY = 0.5
+AI_REQUEST_DELAY = 2
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
-CACHE_TTL = 86400 * 7
-
-AI_CONCURRENCY_LIMIT = int(os.environ.get("AI_CONCURRENCY_LIMIT", "1"))
 
 EVENT_COUNTS_FILE = "event_counts.json"
 HEALTHY_NITTER_FILE = "healthy_nitter.json"
@@ -87,7 +73,6 @@ HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 URL_DEDUP_FILE = "url_dedup.json"
-AI_CACHE_FILE = "ai_cache.pkl"
 
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net",
@@ -156,11 +141,6 @@ def format_time_ago(pub_dt: Optional[datetime]) -> str:
 def content_hash(title: str, summary: str) -> str:
     text = (title + " " + summary)[:500]
     return hashlib.md5(text.encode('utf-8')).hexdigest()
-
-def batch_key(blocks: List[str]) -> str:
-    sorted_blocks = sorted(blocks)
-    combined = "\n".join(sorted_blocks).encode('utf-8')
-    return hashlib.sha256(combined).hexdigest()
 
 def convert_to_official_x_link(link: str) -> str:
     if not link:
@@ -535,9 +515,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
             if pub_dt is not None and pub_dt < cutoff:
                 continue
             link = entry.get("link", "")
-            # 补全相对链接为绝对 URL（修复 404 问题）
-            if link:
-                link = urljoin(rss_url, link)
             link = convert_to_official_x_link(link)
             if url_cache.seen(link):
                 continue
@@ -750,334 +727,133 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= 🚀 AI 分析（超时保护 + 后备规则） =================
-_ai_client = None
-_client_lock = threading.Lock()
-
-AI_SEMAPHORE = threading.Semaphore(AI_CONCURRENCY_LIMIT)
-
-_AI_KWARGS_CACHE = None
-
-def build_ai_request_kwargs():
-    kwargs = {
-        "model": AI_MODEL,
-        "temperature": 0.3,
-        "max_tokens": 1200,
-    }
-    if AI_JSON_MODE:
-        kwargs["response_format"] = {"type": "json_object"}
-    if "openrouter" in AI_BASE_URL:
-        kwargs["extra_headers"] = {
-            "HTTP-Referer": os.environ.get("APP_REFERER", "https://github.com/zhetian592/my-crawler-monitor"),
-            "X-Title": "Crawler Monitor",
-        }
-    return kwargs
-
-def get_ai_kwargs():
-    global _AI_KWARGS_CACHE
-    if _AI_KWARGS_CACHE is None:
-        _AI_KWARGS_CACHE = build_ai_request_kwargs()
-    return _AI_KWARGS_CACHE
-
-def get_ai_client():
-    global _ai_client
-    if _ai_client is None:
-        with _client_lock:
-            if _ai_client is None:
-                if not API_KEY:
-                    logger.error("API_KEY 未配置，无法创建客户端")
-                    return None
-                _ai_client = openai.OpenAI(
-                    base_url=AI_BASE_URL,
-                    api_key=API_KEY,
-                    timeout=90.0,
-                    max_retries=0,
-                )
-    return _ai_client
-
+# ================= AI 分析 =================
 def estimate_tokens(text: str) -> int:
     if TIKTOKEN_AVAILABLE:
-        try:
-            enc = tiktoken.encoding_for_model("gpt-4o-mini")
-            return len(enc.encode(text))
-        except Exception:
-            pass
-    cn_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
-    other_chars = len(text) - cn_chars
-    return int(cn_chars * 1.2 + other_chars * 0.25)
+        enc = tiktoken.encoding_for_model("gpt-4o-mini")
+        return len(enc.encode(text))
+    else:
+        return int(len(text) / 1.5)
 
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
-    if not API_KEY:
-        return None
-    client = get_ai_client()
-    if client is None:
-        return None
-    kwargs = get_ai_kwargs()
     for attempt in range(max_retries):
         try:
+            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
             response = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are a sentiment analyst. Output ONLY a valid JSON array. Do not include any other text, explanation, or markdown."},
-                    {"role": "user", "content": prompt}
-                ],
-                **kwargs
+                model=AI_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=4000,
             )
             content = response.choices[0].message.content
             if content is not None:
                 return content
-        except RateLimitError as e:
-            wait_time = 30 * (attempt + 1)
-            logger.warning(f"限流，等待 {wait_time}s 重试: {e}")
-            time.sleep(wait_time)
-        except AuthenticationError as e:
-            logger.error(f"认证失败: {e}")
-            return None
-        except BadRequestError as e:
-            logger.error(f"请求格式错误: {e}")
-            return None
-        except APITimeoutError as e:
-            logger.warning(f"超时，尝试 {attempt+1}/{max_retries}: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
         except Exception as e:
-            logger.warning(f"AI调用失败 (尝试 {attempt+1}): {type(e).__name__}: {e}")
+            logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
     return None
-
-def extract_json(text: str) -> Optional[str]:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r'```(?:json)?\s*', '', text)
-        text = re.sub(r'```$', '', text)
-    start = text.find('[')
-    end = text.rfind(']')
-    if start != -1 and end != -1 and start <= end:
-        return text[start:end+1]
-    return None
-
-def should_skip(article: Dict) -> bool:
-    title = article.get("title", "")
-    if title.startswith("RT ") or len(title) < 5:
-        return True
-    skip_kw = ["彩票", "娱乐八卦", "体育赛事", "天气预报", "星座", "综艺", "搞笑"]
-    if any(k in title for k in skip_kw):
-        return True
-    return False
-
-# ---------- 后备规则过滤 ----------
-NEGATIVE_KEYWORDS = [
-    "打压", "镇压", "抗议", "维权", "人权", "审查", "监控", "失踪", "迫害",
-    "拘留", "逮捕", "打压", "言论自由", "封锁", "屏蔽", "防火墙", "维稳",
-    "强拆", "信访", "上访", "黑监狱", "劳教", "精神病院", "活摘", "种族灭绝",
-    "集中营", "再教育营", "新疆", "西藏", "台湾", "香港", "天安门", "法轮功",
-    "中共", "独裁", "专制", "独裁者", "一党专政", "新闻自由", "互联网审查",
-    "言论管控", "舆论控制", "洗脑", "宣传", "低人权优势", "血汗工厂",
-    "环境污染", "毒奶粉", "疫苗丑闻", "食品安全", "城管", "暴力执法",
-    "群体事件", "社会不公", "贫富差距", "996", "内卷", "躺平"
-]
-
-def rule_based_filter(articles: List[Dict]) -> List[Dict]:
-    """使用负面关键词匹配，筛选可能涉华负面的文章，返回表格行列表"""
-    rows = []
-    seen_hashes = set()
-    for art in articles:
-        text = art["title"] + " " + art["summary"]
-        if any(kw in text for kw in NEGATIVE_KEYWORDS):
-            h = content_hash(art["title"], art["summary"])
-            if h in seen_hashes:
-                continue
-            seen_hashes.add(h)
-            source_name = get_display_source(art.get("source_name", "未知"))
-            time_ago = art.get("time_ago", "未知")
-            link = art.get("link", "")
-            risk = "检测到敏感关键词"
-            level = "中"
-            # 防止事件简述含 | 破坏表格
-            safe_title = art['title'][:80].replace("|", "｜")
-            row = f"| {safe_title} | [查看]({link}) | {risk} | {source_name} | {time_ago} | {level} |"
-            rows.append(row)
-    return rows
-
-def load_ai_cache() -> Dict:
-    if os.path.exists(AI_CACHE_FILE):
-        try:
-            with open(AI_CACHE_FILE, 'rb') as f:
-                cache = pickle.load(f)
-                if isinstance(cache, dict):
-                    for key, value in cache.items():
-                        if isinstance(value, list):
-                            cache[key] = {"items": value, "created_at": time.time()}
-                    return cache
-        except Exception as e:
-            logger.warning(f"加载AI缓存失败: {e}")
-    return {}
-
-def save_ai_cache(cache: Dict):
-    try:
-        with open(AI_CACHE_FILE, 'wb') as f:
-            pickle.dump(cache, f)
-    except Exception as e:
-        logger.warning(f"保存AI缓存失败: {e}")
 
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
     if not articles:
         return "无相关内容。\n", []
 
-    articles = [a for a in articles if not should_skip(a)]
-    logger.info(f"预过滤后剩余 {len(articles)} 条待分析")
-
-    ai_cache = load_ai_cache()
-    all_rows = []
-
-    # 组装待分析块
-    blocks_with_meta = []
+    blocks = []
     for art in articles:
         meta = f"发布时间：{art.get('time_ago', '未知')} | 来源：{get_display_source(art.get('source_name', '未知'))}"
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
-        blocks_with_meta.append(block)
+        blocks.append(block)
 
-    max_content_tokens = int(os.environ.get("MAX_CONTENT_TOKENS", 8000))
     batches = []
-    current_blocks = []
+    current_batch = []
     current_tokens = 0
+    # ===== V9 版本：风险点3条简短分点 =====
+    prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
 
-    prompt_prefix = """根据以下内容，筛选出涉华负面舆情条目，以 JSON 数组输出。
-每个对象必须包含字段：event(简述), link(原文链接), risk(风险点，格式"1. xx 2. xx 3. xx"，每条≤20字), source(来源), time(时间), level(高/中/低)。
-严格要求：只输出一个 JSON 数组，不要任何解释、代码块标记或额外文字。没有符合内容时输出 []。
+**一、请严格遵守以下过滤规则（忽略极低价值内容）**：
+- 纯转发（RT/转发）且无新增实质性评论。
+- 仅包含链接，无任何文字说明或文字少于10个字符。
+- 仅含表情符号、无意义的感叹或口号（如"太可怕了""支持"等）。
+- 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
+- 与涉华负面舆情无关的个人生活、娱乐、广告等。
 
-抓取内容：
-"""
+**二、必须保留的内容（不得忽略）**：
+- 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
+- 即使内容没有直接提及"中国"或"中共"，但事件发生在中国境内或涉及中国公民，也应保留。
+- 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
+
+**三、输出格式要求**：
+- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |`
+- 每行一条负面内容，按风险等级（高>中>低）和来源优先级排序。
+- 原文链接列使用 `[查看](URL)` 格式。
+- "信息来源"列直接使用输入中提供的来源名称。
+- "发布多久前"列直接使用输入中的发布时间。
+- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性：
+  - **高**：涉及重大政治敏感议题，且传播力强、煽动性高。
+  - **中**：涉及较敏感社会议题，有一定传播空间。
+  - **低**：一般性批评或事实报道，传播范围有限。
+- 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
+- 不要添加任何额外解释、标题或总结。
+
+**四、风险点撰写要求（核心）**：
+"潜在风险点"用**3条简短分点**描述，格式如下：
+1. 涉及XX事件（简述事件）
+2. 可能引发XX影响（分析影响）
+3. 情绪化内容可能引发XX（分析传播性/煽动性）
+
+每条不超过20字，总字数控制在50字以内。
+
+**格式示例**：
+"1. 涉及广西洪水灾害
+2. 可能引发公众对政府救援能力的质疑
+3. 情绪化内容引发共鸣，可能激起公众的不满情绪"
+
+以下是抓取到的部分内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
-
-    for block in blocks_with_meta:
+    max_content_tokens = 10000
+    for block in blocks:
         block_tokens = estimate_tokens(block)
-        if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_blocks:
-            batches.append(current_blocks)
-            current_blocks = []
+        if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
+            batches.append(current_batch)
+            current_batch = []
             current_tokens = 0
-        current_blocks.append(block)
+        current_batch.append(block)
         current_tokens += block_tokens
-    if current_blocks:
-        batches.append(current_blocks)
+    if current_batch:
+        batches.append(current_batch)
 
-    logger.info(f"内容分为 {len(batches)} 批（单批上限 {max_content_tokens} tokens）")
+    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
 
-    # 处理批次（带整体超时和后备方案）
-    def process_single_batch(batch_blocks):
-        key = batch_key(batch_blocks)
-        now = time.time()
+    all_table_rows = []
+    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
+    table_sep = "|----------|----------|------------|----------|------------|------------|"
+    for batch_idx, batch in enumerate(batches, 1):
+        combined = "\n".join(batch)
+        prompt = prompt_prefix + combined
+        content = call_ai_with_retry(prompt)
+        if content is None:
+            logger.error(f"AI 分析批次 {batch_idx} 重试失败，跳过")
+            continue
+        lines = content.split("\n")
+        in_table = False
+        for line in lines:
+            if line.startswith("|") and "|" in line:
+                if not in_table:
+                    in_table = True
+                if re.match(r'^\|[\s\-:]+\|$', line):
+                    continue
+                if line.startswith(table_header):
+                    continue
+                cells = [c.strip() for c in line.split("|")[1:-1]]
+                if len(cells) == 6:
+                    all_table_rows.append(line)
+        time.sleep(AI_REQUEST_DELAY)
 
-        # 检查缓存
-        if key in ai_cache:
-            cached_entry = ai_cache[key]
-            if isinstance(cached_entry, dict) and "created_at" in cached_entry:
-                if now - cached_entry["created_at"] < CACHE_TTL:
-                    cached_items = cached_entry["items"]
-                    rows = []
-                    for item in cached_items:
-                        if all(k in item for k in ("event","link","risk","source","time","level")):
-                            # 转义事件简述中的 |
-                            safe_event = item['event'].replace("|", "｜")
-                            row = f"| {safe_event} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
-                            rows.append(row)
-                    return rows
-                else:
-                    logger.debug("缓存已过期，将重新调用 AI")
-            else:
-                ai_cache[key] = {"items": cached_entry, "created_at": now}
-                rows = []
-                for item in cached_entry:
-                    if all(k in item for k in ("event","link","risk","source","time","level")):
-                        safe_event = item['event'].replace("|", "｜")
-                        row = f"| {safe_event} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
-                        rows.append(row)
-                return rows
-
-        prompt = prompt_prefix + "\n".join(batch_blocks)
-        with AI_SEMAPHORE:
-            raw_response = call_ai_with_retry(prompt)
-        if raw_response is None:
-            return None
-
-        json_str = extract_json(raw_response)
-        if json_str is None:
-            logger.warning(f"批次未提取到 JSON，原始开头: {raw_response[:150]}")
-            return None
-
-        try:
-            parsed = json.loads(json_str)
-            if not isinstance(parsed, list):
-                raise ValueError("JSON 不是数组")
-            ai_cache[key] = {"items": parsed, "created_at": time.time()}
-            rows = []
-            for item in parsed:
-                if all(k in item for k in ("event","link","risk","source","time","level")):
-                    safe_event = item['event'].replace("|", "｜")
-                    row = f"| {safe_event} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
-                    rows.append(row)
-            return rows
-        except Exception as e:
-            logger.warning(f"批次 JSON 解析失败: {e}, 原始片段: {json_str[:200]}")
-            return None
-
-    # 先收集缓存命中的批次
-    cached_rows = []
-    uncached_batches = []
-    for batch_blocks in batches:
-        key = batch_key(batch_blocks)
-        if key in ai_cache and isinstance(ai_cache[key], dict) and "created_at" in ai_cache[key] and time.time() - ai_cache[key]["created_at"] < CACHE_TTL:
-            rows = process_single_batch(batch_blocks)
-            if rows:
-                cached_rows.extend(rows)
-        else:
-            uncached_batches.append(batch_blocks)
-
-    ai_start_time = time.time()
-    completed_rows = list(cached_rows)
-    ai_failed = False
-
-    if uncached_batches:
-        with ThreadPoolExecutor(max_workers=AI_CONCURRENCY_LIMIT) as executor:
-            future_to_batch = {executor.submit(process_single_batch, b): b for b in uncached_batches}
-            try:
-                for future in as_completed(future_to_batch, timeout=AI_TIMEOUT_SECONDS - (time.time() - ai_start_time)):
-                    try:
-                        rows = future.result(timeout=30)
-                        if rows is not None:
-                            completed_rows.extend(rows)
-                        else:
-                            ai_failed = True
-                            logger.warning("某个批次 AI 调用返回 None")
-                    except Exception as e:
-                        ai_failed = True
-                        logger.error(f"处理批次异常: {e}")
-            except FuturesTimeoutError:
-                ai_failed = True
-                logger.error(f"AI 分析整体超时（{AI_TIMEOUT_SECONDS}s），未完成的批次将使用后备过滤方案")
-                for future in future_to_batch:
-                    future.cancel()
-
-    if ai_failed or len(completed_rows) == 0:
-        logger.warning("AI 分析不完整或为空，启用内置规则过滤后备")
-        rule_rows = rule_based_filter(articles)
-        completed_rows.extend(rule_rows)
-        logger.info(f"后备规则过滤补充了 {len(rule_rows)} 行")
-
-    if not completed_rows:
+    if not all_table_rows:
         return "无相关内容。\n", []
 
-    # 去重合并（已包含 | 转义）
-    unique_rows, events_in_report = deduplicate_and_mark_new(completed_rows, old_events)
-
-    if unique_rows:
-        table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
-        table_sep = "|----------|----------|------------|----------|------------|------------|"
-        final_table = "\n".join([table_header, table_sep] + unique_rows)
-    else:
-        final_table = "无相关内容。\n"
-
-    save_ai_cache(ai_cache)
+    unique_rows, events_in_report = deduplicate_and_mark_new(all_table_rows, old_events)
+    final_table = "\n".join([table_header, table_sep] + unique_rows)
     return final_table, events_in_report
 
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
@@ -1086,7 +862,12 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         cells = [c.strip() for c in row.split("|")[1:-1]]
         if len(cells) != 6:
             continue
-        event, link, risk, source, time_ago, risk_level = cells
+        event = cells[0]
+        link = cells[1]
+        risk = cells[2]
+        source = cells[3]
+        time_ago = cells[4]
+        risk_level = cells[5]
         pub_dt = None
         if "小时前" in time_ago:
             try:
@@ -1110,16 +891,15 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
 
     merged = []
     used = [False] * len(events_data)
-    for i in range(len(events_data)):
+    for i, (event_i, src_i, link_i, risk_i, time_ago_i, risk_level_i, pub_dt_i, row_i) in enumerate(events_data):
         if used[i]:
             continue
-        event_i = events_data[i][0]
-        group = [events_data[i]]
-        for j in range(len(events_data)):
+        group = [(event_i, src_i, link_i, risk_i, time_ago_i, risk_level_i, pub_dt_i, row_i)]
+        for j, (event_j, src_j, link_j, risk_j, time_ago_j, risk_level_j, pub_dt_j, row_j) in enumerate(events_data):
             if i == j or used[j]:
                 continue
-            if is_similar(event_i, events_data[j][0]):
-                group.append(events_data[j])
+            if is_similar(event_i, event_j):
+                group.append((event_j, src_j, link_j, risk_j, time_ago_j, risk_level_j, pub_dt_j, row_j))
                 used[j] = True
         used[i] = True
         merged.append(group)
@@ -1127,52 +907,53 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
     unique_rows = []
     events_in_report = []
     for group in merged:
-        best = None
+        best_item = None
         best_pub = None
-        best_prio = 999
+        best_priority = 999
         for item in group:
-            _, src, _, _, _, _, pub_dt, _ = item
-            prio = get_source_priority(src)
-            if best is None:
-                best = item
+            event, src, link, risk, time_ago, risk_level, pub_dt, row = item
+            priority = get_source_priority(src)
+            if best_item is None:
+                best_item = item
                 best_pub = pub_dt
-                best_prio = prio
+                best_priority = priority
             else:
                 if pub_dt and best_pub:
                     if pub_dt > best_pub:
-                        best = item
+                        best_item = item
                         best_pub = pub_dt
-                        best_prio = prio
-                    elif pub_dt == best_pub and prio < best_prio:
-                        best = item
+                        best_priority = priority
+                    elif pub_dt == best_pub and priority < best_priority:
+                        best_item = item
                         best_pub = pub_dt
-                        best_prio = prio
+                        best_priority = priority
                 elif pub_dt and not best_pub:
-                    best = item
+                    best_item = item
                     best_pub = pub_dt
-                    best_prio = prio
+                    best_priority = priority
                 elif not pub_dt and best_pub:
                     pass
                 else:
-                    if prio < best_prio:
-                        best = item
+                    if priority < best_priority:
+                        best_item = item
                         best_pub = pub_dt
-                        best_prio = prio
-        first_event, first_src, first_link, first_risk, first_time, first_level, _, _ = best
-        sources = sorted(set([item[1] for item in group]))
-        source_display = "、".join(sources) if len(sources) <= 3 else f"{len(sources)}个信源"
-        # 转义事件简述中的 |
-        safe_event = first_event.replace("|", "｜")
-        if len(sources) > 1:
-            safe_event += f"（{len(sources)}个信源）"
-        new_row = f"| {safe_event} | [查看]({first_link}) | {first_risk} | {source_display} | {first_time} | {first_level} |"
+                        best_priority = priority
+        first_event, first_src, first_link, first_risk, first_time_ago, first_risk_level, _, _ = best_item
+        sources = sorted(set([s for _, s, _, _, _, _, _, _ in group]))
+        source_count = len(sources)
+        source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
+        event_text = first_event
+        if source_count > 1:
+            event_text = f"{event_text}（{source_count}个信源）"
+        new_cells = [event_text, first_link, first_risk, source_display, first_time_ago, first_risk_level]
         is_new = True
         for old in old_events:
             if is_similar(first_event, old):
                 is_new = False
                 break
         if is_new:
-            new_row = "| 🆕 " + new_row[2:]
+            new_cells[0] = "🆕 " + new_cells[0]
+        new_row = "| " + " | ".join(new_cells) + " |"
         unique_rows.append(new_row)
         events_in_report.append(first_event)
     return unique_rows, events_in_report
@@ -1194,21 +975,23 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
 
         if count >= MAX_REPEAT_COUNT:
             if last_seen and (today - last_seen).days < COOLDOWN_DAYS:
-                logger.info(f"隐藏重复事件（冷却期）: {event[:50]}")
+                logger.info(f"隐藏重复事件（冷却期内）: {event[:50]}")
                 new_counts[event] = {"count": count, "last_seen": today.isoformat()}
                 continue
             else:
                 count = 1
         else:
             count += 1
+
         new_rows.append(row)
         new_counts[event] = {"count": count, "last_seen": today.isoformat()}
+
     for event, record in event_counts.items():
         if event not in new_counts:
             new_counts[event] = record
     return new_rows, new_counts
 
-# ================= HTML 报告生成（链接修复） =================
+# ================= HTML 报告生成 =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
@@ -1230,12 +1013,10 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 continue
             html_table += "<tr>\n"
             for cell in cells:
-                # 使用更稳健的替换：匹配 [text](url)，其中 url 不包含 )
-                cell = re.sub(
-                    r'\[([^\]]*)\]\(([^\)]+)\)',
-                    r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>',
-                    cell
-                )
+                link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
+                if link_match:
+                    text, url = link_match.group(1), link_match.group(2)
+                    cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
                 html_table += f"<td>{cell}</td>\n"
             html_table += "</tr>\n"
         else:
@@ -1387,7 +1168,7 @@ def main():
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    logger.info("=== 调用 AI 分析（超时保护 + 后备规则） ===")
+    logger.info("=== 调用 AI 分析（统一分析，AI 自动识别报告并优先展示） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
 
     if report_table != "无相关内容。\n":
