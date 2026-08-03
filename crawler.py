@@ -1,4 +1,4 @@
-# crawler.py - 最终修复版（链接显示404修复 + 稳健HTML转换）
+# crawler.py - 最终修复版（相对链接补全 + 防404 + 稳健HTML转换）
 import os
 import json
 import re
@@ -163,6 +163,7 @@ def batch_key(blocks: List[str]) -> str:
     return hashlib.sha256(combined).hexdigest()
 
 def convert_to_official_x_link(link: str) -> str:
+    """仅将 nitter 链接转换为 x.com 链接，不改变其他链接"""
     if not link:
         return link
     replacements = [
@@ -464,7 +465,7 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心 =================
+# ================= 抓取核心（★ 链接404修复） =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances)
     if "voachinese.com" in url:
@@ -529,18 +530,33 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
         feed = feedparser.parse(resp.content)
         cutoff = datetime.utcnow() - timedelta(hours=time_window_hours)
         items = []
+        # 获取 RSS 频道的主页链接，用于补全相对路径
+        feed_base = feed.feed.get('link', '')
         for entry in feed.entries:
             published_str = entry.get("published", entry.get("updated", ""))
             pub_dt = parse_published_strict(published_str)
             if pub_dt is not None and pub_dt < cutoff:
                 continue
-            link = entry.get("link", "")
-            # 补全相对链接为绝对 URL（修复 404 问题）
-            if link:
-                link = urljoin(rss_url, link)
-            link = convert_to_official_x_link(link)
+
+            raw_link = entry.get("link", "")
+            if not raw_link:
+                continue
+
+            # ★ 补全相对链接：优先用 RSS 频道主页，其次用 original_url
+            if not raw_link.startswith(("http://", "https://")):
+                base = feed_base if feed_base else original_url
+                link = urljoin(base, raw_link)
+            else:
+                link = raw_link
+
+            # 如果原始信源是 x.com，则统一转换为官方 x.com 链接
+            if "x.com/" in original_url:
+                link = convert_to_official_x_link(link)
+
+            # 去重检查（放在转换后）
             if url_cache.seen(link):
                 continue
+
             title = clean_html(entry.get("title", ""))
             summary = clean_html(entry.get("summary", ""))
             if not summary:
@@ -551,6 +567,8 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
             if h in processed_hashes:
                 continue
             processed_hashes.add(h)
+
+            # 来源名称
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -559,6 +577,7 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
                 domain_match = re.search(r'https?://([^/]+)', original_url)
                 raw_domain = domain_match.group(1) if domain_match else original_url
                 source_name = raw_domain
+
             time_ago = format_time_ago(pub_dt)
             items.append({
                 "title": title,
@@ -977,7 +996,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                     rows = []
                     for item in cached_items:
                         if all(k in item for k in ("event","link","risk","source","time","level")):
-                            # 转义事件简述中的 |
                             safe_event = item['event'].replace("|", "｜")
                             row = f"| {safe_event} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
                             rows.append(row)
@@ -1067,7 +1085,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     if not completed_rows:
         return "无相关内容。\n", []
 
-    # 去重合并（已包含 | 转义）
+    # 去重合并
     unique_rows, events_in_report = deduplicate_and_mark_new(completed_rows, old_events)
 
     if unique_rows:
@@ -1208,7 +1226,7 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
             new_counts[event] = record
     return new_rows, new_counts
 
-# ================= HTML 报告生成（链接修复） =================
+# ================= HTML 报告生成（稳健链接替换） =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
@@ -1230,7 +1248,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 continue
             html_table += "<tr>\n"
             for cell in cells:
-                # 使用更稳健的替换：匹配 [text](url)，其中 url 不包含 )
+                # 使用更稳健的替换：匹配 [text](url)，url 不含 ) 字符
                 cell = re.sub(
                     r'\[([^\]]*)\]\(([^\)]+)\)',
                     r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>',
