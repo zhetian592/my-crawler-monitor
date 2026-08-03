@@ -1,4 +1,4 @@
-# crawler.py - 最终版（超时保护 + AI失败后备过滤）
+# crawler.py - 最终完整版（404修复 + 超时保护 + 后备过滤 + 乱码修复）
 import os
 import json
 import re
@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from typing import List, Dict, Any, Tuple, Optional, Union
 from logging.handlers import RotatingFileHandler
+from urllib.parse import urljoin
 
 import requests
 import feedparser
@@ -56,10 +57,12 @@ if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-AI_MODEL = os.environ.get("AI_MODEL", "openrouter/auto")
+# 默认使用 openrouter/free 自动路由，避免单个模型限流
+AI_MODEL = os.environ.get("AI_MODEL", "openrouter/free")
 
-AI_JSON_MODE = os.environ.get("AI_JSON_MODE", "true").lower() == "true"
-AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 300))  # 整体 AI 分析超时 5 分钟
+# JSON 模式默认关闭（免费模型可能不支持），通过提示词强制 JSON 输出
+AI_JSON_MODE = os.environ.get("AI_JSON_MODE", "false").lower() == "true"
+AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 300))
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
@@ -534,6 +537,9 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
             if pub_dt is not None and pub_dt < cutoff:
                 continue
             link = entry.get("link", "")
+            # 补全相对链接为绝对 URL（修复 404 问题）
+            if link:
+                link = urljoin(rss_url, link)
             link = convert_to_official_x_link(link)
             if url_cache.seen(link):
                 continue
@@ -746,7 +752,7 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= 🚀 AI 分析（带超时和后备规则） =================
+# ================= 🚀 AI 分析（超时保护 + 后备规则） =================
 _ai_client = None
 _client_lock = threading.Lock()
 
@@ -887,7 +893,6 @@ def rule_based_filter(articles: List[Dict]) -> List[Dict]:
             source_name = get_display_source(art.get("source_name", "未知"))
             time_ago = art.get("time_ago", "未知")
             link = art.get("link", "")
-            # 简单风险描述
             risk = "检测到敏感关键词"
             level = "中"
             row = f"| {art['title'][:80]} | [查看]({link}) | {risk} | {source_name} | {time_ago} | {level} |"
@@ -1033,7 +1038,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
             future_to_batch = {executor.submit(process_single_batch, b): b for b in uncached_batches}
             try:
                 for future in as_completed(future_to_batch, timeout=AI_TIMEOUT_SECONDS - (time.time() - ai_start_time)):
-                    # 计算剩余时间
                     try:
                         rows = future.result(timeout=30)  # 单批次额外超时
                         if rows is not None:
@@ -1047,17 +1051,13 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
             except FuturesTimeoutError:
                 ai_failed = True
                 logger.error(f"AI 分析整体超时（{AI_TIMEOUT_SECONDS}s），未完成的批次将使用后备过滤方案")
-                # 取消未完成的任务
                 for future in future_to_batch:
                     future.cancel()
 
     # 如果 AI 失败或部分失败，启用内置规则过滤作为补充
     if ai_failed or len(completed_rows) == 0:
         logger.warning("AI 分析不完整或为空，启用内置规则过滤后备")
-        # 对于所有文章（不仅是未处理的批次），运行规则过滤，但排除已从缓存得到的行可能重复的问题
-        # 简单方法：直接用规则过滤所有文章，然后和 completed_rows 合并去重
         rule_rows = rule_based_filter(articles)
-        # 合并、去重（简单合并，表格去重由 deduplicate_and_mark_new 负责）
         completed_rows.extend(rule_rows)
         logger.info(f"后备规则过滤补充了 {len(rule_rows)} 行")
 
