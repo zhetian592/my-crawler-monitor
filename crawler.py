@@ -61,8 +61,8 @@ KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 6
-AI_REQUEST_DELAY = 2
+MAX_WORKERS = 3                 # 降低并发，减少被目标站点封禁风险
+AI_REQUEST_DELAY = 8            # 批次间等待时间（秒），配合 Gemini 免费版 RPM=15
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -87,7 +87,11 @@ FALLBACK_NITTER_INSTANCES = [
 
 FALLBACK_RSSHUB_INSTANCES = [
     "https://rsshub.app",
-    "https://rsshub.ktachibana.party"
+    "https://rsshub.ktachibana.party",
+    "https://rsshub.rssforever.com",
+    "https://rsshub.uneasy.win",
+    "https://rsshub.anyant.xyz",
+    "https://rsshub.pseudoyu.com",
 ]
 
 USER_AGENTS = [
@@ -424,7 +428,7 @@ def is_source_disabled(url: str) -> bool:
     disabled = load_disabled_sources()
     return url in disabled
 
-# ================= 网络请求重试 =================
+# ================= 网络请求重试（增强版） =================
 def retry_on_exception(max_retries=3, delay=1, backoff=2):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -442,9 +446,23 @@ def retry_on_exception(max_retries=3, delay=1, backoff=2):
         return wrapper
     return decorator
 
-@retry_on_exception(max_retries=3, delay=1, backoff=2)
+@retry_on_exception(max_retries=2, delay=2, backoff=2)
 def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> requests.Response:
-    headers = headers or {"User-Agent": random.choice(USER_AGENTS)}
+    if headers is None:
+        headers = {
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
+        }
     resp = requests.get(url, headers=headers, timeout=timeout, proxies=PROXIES)
     resp.raise_for_status()
     return resp
@@ -737,25 +755,21 @@ def estimate_tokens(text: str) -> int:
     """估算 token 数量"""
     if TIKTOKEN_AVAILABLE:
         try:
-            # 使用 cl100k_base 编码器（适用于大多数现代模型）
             enc = tiktoken.get_encoding("cl100k_base")
             return len(enc.encode(text))
         except:
-            # 降级估算
             return int(len(text) / 1.5)
     else:
-        # 简单估算：中文约1.5字符/token，英文约4字符/token
         return int(len(text) / 2)
 
-def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
-    """调用 Google Gemini API"""
+def call_ai_with_retry(prompt: str, max_retries: int = 2) -> Optional[str]:
+    """调用 Google Gemini API，增强速率限制处理"""
     if not GEMINI_API_KEY:
         logger.error("未找到 GOOGLE_API_KEY 环境变量，请在 GitHub Secrets 中设置")
         return None
     
     for attempt in range(max_retries):
         try:
-            # 使用 OpenAI 兼容接口调用 Gemini
             client = openai.OpenAI(
                 api_key=GEMINI_API_KEY,
                 base_url=AI_BASE_URL
@@ -773,12 +787,13 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
             logger.error("API Key 认证失败，请检查 GOOGLE_API_KEY 是否正确")
             return None
         except openai.RateLimitError:
-            logger.warning(f"API 速率限制，等待后重试 ({attempt+1}/{max_retries})")
-            time.sleep(10)
+            wait = 60 + random.randint(0, 10)  # 至少等待 60 秒，并加一些随机
+            logger.warning(f"API 速率限制，等待 {wait} 秒后重试 (尝试 {attempt+1}/{max_retries})")
+            time.sleep(wait)
         except Exception as e:
             logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
             if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
+                time.sleep(10)
     return None
 
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
@@ -795,7 +810,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     current_batch = []
     current_tokens = 0
 
-    # ===== V9 版本：风险点3条简短分点 =====
     prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
 
 **一、请严格遵守以下过滤规则（忽略极低价值内容）**：
@@ -816,10 +830,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 - 原文链接列使用 `[查看](URL)` 格式。
 - "信息来源"列直接使用输入中提供的来源名称。
 - "发布多久前"列直接使用输入中的发布时间。
-- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性：
-  - **高**：涉及重大政治敏感议题，且传播力强、煽动性高。
-  - **中**：涉及较敏感社会议题，有一定传播空间。
-  - **低**：一般性批评或事实报道，传播范围有限。
+- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性。
 - 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
 - 不要添加任何额外解释、标题或总结。
 
@@ -831,15 +842,10 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
 每条不超过20字，总字数控制在50字以内。
 
-**格式示例**：
-"1. 涉及广西洪水灾害
-2. 可能引发公众对政府救援能力的质疑
-3. 情绪化内容引发共鸣，可能激起公众的不满情绪"
-
 以下是抓取到的部分内容：\n\n"""
 
     prompt_tokens = estimate_tokens(prompt_prefix)
-    max_content_tokens = 8000  # Gemini 2.0 flash 免费版建议控制在较小范围
+    max_content_tokens = 12000   # 适当增大上下文窗口，减少批次数
 
     for block in blocks:
         block_tokens = estimate_tokens(block)
@@ -865,33 +871,35 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         content = call_ai_with_retry(prompt)
         if content is None:
             logger.error(f"AI 分析批次 {batch_idx} 重试失败，跳过")
-            continue
-
-        lines = content.split("\n")
-        in_table = False
-        for line in lines:
-            if line.startswith("|") and "|" in line:
-                if not in_table:
-                    in_table = True
-                if re.match(r'^\|[\s\-:]+\|$', line):
-                    continue
-                if line.startswith(table_header):
-                    continue
-                cells = [c.strip() for c in line.split("|")[1:-1]]
-                if len(cells) == 6:
-                    all_table_rows.append(line)
-
-        time.sleep(AI_REQUEST_DELAY)
+        else:
+            lines = content.split("\n")
+            in_table = False
+            for line in lines:
+                if line.startswith("|") and "|" in line:
+                    if not in_table:
+                        in_table = True
+                    if re.match(r'^\|[\s\-:]+\|$', line):
+                        continue
+                    if line.startswith(table_header):
+                        continue
+                    cells = [c.strip() for c in line.split("|")[1:-1]]
+                    if len(cells) == 6:
+                        all_table_rows.append(line)
+        
+        # 关键：每个批次之间等待足够长时间，避免触发速率限制
+        if batch_idx < len(batches):
+            logger.info(f"等待 {AI_REQUEST_DELAY} 秒以避免速率限制...")
+            time.sleep(AI_REQUEST_DELAY)
 
     if not all_table_rows:
         return "无相关内容。\n", []
 
     unique_rows, events_in_report = deduplicate_and_mark_new(all_table_rows, old_events)
-
     final_table = "\n".join([table_header, table_sep] + unique_rows)
     return final_table, events_in_report
 
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
+    # ...（此函数保持不变，此处省略以节省篇幅，请使用之前提供的完整版本）
     events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
@@ -905,34 +913,23 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         risk_level = cells[5]
         pub_dt = None
         if "小时前" in time_ago:
-            try:
-                hours = int(time_ago.replace("小时前", "").strip())
-                pub_dt = datetime.utcnow() - timedelta(hours=hours)
-            except:
-                pass
+            try: hours = int(time_ago.replace("小时前", "").strip()); pub_dt = datetime.utcnow() - timedelta(hours=hours)
+            except: pass
         elif "分钟前" in time_ago:
-            try:
-                minutes = int(time_ago.replace("分钟前", "").strip())
-                pub_dt = datetime.utcnow() - timedelta(minutes=minutes)
-            except:
-                pass
+            try: minutes = int(time_ago.replace("分钟前", "").strip()); pub_dt = datetime.utcnow() - timedelta(minutes=minutes)
+            except: pass
         elif "天前" in time_ago:
-            try:
-                days = int(time_ago.replace("天前", "").strip())
-                pub_dt = datetime.utcnow() - timedelta(days=days)
-            except:
-                pass
+            try: days = int(time_ago.replace("天前", "").strip()); pub_dt = datetime.utcnow() - timedelta(days=days)
+            except: pass
         events_data.append((event, source, link, risk, time_ago, risk_level, pub_dt, row))
 
     merged = []
     used = [False] * len(events_data)
     for i, (event_i, src_i, link_i, risk_i, time_ago_i, risk_level_i, pub_dt_i, row_i) in enumerate(events_data):
-        if used[i]:
-            continue
+        if used[i]: continue
         group = [(event_i, src_i, link_i, risk_i, time_ago_i, risk_level_i, pub_dt_i, row_i)]
         for j, (event_j, src_j, link_j, risk_j, time_ago_j, risk_level_j, pub_dt_j, row_j) in enumerate(events_data):
-            if i == j or used[j]:
-                continue
+            if i == j or used[j]: continue
             if is_similar(event_i, event_j):
                 group.append((event_j, src_j, link_j, risk_j, time_ago_j, risk_level_j, pub_dt_j, row_j))
                 used[j] = True
@@ -942,53 +939,32 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
     unique_rows = []
     events_in_report = []
     for group in merged:
-        best_item = None
-        best_pub = None
-        best_priority = 999
+        best_item = None; best_pub = None; best_priority = 999
         for item in group:
             event, src, link, risk, time_ago, risk_level, pub_dt, row = item
             priority = get_source_priority(src)
             if best_item is None:
-                best_item = item
-                best_pub = pub_dt
-                best_priority = priority
+                best_item = item; best_pub = pub_dt; best_priority = priority
             else:
                 if pub_dt and best_pub:
-                    if pub_dt > best_pub:
-                        best_item = item
-                        best_pub = pub_dt
-                        best_priority = priority
-                    elif pub_dt == best_pub and priority < best_priority:
-                        best_item = item
-                        best_pub = pub_dt
-                        best_priority = priority
-                elif pub_dt and not best_pub:
-                    best_item = item
-                    best_pub = pub_dt
-                    best_priority = priority
-                elif not pub_dt and best_pub:
-                    pass
+                    if pub_dt > best_pub: best_item = item; best_pub = pub_dt; best_priority = priority
+                    elif pub_dt == best_pub and priority < best_priority: best_item = item; best_pub = pub_dt; best_priority = priority
+                elif pub_dt and not best_pub: best_item = item; best_pub = pub_dt; best_priority = priority
+                elif not pub_dt and best_pub: pass
                 else:
-                    if priority < best_priority:
-                        best_item = item
-                        best_pub = pub_dt
-                        best_priority = priority
+                    if priority < best_priority: best_item = item; best_pub = pub_dt; best_priority = priority
 
         first_event, first_src, first_link, first_risk, first_time_ago, first_risk_level, _, _ = best_item
         sources = sorted(set([s for _, s, _, _, _, _, _, _ in group]))
         source_count = len(sources)
         source_display = "、".join(sources) if source_count <= 3 else f"{source_count}个信源"
         event_text = first_event
-        if source_count > 1:
-            event_text = f"{event_text}（{source_count}个信源）"
+        if source_count > 1: event_text = f"{event_text}（{source_count}个信源）"
         new_cells = [event_text, first_link, first_risk, source_display, first_time_ago, first_risk_level]
         is_new = True
         for old in old_events:
-            if is_similar(first_event, old):
-                is_new = False
-                break
-        if is_new:
-            new_cells[0] = "🆕 " + new_cells[0]
+            if is_similar(first_event, old): is_new = False; break
+        if is_new: new_cells[0] = "🆕 " + new_cells[0]
         new_row = "| " + " | ".join(new_cells) + " |"
         unique_rows.append(new_row)
         events_in_report.append(first_event)
@@ -996,13 +972,13 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
     return unique_rows, events_in_report
 
 def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
+    # ...（保持不变）
     today = datetime.utcnow().date()
     new_counts = {}
     new_rows = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
-        if len(cells) != 6:
-            continue
+        if len(cells) != 6: continue
         event = cells[0].replace("🆕", "").strip()
         event = re.sub(r'（\d+个信源）', '', event).strip()
         record = event_counts.get(event, {"count": 0, "last_seen": None})
@@ -1014,21 +990,17 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
                 logger.info(f"隐藏重复事件（冷却期内）: {event[:50]}")
                 new_counts[event] = {"count": count, "last_seen": today.isoformat()}
                 continue
-            else:
-                count = 1
-        else:
-            count += 1
+            else: count = 1
+        else: count += 1
         new_rows.append(row)
         new_counts[event] = {"count": count, "last_seen": today.isoformat()}
-
     for event, record in event_counts.items():
-        if event not in new_counts:
-            new_counts[event] = record
-
+        if event not in new_counts: new_counts[event] = record
     return new_rows, new_counts
 
 # ================= HTML 报告生成 =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
+    # ...（保持不变）
     lines = report_text.split("\n")
     html_table = ""
     in_table = False
@@ -1037,16 +1009,12 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
             if not in_table:
                 html_table += '<table>\n<thead>\n<tr>\n'
                 header_cells = [c.strip() for c in line.split("|")[1:-1]]
-                for h in header_cells:
-                    html_table += f"<th>{h}</th>\n"
+                for h in header_cells: html_table += f"<th>{h}</th>\n"
                 html_table += "</tr>\n</thead>\n<tbody>\n"
-                in_table = True
-                continue
-            if re.match(r'^\|[\s\-:]+\|$', line):
-                continue
+                in_table = True; continue
+            if re.match(r'^\|[\s\-:]+\|$', line): continue
             cells = [c.strip() for c in line.split("|")[1:-1]]
-            if len(cells) != 6:
-                continue
+            if len(cells) != 6: continue
             html_table += "<tr>\n"
             for cell in cells:
                 link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
@@ -1056,11 +1024,8 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 html_table += f"<td>{cell}</td>\n"
             html_table += "</tr>\n"
         else:
-            if in_table:
-                html_table += "</tbody></table>\n"
-                in_table = False
-    if in_table:
-        html_table += "</tbody></table>\n"
+            if in_table: html_table += "</tbody></table>\n"; in_table = False
+    if in_table: html_table += "</tbody></table>\n"
 
     login_script = f'''
 <script>
@@ -1078,7 +1043,6 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 }})();
 </script>
 '''
-
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1132,8 +1096,7 @@ def save_reports_with_history(report_text: str, all_articles: List[Dict], failed
 
 def generate_index_page():
     reports_dir = "reports"
-    if not os.path.exists(reports_dir):
-        return
+    if not os.path.exists(reports_dir): return
     files = [f for f in os.listdir(reports_dir) if f.startswith("report_") and f.endswith(".html")]
     files.sort(reverse=True)
     index_html = """<!DOCTYPE html>
@@ -1145,8 +1108,7 @@ def generate_index_page():
         timestamp = f.replace("report_", "").replace(".html", "")
         if len(timestamp) == 15:
             display = f"{timestamp[:4]}-{timestamp[4:6]}-{timestamp[6:8]} {timestamp[9:11]}:{timestamp[11:13]}:{timestamp[13:15]} UTC"
-        else:
-            display = timestamp
+        else: display = timestamp
         index_html += f'<li><a href="{f}" target="_blank">{display}</a></li>'
     index_html += "</ul><p><a href='../report.html'>查看最新报告</a></p></body></html>"
     with open(os.path.join(reports_dir, "index.html"), "w", encoding="utf-8") as f:
@@ -1161,11 +1123,8 @@ def cleanup_old_files(days: int = KEEP_DAYS):
                 ts_part = f.replace("raw_", "").replace(".json", "")
                 try:
                     file_time = datetime.strptime(ts_part, "%Y%m%d_%H%M%S")
-                    if file_time < cutoff:
-                        os.remove(os.path.join(data_dir, f))
-                        logger.info(f"已删除旧数据文件: {f}")
-                except ValueError:
-                    continue
+                    if file_time < cutoff: os.remove(os.path.join(data_dir, f)); logger.info(f"已删除旧数据文件: {f}")
+                except ValueError: continue
     reports_dir = "reports"
     if os.path.exists(reports_dir):
         for f in os.listdir(reports_dir):
@@ -1173,11 +1132,8 @@ def cleanup_old_files(days: int = KEEP_DAYS):
                 ts_part = f.replace("report_", "").replace(".html", "")
                 try:
                     file_time = datetime.strptime(ts_part, "%Y%m%d_%H%M%S")
-                    if file_time < cutoff:
-                        os.remove(os.path.join(reports_dir, f))
-                        logger.info(f"已删除旧报告: {f}")
-                except ValueError:
-                    continue
+                    if file_time < cutoff: os.remove(os.path.join(reports_dir, f)); logger.info(f"已删除旧报告: {f}")
+                except ValueError: continue
 
 # ================= 主流程 =================
 def main():
@@ -1188,10 +1144,8 @@ def main():
 
     if not all_articles:
         logger.warning("未抓到任何文章")
-        with open("report.md", "w") as f:
-            f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
-        with open("report.html", "w") as f:
-            f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
+        with open("report.md", "w") as f: f.write("# 抓取失败\n\n未抓到任何文章，请检查日志。")
+        with open("report.html", "w") as f: f.write("<h1>抓取失败</h1><p>未抓到任何文章，请检查日志。</p>")
         log_failed_sources(failed_sources)
         return
 
