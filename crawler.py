@@ -1,4 +1,4 @@
-# crawler.py - 优化版（并发批次 + 链接防404 + 超时保护）
+# crawler.py - 最终稳定版（链接防404 + JSON强制输出 + 并发优化）
 import os
 import json
 import re
@@ -51,16 +51,16 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# ================= 配置常量（优化后） =================
+# ================= 配置常量 =================
 API_KEY = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
 if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-AI_MODEL = os.environ.get("AI_MODEL", "openrouter/free")
+AI_MODEL = os.environ.get("AI_MODEL", "google/gemini-2.0-flash-exp:free")  # 更遵守指令
 
 AI_JSON_MODE = os.environ.get("AI_JSON_MODE", "false").lower() == "true"
-AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 600))   # 增加到 10 分钟
+AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 600))
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
@@ -71,7 +71,7 @@ KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 3                     # 降低抓取并发，减少被屏蔽风险
+MAX_WORKERS = 3                     # 降低并发
 AI_REQUEST_DELAY = 0.5
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
@@ -79,7 +79,7 @@ DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
 CACHE_TTL = 86400 * 7
 
-AI_CONCURRENCY_LIMIT = int(os.environ.get("AI_CONCURRENCY_LIMIT", "2"))   # 允许同时处理 2 批
+AI_CONCURRENCY_LIMIT = int(os.environ.get("AI_CONCURRENCY_LIMIT", "2"))
 
 EVENT_COUNTS_FILE = "event_counts.json"
 HEALTHY_NITTER_FILE = "healthy_nitter.json"
@@ -163,7 +163,6 @@ def batch_key(blocks: List[str]) -> str:
     return hashlib.sha256(combined).hexdigest()
 
 def convert_to_official_x_link(link: str) -> str:
-    """仅将 nitter 链接转换为 x.com 链接，不改变其他链接"""
     if not link:
         return link
     replacements = [
@@ -465,7 +464,7 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心（★ 链接404修复） =================
+# ================= 抓取核心（链接404修复） =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances)
     if "voachinese.com" in url:
@@ -765,7 +764,7 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析（并发优化） =================
+# ================= AI 分析（强化 JSON 输出） =================
 _ai_client = None
 _client_lock = threading.Lock()
 AI_SEMAPHORE = threading.Semaphore(AI_CONCURRENCY_LIMIT)
@@ -831,7 +830,7 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
         try:
             response = client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are a sentiment analyst. Output ONLY a valid JSON array. Do not include any other text, explanation, or markdown."},
+                    {"role": "system", "content": "你是一个 JSON 输出机器人。你必须仅输出一个 JSON 数组，不要包含任何其他文字、解释或 markdown 标记。"},
                     {"role": "user", "content": prompt}
                 ],
                 **kwargs
@@ -948,15 +947,16 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         block = f"{meta}\n标题：{art.get('title', '')[:150]}\n摘要：{art.get('summary', '')[:300]}\n链接：{art.get('link', '')}\n"
         blocks_with_meta.append(block)
 
-    # 减小每批大小，加快单批速度
     max_content_tokens = int(os.environ.get("MAX_CONTENT_TOKENS", 6000))
     batches = []
     current_blocks = []
     current_tokens = 0
 
+    # 强化 JSON 输出 Prompt
     prompt_prefix = """根据以下内容，筛选出涉华负面舆情条目，以 JSON 数组输出。
 每个对象必须包含字段：event(简述), link(原文链接), risk(风险点，格式"1. xx 2. xx 3. xx"，每条≤20字), source(来源), time(时间), level(高/中/低)。
 严格要求：只输出一个 JSON 数组，不要任何解释、代码块标记或额外文字。没有符合内容时输出 []。
+再次强调：只输出 JSON 数组！
 
 抓取内容：
 """
@@ -975,7 +975,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
     logger.info(f"内容分为 {len(batches)} 批（单批上限 {max_content_tokens} tokens）")
 
-    # 处理批次
     def process_single_batch(batch_blocks):
         key = batch_key(batch_blocks)
         now = time.time()
@@ -1393,7 +1392,7 @@ def main():
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    logger.info("=== 调用 AI 分析（并发优化） ===")
+    logger.info("=== 调用 AI 分析（强化 JSON 输出） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
 
     if report_table != "无相关内容。\n":
