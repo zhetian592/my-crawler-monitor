@@ -1,4 +1,4 @@
-# crawler.py - 最终稳定版（链接防404 + JSON强制输出 + 并发优化）
+# crawler.py - 最终稳定版（更换默认模型为 NVIDIA Nemotron 3 Ultra，链接防404 + JSON强制输出 + 并发优化）
 import os
 import json
 import re
@@ -57,7 +57,8 @@ if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-AI_MODEL = os.environ.get("AI_MODEL", "google/gemini-2.0-flash-exp:free")  # 更遵守指令
+# ★★★ 更换为当前可用的免费模型 ★★★
+AI_MODEL = os.environ.get("AI_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
 
 AI_JSON_MODE = os.environ.get("AI_JSON_MODE", "false").lower() == "true"
 AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 600))
@@ -71,7 +72,7 @@ KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 3                     # 降低并发
+MAX_WORKERS = 3
 AI_REQUEST_DELAY = 0.5
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
@@ -540,7 +541,6 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
             if not raw_link:
                 continue
 
-            # 补全相对链接
             if not raw_link.startswith(("http://", "https://")):
                 base = feed_base if feed_base else original_url
                 link = urljoin(base, raw_link)
@@ -952,7 +952,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     current_blocks = []
     current_tokens = 0
 
-    # 强化 JSON 输出 Prompt
     prompt_prefix = """根据以下内容，筛选出涉华负面舆情条目，以 JSON 数组输出。
 每个对象必须包含字段：event(简述), link(原文链接), risk(风险点，格式"1. xx 2. xx 3. xx"，每条≤20字), source(来源), time(时间), level(高/中/低)。
 严格要求：只输出一个 JSON 数组，不要任何解释、代码块标记或额外文字。没有符合内容时输出 []。
@@ -1392,7 +1391,7 @@ def main():
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    logger.info("=== 调用 AI 分析（强化 JSON 输出） ===")
+    logger.info("=== 调用 AI 分析（模型: nvidia/nemotron-3-ultra-550b-a55b:free） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
 
     if report_table != "无相关内容。\n":
