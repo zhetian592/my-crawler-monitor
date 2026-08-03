@@ -1,6 +1,4 @@
-# crawler.py - 最终稳定版（保留最近2天数据/报告）
-# AI：Google Gemini 为主，Cohere Command-R 为备
-# 参数优化：避免 429，prompt 精简
+# crawler.py - OpenRouter 专属版（去掉 Gemini/Cohere，直接使用免费模型）
 
 import os
 import json
@@ -46,16 +44,15 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# ================= 配置常量 =================
-# 主模型：Google Gemini
-GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-GEMINI_MODEL = "gemini-2.0-flash"
+# ================= 配置常量（仅 OpenRouter） =================
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-# 备用模型：Cohere Command-R
-COHERE_API_KEY = os.environ.get("COHERE_API_KEY")
-COHERE_BASE_URL = "https://api.cohere.com/v1"
-COHERE_MODEL = "command-r"
+# 优先使用的免费模型列表（按顺序尝试）
+OPENROUTER_MODELS = [
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
+]
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
@@ -66,8 +63,8 @@ KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 3                 # 降低并发
-AI_REQUEST_DELAY = 25           # 批间等待（秒），防止 429
+MAX_WORKERS = 3
+AI_REQUEST_DELAY = 25          # 批间等待（秒）
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -194,7 +191,8 @@ def get_source_priority(source_name: str) -> int:
         return 3
     return 4
 
-# ================= 信源配置加载 =================
+# ================= 信源配置加载（不变） =================
+# ... 以下保持 load_sources_config, load_source_map 等完全相同 ...
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
     default = [
@@ -259,7 +257,8 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================ 信源健康管理 ================
+# ================ 信源健康管理（不变） ================
+# ... SourceHealth, MirrorPool 等保持不变 ...
 class SourceHealth:
     def __init__(self, max_fails=DISABLE_FAILED_THRESHOLD, cooldown_minutes=DISABLE_COOLDOWN_MINUTES):
         self.max_fails = max_fails
@@ -341,7 +340,8 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
             logger.warning(f"读取 {file_path} 失败: {e}")
     return fallback
 
-# ================ URL去重缓存 ================
+# ================ URL去重缓存（不变） ================
+# ... URLDedupCache, load_disabled_sources, fetch_url 等不变 ...
 class URLDedupCache:
     def __init__(self, cache_file=URL_DEDUP_FILE):
         self.cache_file = cache_file
@@ -382,7 +382,6 @@ class URLDedupCache:
             with open(self.cache_file, 'w') as f:
                 json.dump(list(self.url_set), f)
 
-# ================ 失败信源管理 ================
 def load_disabled_sources() -> Dict[str, dict]:
     if os.path.exists(DISABLED_SOURCES_FILE):
         try:
@@ -432,24 +431,6 @@ def is_source_disabled(url: str) -> bool:
     disabled = load_disabled_sources()
     return url in disabled
 
-# ================= 网络请求重试 =================
-def retry_on_exception(max_retries=3, delay=1, backoff=2):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            _delay = delay
-            for attempt in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    logger.debug(f"重试 {func.__name__} (尝试 {attempt+1}/{max_retries}): {e}")
-                    time.sleep(_delay)
-                    _delay *= backoff
-            return None
-        return wrapper
-    return decorator
-
 @retry_on_exception(max_retries=2, delay=2, backoff=2)
 def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> requests.Response:
     if headers is None:
@@ -471,7 +452,8 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心 =================
+# ================= 抓取核心（不变） =================
+# ... url_to_rss, fetch_single_rss, fetch_with_retry, fetch_all_sources 保持不变 ...
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances)
     if "voachinese.com" in url:
@@ -674,7 +656,6 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希+URL去重）")
     return all_items, failed_sources
 
-# ================= 失败记录 =================
 def log_failed_sources(failed_sources: List[Tuple[str, str]]):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     data = {}
@@ -692,7 +673,6 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         json.dump(data, f, ensure_ascii=False, indent=2)
     update_disabled_sources(failed_sources)
 
-# ================= 历史事件管理 =================
 def load_previous_events() -> List[str]:
     events = []
     if not os.path.exists("report.md"):
@@ -754,7 +734,7 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析（多模型轮换 + 精简 Prompt） =================
+# ================= AI 分析（仅 OpenRouter） =================
 def estimate_tokens(text: str) -> int:
     if TIKTOKEN_AVAILABLE:
         try:
@@ -765,19 +745,15 @@ def estimate_tokens(text: str) -> int:
     else:
         return int(len(text) / 2)
 
-def call_ai_with_retry(prompt: str, model_config: dict) -> Optional[str]:
-    api_key = model_config["api_key"]
-    base_url = model_config["base_url"]
-    model = model_config["model"]
-    provider = model_config.get("provider", "openai")
-
-    if not api_key:
-        logger.debug(f"跳过模型 {model}：缺少 API Key")
+def call_openrouter(prompt: str, model: str) -> Optional[str]:
+    """通过 OpenRouter 调用指定免费模型"""
+    if not OPENROUTER_API_KEY:
+        logger.error("未找到 OPENROUTER_API_KEY 环境变量，请在 GitHub Secrets 中设置")
         return None
 
     client = openai.OpenAI(
-        api_key=api_key,
-        base_url=base_url,
+        api_key=OPENROUTER_API_KEY,
+        base_url=OPENROUTER_BASE_URL,
         max_retries=0
     )
 
@@ -793,48 +769,31 @@ def call_ai_with_retry(prompt: str, model_config: dict) -> Optional[str]:
             if content:
                 return content
         except openai.AuthenticationError:
-            logger.error(f"[{provider}] API Key 认证失败，请检查。")
+            logger.error("OpenRouter API Key 认证失败，请检查。")
             return None
         except openai.RateLimitError:
-            wait = 120 + random.randint(0, 30)
-            logger.warning(f"[{provider}] 速率限制，等待 {wait} 秒后重试 (尝试 {attempt+1}/2)")
+            wait = 30 + random.randint(0, 10)
+            logger.warning(f"[OpenRouter:{model}] 速率限制，等待 {wait} 秒后重试 (尝试 {attempt+1}/2)")
             time.sleep(wait)
         except Exception as e:
-            logger.warning(f"[{provider}] 调用异常 (尝试 {attempt+1}/2): {e}")
+            logger.warning(f"[OpenRouter:{model}] 调用异常 (尝试 {attempt+1}/2): {e}")
             if attempt < 1:
                 time.sleep(10)
     return None
 
 def call_ai_fallback(prompt: str) -> Optional[str]:
-    gemini_config = {
-        "api_key": GEMINI_API_KEY,
-        "base_url": GEMINI_BASE_URL,
-        "model": GEMINI_MODEL,
-        "provider": "gemini"
-    }
-    if GEMINI_API_KEY:
-        logger.info("尝试使用 Gemini 进行分析...")
-        result = call_ai_with_retry(prompt, gemini_config)
+    """依次尝试 OPENROUTER_MODELS 中的模型，直到成功"""
+    for model in OPENROUTER_MODELS:
+        logger.info(f"尝试使用 OpenRouter 模型: {model}")
+        result = call_openrouter(prompt, model)
         if result:
             return result
-        logger.warning("Gemini 调用失败，尝试切换到 Cohere...")
+        logger.warning(f"模型 {model} 调用失败，尝试下一个...")
 
-    cohere_config = {
-        "api_key": COHERE_API_KEY,
-        "base_url": COHERE_BASE_URL,
-        "model": COHERE_MODEL,
-        "provider": "cohere"
-    }
-    if COHERE_API_KEY:
-        logger.info("尝试使用 Cohere 进行分析...")
-        result = call_ai_with_retry(prompt, cohere_config)
-        if result:
-            return result
-        logger.warning("Cohere 调用失败。")
-
-    logger.error("所有 AI 模型调用均失败，本次分析无法完成。")
+    logger.error("所有 OpenRouter 免费模型均失败，本次分析无法完成。")
     return None
 
+# ================= 其余部分（call_ai_unified, HTML 生成等） =================
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
     if not articles:
         return "无相关内容。\n", []
@@ -849,7 +808,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     current_batch = []
     current_tokens = 0
 
-    # ✅ 精简版 Prompt
+    # 精简版 Prompt（与之前一致）
     prompt_prefix = """你是一名舆情分析师。从以下抓取内容中筛选出**涉华负面舆情**，忽略无意义内容（纯转发、仅链接、表情符号、广告、个人生活），不确定时保留。
 
 输出要求：
@@ -863,7 +822,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 """
 
     prompt_tokens = estimate_tokens(prompt_prefix)
-    max_content_tokens = 8000   # 缩小单批内容，增加批次数，稀释请求频率
+    max_content_tokens = 8000
 
     for block in blocks:
         block_tokens = estimate_tokens(block)
@@ -877,7 +836,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     if current_batch:
         batches.append(current_batch)
 
-    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
+    logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析 (OpenRouter)")
 
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 风险预判 | 信息来源 | 发布多久前 | 风险等级 |"
@@ -888,7 +847,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         prompt = prompt_prefix + combined
         content = call_ai_fallback(prompt)
         if content is None:
-            logger.error(f"AI 分析批次 {batch_idx} 失败（所有模型均不可用），跳过")
+            logger.error(f"AI 分析批次 {batch_idx} 失败，跳过")
         else:
             lines = content.split("\n")
             in_table = False
@@ -1013,7 +972,6 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
         if event not in new_counts: new_counts[event] = record
     return new_rows, new_counts
 
-# ================= HTML 报告生成 =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
@@ -1077,7 +1035,7 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 <body>
 <h1>📊 内容安全行业舆情报告</h1>
 <p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
-<p>AI 模型：Google Gemini 2.0 Flash / Cohere Command-R（自动切换）</p>
+<p>AI 模型：OpenRouter 免费模型（优先 gemini-2.0-flash-exp:free）</p>
 <div id="report">
 {html_table}
 </div>
@@ -1170,11 +1128,11 @@ def main():
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    # 冷却启动
-    logger.info("AI 分析前等待 20 秒，确保配额窗口清空...")
-    time.sleep(20)
+    # OpenRouter 限制宽松，只需短暂冷却
+    logger.info("AI 分析前等待 5 秒...")
+    time.sleep(5)
 
-    logger.info("=== 调用 AI 分析（主: Gemini, 备用: Cohere） ===")
+    logger.info("=== 调用 AI 分析（OpenRouter 免费模型） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
 
     if report_table != "无相关内容。\n":
