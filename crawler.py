@@ -48,9 +48,15 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 # ================= 配置常量 =================
-GH_TOKEN = os.environ.get("GH_MODELS_TOKEN_NEW") or os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
-AI_BASE_URL = "https://models.inference.ai.azure.com"
-AI_MODEL = "gpt-4o-mini"
+# 使用 OPENAI_API_KEY（你在 GitHub Secrets 中已设置）
+API_KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("GH_MODELS_TOKEN_NEW") or os.environ.get("OPENAI_API_KEY")
+if not API_KEY:
+    logger.warning("未设置 OPENAI_API_KEY，AI 功能不可用")
+
+# ChatAnywhere 免费接口地址
+AI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.chatanywhere.tech/v1")
+AI_MODEL = os.environ.get("AI_MODEL", "gpt-4o-mini")
+
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
 if os.environ.get("HTTP_PROXY"):
@@ -738,7 +744,7 @@ def estimate_tokens(text: str) -> int:
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
     for attempt in range(max_retries):
         try:
-            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
+            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=API_KEY)
             response = client.chat.completions.create(
                 model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
