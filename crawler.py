@@ -1,5 +1,6 @@
-# crawler.py - 稳定版（保留最近2天数据/报告）+ 信源抓取优化
-# AI 从 GitHub Models 改为 Google Gemini
+# crawler.py - 最终稳定版（保留最近2天数据/报告）
+# AI：Google Gemini 为主，Cohere Command-R 为备
+# 参数优化：避免 429，prompt 精简
 
 import os
 import json
@@ -21,7 +22,6 @@ import openai
 from bs4 import BeautifulSoup
 import difflib
 
-# 尝试导入 tiktoken
 try:
     import tiktoken
     TIKTOKEN_AVAILABLE = True
@@ -46,11 +46,16 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# ================= 配置常量（已改为 Google Gemini） =================
-# Google Gemini API Key
+# ================= 配置常量 =================
+# 主模型：Google Gemini
 GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-AI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-AI_MODEL = "gemini-2.0-flash"  # 免费模型，每分钟15次请求
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+GEMINI_MODEL = "gemini-2.0-flash"
+
+# 备用模型：Cohere Command-R
+COHERE_API_KEY = os.environ.get("COHERE_API_KEY")
+COHERE_BASE_URL = "https://api.cohere.com/v1"
+COHERE_MODEL = "command-r"
 
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
@@ -61,8 +66,8 @@ KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 3                 # 降低并发，减少被目标站点封禁风险
-AI_REQUEST_DELAY = 8            # 批次间等待时间（秒），配合 Gemini 免费版 RPM=15
+MAX_WORKERS = 3                 # 降低并发
+AI_REQUEST_DELAY = 25           # 批间等待（秒），防止 429
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -100,7 +105,6 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# 线程安全锁
 _HASH_LOCK = Lock()
 _CACHE_LOCK = Lock()
 
@@ -428,7 +432,7 @@ def is_source_disabled(url: str) -> bool:
     disabled = load_disabled_sources()
     return url in disabled
 
-# ================= 网络请求重试（增强版） =================
+# ================= 网络请求重试 =================
 def retry_on_exception(max_retries=3, delay=1, backoff=2):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -750,9 +754,8 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析（Google Gemini） =================
+# ================= AI 分析（多模型轮换 + 精简 Prompt） =================
 def estimate_tokens(text: str) -> int:
-    """估算 token 数量"""
     if TIKTOKEN_AVAILABLE:
         try:
             enc = tiktoken.get_encoding("cl100k_base")
@@ -762,38 +765,74 @@ def estimate_tokens(text: str) -> int:
     else:
         return int(len(text) / 2)
 
-def call_ai_with_retry(prompt: str, max_retries: int = 2) -> Optional[str]:
-    """调用 Google Gemini API，增强速率限制处理"""
-    if not GEMINI_API_KEY:
-        logger.error("未找到 GOOGLE_API_KEY 环境变量，请在 GitHub Secrets 中设置")
+def call_ai_with_retry(prompt: str, model_config: dict) -> Optional[str]:
+    api_key = model_config["api_key"]
+    base_url = model_config["base_url"]
+    model = model_config["model"]
+    provider = model_config.get("provider", "openai")
+
+    if not api_key:
+        logger.debug(f"跳过模型 {model}：缺少 API Key")
         return None
-    
-    for attempt in range(max_retries):
+
+    client = openai.OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        max_retries=0
+    )
+
+    for attempt in range(2):
         try:
-            client = openai.OpenAI(
-                api_key=GEMINI_API_KEY,
-                base_url=AI_BASE_URL
-            )
             response = client.chat.completions.create(
-                model=AI_MODEL,
+                model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=4000,
             )
             content = response.choices[0].message.content
-            if content is not None:
+            if content:
                 return content
         except openai.AuthenticationError:
-            logger.error("API Key 认证失败，请检查 GOOGLE_API_KEY 是否正确")
+            logger.error(f"[{provider}] API Key 认证失败，请检查。")
             return None
         except openai.RateLimitError:
-            wait = 60 + random.randint(0, 10)  # 至少等待 60 秒，并加一些随机
-            logger.warning(f"API 速率限制，等待 {wait} 秒后重试 (尝试 {attempt+1}/{max_retries})")
+            wait = 120 + random.randint(0, 30)
+            logger.warning(f"[{provider}] 速率限制，等待 {wait} 秒后重试 (尝试 {attempt+1}/2)")
             time.sleep(wait)
         except Exception as e:
-            logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
-            if attempt < max_retries - 1:
+            logger.warning(f"[{provider}] 调用异常 (尝试 {attempt+1}/2): {e}")
+            if attempt < 1:
                 time.sleep(10)
+    return None
+
+def call_ai_fallback(prompt: str) -> Optional[str]:
+    gemini_config = {
+        "api_key": GEMINI_API_KEY,
+        "base_url": GEMINI_BASE_URL,
+        "model": GEMINI_MODEL,
+        "provider": "gemini"
+    }
+    if GEMINI_API_KEY:
+        logger.info("尝试使用 Gemini 进行分析...")
+        result = call_ai_with_retry(prompt, gemini_config)
+        if result:
+            return result
+        logger.warning("Gemini 调用失败，尝试切换到 Cohere...")
+
+    cohere_config = {
+        "api_key": COHERE_API_KEY,
+        "base_url": COHERE_BASE_URL,
+        "model": COHERE_MODEL,
+        "provider": "cohere"
+    }
+    if COHERE_API_KEY:
+        logger.info("尝试使用 Cohere 进行分析...")
+        result = call_ai_with_retry(prompt, cohere_config)
+        if result:
+            return result
+        logger.warning("Cohere 调用失败。")
+
+    logger.error("所有 AI 模型调用均失败，本次分析无法完成。")
     return None
 
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
@@ -810,42 +849,21 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     current_batch = []
     current_tokens = 0
 
-    prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
+    # ✅ 精简版 Prompt
+    prompt_prefix = """你是一名舆情分析师。从以下抓取内容中筛选出**涉华负面舆情**，忽略无意义内容（纯转发、仅链接、表情符号、广告、个人生活），不确定时保留。
 
-**一、请严格遵守以下过滤规则（忽略极低价值内容）**：
-- 纯转发（RT/转发）且无新增实质性评论。
-- 仅包含链接，无任何文字说明或文字少于10个字符。
-- 仅含表情符号、无意义的感叹或口号（如"太可怕了""支持"等）。
-- 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
-- 与涉华负面舆情无关的个人生活、娱乐、广告等。
+输出要求：
+- 只输出 Markdown 表格，表头固定为：
+  | 事件简述 | 原文链接 | 风险预判 | 信息来源 | 发布多久前 | 风险等级 |
+- “风险预判”栏用**一句话**简要说明主要舆情风险（不超过30字）。
+- “风险等级”栏填写 高/中/低。
+- 无负面内容则只输出“无”。
 
-**二、必须保留的内容（不得忽略）**：
-- 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
-- 即使内容没有直接提及"中国"或"中共"，但事件发生在中国境内或涉及中国公民，也应保留。
-- 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
-
-**三、输出格式要求**：
-- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |`
-- 每行一条负面内容，按风险等级（高>中>低）和来源优先级排序。
-- 原文链接列使用 `[查看](URL)` 格式。
-- "信息来源"列直接使用输入中提供的来源名称。
-- "发布多久前"列直接使用输入中的发布时间。
-- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性。
-- 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
-- 不要添加任何额外解释、标题或总结。
-
-**四、风险点撰写要求（核心）**：
-"潜在风险点"用**3条简短分点**描述，格式如下：
-1. 涉及XX事件（简述事件）
-2. 可能引发XX影响（分析影响）
-3. 情绪化内容可能引发XX（分析传播性/煽动性）
-
-每条不超过20字，总字数控制在50字以内。
-
-以下是抓取到的部分内容：\n\n"""
+以下是抓取到的部分内容：
+"""
 
     prompt_tokens = estimate_tokens(prompt_prefix)
-    max_content_tokens = 12000   # 适当增大上下文窗口，减少批次数
+    max_content_tokens = 8000   # 缩小单批内容，增加批次数，稀释请求频率
 
     for block in blocks:
         block_tokens = estimate_tokens(block)
@@ -862,15 +880,15 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
 
     all_table_rows = []
-    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
-    table_sep = "|----------|----------|------------|----------|------------|------------|"
+    table_header = "| 事件简述 | 原文链接 | 风险预判 | 信息来源 | 发布多久前 | 风险等级 |"
+    table_sep = "|----------|----------|----------|----------|------------|------------|"
 
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
-        content = call_ai_with_retry(prompt)
+        content = call_ai_fallback(prompt)
         if content is None:
-            logger.error(f"AI 分析批次 {batch_idx} 重试失败，跳过")
+            logger.error(f"AI 分析批次 {batch_idx} 失败（所有模型均不可用），跳过")
         else:
             lines = content.split("\n")
             in_table = False
@@ -885,8 +903,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                     cells = [c.strip() for c in line.split("|")[1:-1]]
                     if len(cells) == 6:
                         all_table_rows.append(line)
-        
-        # 关键：每个批次之间等待足够长时间，避免触发速率限制
+
         if batch_idx < len(batches):
             logger.info(f"等待 {AI_REQUEST_DELAY} 秒以避免速率限制...")
             time.sleep(AI_REQUEST_DELAY)
@@ -899,7 +916,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     return final_table, events_in_report
 
 def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[List[str], List[str]]:
-    # ...（此函数保持不变，此处省略以节省篇幅，请使用之前提供的完整版本）
     events_data = []
     for row in rows:
         cells = [c.strip() for c in row.split("|")[1:-1]]
@@ -972,7 +988,6 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
     return unique_rows, events_in_report
 
 def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
-    # ...（保持不变）
     today = datetime.utcnow().date()
     new_counts = {}
     new_rows = []
@@ -1000,7 +1015,6 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
 
 # ================= HTML 报告生成 =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
-    # ...（保持不变）
     lines = report_text.split("\n")
     html_table = ""
     in_table = False
@@ -1063,12 +1077,12 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 <body>
 <h1>📊 内容安全行业舆情报告</h1>
 <p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
-<p>AI 模型：Google Gemini 2.0 Flash</p>
+<p>AI 模型：Google Gemini 2.0 Flash / Cohere Command-R（自动切换）</p>
 <div id="report">
 {html_table}
 </div>
 <div class="footer">
-    <p>注：本报告由 Google Gemini AI 基于过去24小时抓取的内容自动生成，仅供参考。</p>
+    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成，仅供参考。</p>
 </div>
 </body>
 </html>"""
@@ -1156,7 +1170,11 @@ def main():
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    logger.info("=== 调用 AI 分析（Google Gemini） ===")
+    # 冷却启动
+    logger.info("AI 分析前等待 20 秒，确保配额窗口清空...")
+    time.sleep(20)
+
+    logger.info("=== 调用 AI 分析（主: Gemini, 备用: Cohere） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
 
     if report_table != "无相关内容。\n":
