@@ -13,7 +13,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # 仍可使用 PAT_TOKEN（如果需要触发其他工作流），但最好也更新此令牌
           token: ${{ secrets.PAT_TOKEN }}
           fetch-depth: 0
 
@@ -35,10 +34,11 @@ jobs:
 
       - name: Run crawler
         env:
-          # 替换为 OpenRouter API Key（你已经在 Secrets 中有了 OPENROUTER_API_KEY）
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # 可选：如需换模型，可设置 AI_MODEL
-          # AI_MODEL: "google/gemini-2.0-flash-lite-preview-02-05"
+          # 使用 ChatAnywhere 的 API Key（GitHub Secret 中已设置）
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # 以下两项可选，代码中已有默认值，但显式指定更清晰
+          OPENAI_BASE_URL: "https://api.chatanywhere.tech/v1"
+          AI_MODEL: "gpt-4o-mini"
         run: python crawler.py
 
       - name: Generate commit message
@@ -54,6 +54,5 @@ jobs:
           commit_user_name: "github-actions[bot]"
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
           commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          # 使用默认的 GITHUB_TOKEN，无需额外维护
-          token: ${{ secrets.GITHUB_TOKEN }}
-        # 删除 env: GITHUB_TOKEN 部分，因为上面已经用 token 参数传递
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
