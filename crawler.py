@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
 from logging.handlers import RotatingFileHandler
+from threading import Lock
+
 import requests
 import feedparser
 import openai
@@ -93,6 +95,10 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
+
+# 线程安全锁
+_HASH_LOCK = Lock()
+_CACHE_LOCK = Lock()
 
 # ================= 辅助函数 =================
 def clean_html(text: Optional[str]) -> str:
@@ -227,7 +233,7 @@ def load_source_map() -> Dict[str, str]:
                 return json.load(f)
         except Exception as e:
             logger.warning(f"加载 {map_file} 失败: {e}")
-    return
+    return {}
 
 RAW_SOURCES_CONFIG = load_sources_config()
 RAW_SOURCES = [cfg["url"] for cfg in RAW_SOURCES_CONFIG]
@@ -384,7 +390,7 @@ def load_disabled_sources() -> Dict[str, dict]:
                     return new_data
         except:
             pass
-    return
+    return {}
 
 def save_disabled_sources(disabled: Dict[str, dict]):
     with open(DISABLED_SOURCES_FILE, 'w', encoding='utf-8') as f:
@@ -515,8 +521,9 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
                 continue
             link = entry.get("link", "")
             link = convert_to_official_x_link(link)
-            if url_cache.seen(link):
-                continue
+            with _CACHE_LOCK:
+                if url_cache.seen(link):
+                    continue
             title = clean_html(entry.get("title", ""))
             summary = clean_html(entry.get("summary", ""))
             if not summary:
@@ -524,9 +531,10 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
             if not summary:
                 summary = title
             h = content_hash(title, summary)
-            if h in processed_hashes:
-                continue
-            processed_hashes.add(h)
+            with _HASH_LOCK:
+                if h in processed_hashes:
+                    continue
+                processed_hashes.add(h)
             if "x.com/" in original_url:
                 parts = original_url.split("/")
                 raw_name = parts[3] if len(parts) > 3 else original_url
@@ -547,7 +555,8 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
                 "time_ago": time_ago,
                 "fetched_at": datetime.utcnow().isoformat()
             })
-            url_cache.add(link)
+            with _CACHE_LOCK:
+                url_cache.add(link)
         return items
     except Exception as e:
         logger.error(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
@@ -561,12 +570,12 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
         username = original_url.split("/")[-1]
         nitter_pool = MirrorPool(get_nitter_instances())
         while True:
+            instance = nitter_pool.get_next() if nitter_pool.available else None
+            if not instance:
+                break
+            test_url = f"{instance}/{username}/rss"
+            logger.debug(f"尝试 X {username} 使用 {instance}")
             try:
-                instance = nitter_pool.get_next() if nitter_pool.available else None
-                if not instance:
-                    break
-                test_url = f"{instance}/{username}/rss"
-                logger.debug(f"尝试 X {username} 使用 {instance}")
                 items = fetch_single_rss(test_url, original_url, processed_hashes, url_cache, time_window_hours)
                 if items:
                     logger.debug(f"X {username} 成功 via {instance} (条数: {len(items)})")
@@ -576,8 +585,10 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
                     logger.debug(f"X {username} 失败 via {instance}")
                     update_nitter_health(instance, False)
                     nitter_pool.report_failure(instance)
-            except Exception:
-                break
+            except Exception as e:
+                logger.debug(f"X {username} 实例 {instance} 异常: {e}")
+                update_nitter_health(instance, False)
+                nitter_pool.report_failure(instance)
             time.sleep(0.5)
         logger.debug(f"X {username} 所有实例均失败")
         return []
