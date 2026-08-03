@@ -1,5 +1,4 @@
-# crawler.py - OpenRouter 专属版（去掉 Gemini/Cohere，直接使用免费模型）
-
+# crawler.py - OpenRouter 专属版（修复缺失装饰器定义）
 import os
 import json
 import re
@@ -48,7 +47,6 @@ logger.addHandler(console_handler)
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-# 优先使用的免费模型列表（按顺序尝试）
 OPENROUTER_MODELS = [
     "google/gemini-2.0-flash-exp:free",
     "meta-llama/llama-3.1-8b-instruct:free",
@@ -64,7 +62,7 @@ SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 3
-AI_REQUEST_DELAY = 25          # 批间等待（秒）
+AI_REQUEST_DELAY = 25
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -191,8 +189,7 @@ def get_source_priority(source_name: str) -> int:
         return 3
     return 4
 
-# ================= 信源配置加载（不变） =================
-# ... 以下保持 load_sources_config, load_source_map 等完全相同 ...
+# ================= 信源配置加载 =================
 def load_sources_config() -> List[Dict]:
     sources_file = "sources.json"
     default = [
@@ -257,8 +254,7 @@ def get_display_source(source_name: str) -> str:
             return display
     return source_name
 
-# ================ 信源健康管理（不变） ================
-# ... SourceHealth, MirrorPool 等保持不变 ...
+# ================ 信源健康管理 ================
 class SourceHealth:
     def __init__(self, max_fails=DISABLE_FAILED_THRESHOLD, cooldown_minutes=DISABLE_COOLDOWN_MINUTES):
         self.max_fails = max_fails
@@ -340,8 +336,7 @@ def load_healthy_instances(file_path: str, fallback: List[str]) -> List[str]:
             logger.warning(f"读取 {file_path} 失败: {e}")
     return fallback
 
-# ================ URL去重缓存（不变） ================
-# ... URLDedupCache, load_disabled_sources, fetch_url 等不变 ...
+# ================ URL去重缓存 ================
 class URLDedupCache:
     def __init__(self, cache_file=URL_DEDUP_FILE):
         self.cache_file = cache_file
@@ -382,6 +377,7 @@ class URLDedupCache:
             with open(self.cache_file, 'w') as f:
                 json.dump(list(self.url_set), f)
 
+# ================ 失败信源管理 ================
 def load_disabled_sources() -> Dict[str, dict]:
     if os.path.exists(DISABLED_SOURCES_FILE):
         try:
@@ -431,6 +427,24 @@ def is_source_disabled(url: str) -> bool:
     disabled = load_disabled_sources()
     return url in disabled
 
+# ================= 网络请求重试装饰器 =================
+def retry_on_exception(max_retries=3, delay=1, backoff=2):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            _delay = delay
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    logger.debug(f"重试 {func.__name__} (尝试 {attempt+1}/{max_retries}): {e}")
+                    time.sleep(_delay)
+                    _delay *= backoff
+            return None
+        return wrapper
+    return decorator
+
 @retry_on_exception(max_retries=2, delay=2, backoff=2)
 def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> requests.Response:
     if headers is None:
@@ -452,8 +466,7 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心（不变） =================
-# ... url_to_rss, fetch_single_rss, fetch_with_retry, fetch_all_sources 保持不变 ...
+# ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
     rsshub = random.choice(rsshub_instances)
     if "voachinese.com" in url:
@@ -656,6 +669,7 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希+URL去重）")
     return all_items, failed_sources
 
+# ================= 失败记录 =================
 def log_failed_sources(failed_sources: List[Tuple[str, str]]):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     data = {}
@@ -673,6 +687,7 @@ def log_failed_sources(failed_sources: List[Tuple[str, str]]):
         json.dump(data, f, ensure_ascii=False, indent=2)
     update_disabled_sources(failed_sources)
 
+# ================= 历史事件管理 =================
 def load_previous_events() -> List[str]:
     events = []
     if not os.path.exists("report.md"):
@@ -746,7 +761,6 @@ def estimate_tokens(text: str) -> int:
         return int(len(text) / 2)
 
 def call_openrouter(prompt: str, model: str) -> Optional[str]:
-    """通过 OpenRouter 调用指定免费模型"""
     if not OPENROUTER_API_KEY:
         logger.error("未找到 OPENROUTER_API_KEY 环境变量，请在 GitHub Secrets 中设置")
         return None
@@ -782,7 +796,6 @@ def call_openrouter(prompt: str, model: str) -> Optional[str]:
     return None
 
 def call_ai_fallback(prompt: str) -> Optional[str]:
-    """依次尝试 OPENROUTER_MODELS 中的模型，直到成功"""
     for model in OPENROUTER_MODELS:
         logger.info(f"尝试使用 OpenRouter 模型: {model}")
         result = call_openrouter(prompt, model)
@@ -793,7 +806,6 @@ def call_ai_fallback(prompt: str) -> Optional[str]:
     logger.error("所有 OpenRouter 免费模型均失败，本次分析无法完成。")
     return None
 
-# ================= 其余部分（call_ai_unified, HTML 生成等） =================
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
     if not articles:
         return "无相关内容。\n", []
@@ -808,7 +820,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     current_batch = []
     current_tokens = 0
 
-    # 精简版 Prompt（与之前一致）
     prompt_prefix = """你是一名舆情分析师。从以下抓取内容中筛选出**涉华负面舆情**，忽略无意义内容（纯转发、仅链接、表情符号、广告、个人生活），不确定时保留。
 
 输出要求：
@@ -1128,7 +1139,6 @@ def main():
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    # OpenRouter 限制宽松，只需短暂冷却
     logger.info("AI 分析前等待 5 秒...")
     time.sleep(5)
 
