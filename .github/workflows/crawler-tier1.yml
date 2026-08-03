@@ -35,8 +35,8 @@ jobs:
 
       - name: Run crawler
         env:
-          # 🔑 关键修改：使用新令牌 Secret（GH_MODELS_TOKEN_NEW）
-          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN_NEW }}
+          # 🔑 使用 Google Gemini API Key
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: python crawler.py
 
       - name: Generate commit message
