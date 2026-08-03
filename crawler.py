@@ -1,4 +1,6 @@
 # crawler.py - 稳定版（保留最近2天数据/报告）+ 信源抓取优化
+# AI 从 GitHub Models 改为 Google Gemini
+
 import os
 import json
 import re
@@ -11,7 +13,6 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
 from logging.handlers import RotatingFileHandler
-
 import requests
 import feedparser
 import openai
@@ -29,28 +30,26 @@ except ImportError:
 LOG_FILE = "crawler.log"
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 5
-
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
-
 file_handler = RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT, encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
-
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
-
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# ================= 配置常量 =================
-GH_TOKEN = os.environ.get("GH_MODELS_TOKEN_NEW") or os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
-AI_BASE_URL = "https://models.inference.ai.azure.com"
-AI_MODEL = "gpt-4o-mini"
+# ================= 配置常量（已改为 Google Gemini） =================
+# Google Gemini API Key
+GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+AI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+AI_MODEL = "gemini-2.0-flash"  # 免费模型，每分钟15次请求
+
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
 if os.environ.get("HTTP_PROXY"):
@@ -66,7 +65,6 @@ DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
-
 EVENT_COUNTS_FILE = "event_counts.json"
 HEALTHY_NITTER_FILE = "healthy_nitter.json"
 HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
@@ -84,6 +82,7 @@ FALLBACK_NITTER_INSTANCES = [
     "https://nitter.catsarch.com",
     "https://xcancel.com"
 ]
+
 FALLBACK_RSSHUB_INSTANCES = [
     "https://rsshub.app",
     "https://rsshub.ktachibana.party"
@@ -228,7 +227,7 @@ def load_source_map() -> Dict[str, str]:
                 return json.load(f)
         except Exception as e:
             logger.warning(f"加载 {map_file} 失败: {e}")
-    return {}
+    return
 
 RAW_SOURCES_CONFIG = load_sources_config()
 RAW_SOURCES = [cfg["url"] for cfg in RAW_SOURCES_CONFIG]
@@ -385,7 +384,7 @@ def load_disabled_sources() -> Dict[str, dict]:
                     return new_data
         except:
             pass
-    return {}
+    return
 
 def save_disabled_sources(disabled: Dict[str, dict]):
     with open(DISABLED_SOURCES_FILE, 'w', encoding='utf-8') as f:
@@ -558,7 +557,6 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
     if is_source_disabled(original_url):
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
-
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         nitter_pool = MirrorPool(get_nitter_instances())
@@ -583,7 +581,6 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
             time.sleep(0.5)
         logger.debug(f"X {username} 所有实例均失败")
         return []
-
     rsshub_instances = get_rsshub_instances()
     rss_candidates = url_to_rss(original_url, rsshub_instances)
     if not rss_candidates:
@@ -591,7 +588,6 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
         return []
     if isinstance(rss_candidates, str):
         rss_candidates = [rss_candidates]
-
     for rss_url in rss_candidates:
         instance_used = None
         for inst in rsshub_instances:
@@ -623,7 +619,6 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     processed_hashes = set()
     url_cache = URLDedupCache()
     failed_sources = []
-
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_url = {
             executor.submit(fetch_with_retry, url, processed_hashes, url_cache, TIME_WINDOW_MAP.get(url, 24)): url
@@ -642,7 +637,6 @@ def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
             except Exception as e:
                 failed_sources.append((url, str(e)))
                 logger.error(f"✗ {url} 异常: {e}")
-
     url_cache.save()
     logger.info(f"去重后共 {len(all_items)} 条（已通过内容哈希+URL去重）")
     return all_items, failed_sources
@@ -727,18 +721,34 @@ def cleanup_old_events(event_counts: Dict) -> Dict:
         logger.info(f"删除过期事件: {event[:50]}")
     return event_counts
 
-# ================= AI 分析 =================
+# ================= AI 分析（Google Gemini） =================
 def estimate_tokens(text: str) -> int:
+    """估算 token 数量"""
     if TIKTOKEN_AVAILABLE:
-        enc = tiktoken.encoding_for_model("gpt-4o-mini")
-        return len(enc.encode(text))
+        try:
+            # 使用 cl100k_base 编码器（适用于大多数现代模型）
+            enc = tiktoken.get_encoding("cl100k_base")
+            return len(enc.encode(text))
+        except:
+            # 降级估算
+            return int(len(text) / 1.5)
     else:
-        return int(len(text) / 1.5)
+        # 简单估算：中文约1.5字符/token，英文约4字符/token
+        return int(len(text) / 2)
 
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
+    """调用 Google Gemini API"""
+    if not GEMINI_API_KEY:
+        logger.error("未找到 GOOGLE_API_KEY 环境变量，请在 GitHub Secrets 中设置")
+        return None
+    
     for attempt in range(max_retries):
         try:
-            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
+            # 使用 OpenAI 兼容接口调用 Gemini
+            client = openai.OpenAI(
+                api_key=GEMINI_API_KEY,
+                base_url=AI_BASE_URL
+            )
             response = client.chat.completions.create(
                 model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
@@ -748,6 +758,12 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
             content = response.choices[0].message.content
             if content is not None:
                 return content
+        except openai.AuthenticationError:
+            logger.error("API Key 认证失败，请检查 GOOGLE_API_KEY 是否正确")
+            return None
+        except openai.RateLimitError:
+            logger.warning(f"API 速率限制，等待后重试 ({attempt+1}/{max_retries})")
+            time.sleep(10)
         except Exception as e:
             logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
             if attempt < max_retries - 1:
@@ -767,6 +783,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
+
     # ===== V9 版本：风险点3条简短分点 =====
     prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
 
@@ -809,8 +826,10 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 3. 情绪化内容引发共鸣，可能激起公众的不满情绪"
 
 以下是抓取到的部分内容：\n\n"""
+
     prompt_tokens = estimate_tokens(prompt_prefix)
-    max_content_tokens = 10000
+    max_content_tokens = 8000  # Gemini 2.0 flash 免费版建议控制在较小范围
+
     for block in blocks:
         block_tokens = estimate_tokens(block)
         if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
@@ -819,6 +838,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
             current_tokens = 0
         current_batch.append(block)
         current_tokens += block_tokens
+
     if current_batch:
         batches.append(current_batch)
 
@@ -827,6 +847,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
     table_sep = "|----------|----------|------------|----------|------------|------------|"
+
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
@@ -834,6 +855,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         if content is None:
             logger.error(f"AI 分析批次 {batch_idx} 重试失败，跳过")
             continue
+
         lines = content.split("\n")
         in_table = False
         for line in lines:
@@ -847,12 +869,14 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 if len(cells) == 6:
                     all_table_rows.append(line)
+
         time.sleep(AI_REQUEST_DELAY)
 
     if not all_table_rows:
         return "无相关内容。\n", []
 
     unique_rows, events_in_report = deduplicate_and_mark_new(all_table_rows, old_events)
+
     final_table = "\n".join([table_header, table_sep] + unique_rows)
     return final_table, events_in_report
 
@@ -938,6 +962,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
                         best_item = item
                         best_pub = pub_dt
                         best_priority = priority
+
         first_event, first_src, first_link, first_risk, first_time_ago, first_risk_level, _, _ = best_item
         sources = sorted(set([s for _, s, _, _, _, _, _, _ in group]))
         source_count = len(sources)
@@ -956,6 +981,7 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         new_row = "| " + " | ".join(new_cells) + " |"
         unique_rows.append(new_row)
         events_in_report.append(first_event)
+
     return unique_rows, events_in_report
 
 def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[str], Dict]:
@@ -972,7 +998,6 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
         count = record.get("count", 0)
         last_seen_str = record.get("last_seen")
         last_seen = datetime.strptime(last_seen_str, "%Y-%m-%d").date() if last_seen_str else None
-
         if count >= MAX_REPEAT_COUNT:
             if last_seen and (today - last_seen).days < COOLDOWN_DAYS:
                 logger.info(f"隐藏重复事件（冷却期内）: {event[:50]}")
@@ -982,13 +1007,13 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
                 count = 1
         else:
             count += 1
-
         new_rows.append(row)
         new_counts[event] = {"count": count, "last_seen": today.isoformat()}
 
     for event, record in event_counts.items():
         if event not in new_counts:
             new_counts[event] = record
+
     return new_rows, new_counts
 
 # ================= HTML 报告生成 =================
@@ -1063,11 +1088,12 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 <body>
 <h1>📊 内容安全行业舆情报告</h1>
 <p>生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+<p>AI 模型：Google Gemini 2.0 Flash</p>
 <div id="report">
 {html_table}
 </div>
 <div class="footer">
-    <p>注：本报告由 AI 基于过去24小时抓取的内容自动生成，仅供参考。</p>
+    <p>注：本报告由 Google Gemini AI 基于过去24小时抓取的内容自动生成，仅供参考。</p>
 </div>
 </body>
 </html>"""
@@ -1075,22 +1101,18 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
 def save_reports_with_history(report_text: str, all_articles: List[Dict], failed_sources: List[Tuple[str, str]]):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     raw_count = len(all_articles)
-
     timestamp_str = f"生成时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
     fetch_info = f"抓取数据：{raw_count}条\n\n"
     final_content = timestamp_str + fetch_info + report_text
-
     with open("report.md", "w", encoding="utf-8") as f:
         f.write(final_content)
     html_content = generate_html_report(report_text, all_articles)
     with open("report.html", "w", encoding="utf-8") as f:
         f.write(html_content)
-
     os.makedirs("reports", exist_ok=True)
     history_path = f"reports/report_{timestamp}.html"
     with open(history_path, "w", encoding="utf-8") as f:
         f.write(html_content)
-
     generate_index_page()
     os.makedirs("data", exist_ok=True)
     with open(f"data/raw_{timestamp}.json", "w", encoding="utf-8") as f:
@@ -1163,12 +1185,13 @@ def main():
         return
 
     log_failed_sources(failed_sources)
+
     old_events = load_previous_events()
     event_counts = load_event_counts()
     event_counts = cleanup_old_events(event_counts)
     save_event_counts(event_counts)
 
-    logger.info("=== 调用 AI 分析（统一分析，AI 自动识别报告并优先展示） ===")
+    logger.info("=== 调用 AI 分析（Google Gemini） ===")
     report_table, events_in_report = call_ai_unified(all_articles, old_events)
 
     if report_table != "无相关内容。\n":
@@ -1188,8 +1211,10 @@ def main():
 
     full_report = final_table
     save_reports_with_history(full_report, all_articles, failed_sources)
+
     logger.info(f"=== 清理超过 {KEEP_DAYS} 天的旧文件 ===")
     cleanup_old_files()
+
     logger.info(f"全部完成，总耗时 {time.time()-start:.1f} 秒")
 
 if __name__ == "__main__":
