@@ -1,4 +1,4 @@
-# crawler.py - 最终完整版（404修复 + 超时保护 + 后备过滤 + 乱码修复）
+# crawler.py - 最终修复版（链接显示404修复 + 稳健HTML转换）
 import os
 import json
 import re
@@ -57,10 +57,8 @@ if not API_KEY:
     logger.warning("未设置 OPENROUTER_API_KEY 或 OPENAI_API_KEY，AI 功能将不可用")
 
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://openrouter.ai/api/v1")
-# 默认使用 openrouter/free 自动路由，避免单个模型限流
 AI_MODEL = os.environ.get("AI_MODEL", "openrouter/free")
 
-# JSON 模式默认关闭（免费模型可能不支持），通过提示词强制 JSON 输出
 AI_JSON_MODE = os.environ.get("AI_JSON_MODE", "false").lower() == "true"
 AI_TIMEOUT_SECONDS = int(os.environ.get("AI_TIMEOUT_SECONDS", 300))
 
@@ -895,7 +893,9 @@ def rule_based_filter(articles: List[Dict]) -> List[Dict]:
             link = art.get("link", "")
             risk = "检测到敏感关键词"
             level = "中"
-            row = f"| {art['title'][:80]} | [查看]({link}) | {risk} | {source_name} | {time_ago} | {level} |"
+            # 防止事件简述含 | 破坏表格
+            safe_title = art['title'][:80].replace("|", "｜")
+            row = f"| {safe_title} | [查看]({link}) | {risk} | {source_name} | {time_ago} | {level} |"
             rows.append(row)
     return rows
 
@@ -977,7 +977,9 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                     rows = []
                     for item in cached_items:
                         if all(k in item for k in ("event","link","risk","source","time","level")):
-                            row = f"| {item['event']} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
+                            # 转义事件简述中的 |
+                            safe_event = item['event'].replace("|", "｜")
+                            row = f"| {safe_event} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
                             rows.append(row)
                     return rows
                 else:
@@ -987,7 +989,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                 rows = []
                 for item in cached_entry:
                     if all(k in item for k in ("event","link","risk","source","time","level")):
-                        row = f"| {item['event']} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
+                        safe_event = item['event'].replace("|", "｜")
+                        row = f"| {safe_event} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
                         rows.append(row)
                 return rows
 
@@ -995,7 +998,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         with AI_SEMAPHORE:
             raw_response = call_ai_with_retry(prompt)
         if raw_response is None:
-            return None  # 表示失败
+            return None
 
         json_str = extract_json(raw_response)
         if json_str is None:
@@ -1010,7 +1013,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
             rows = []
             for item in parsed:
                 if all(k in item for k in ("event","link","risk","source","time","level")):
-                    row = f"| {item['event']} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
+                    safe_event = item['event'].replace("|", "｜")
+                    row = f"| {safe_event} | [查看]({item['link']}) | {item['risk']} | {item['source']} | {item['time']} | {item['level']} |"
                     rows.append(row)
             return rows
         except Exception as e:
@@ -1023,7 +1027,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     for batch_blocks in batches:
         key = batch_key(batch_blocks)
         if key in ai_cache and isinstance(ai_cache[key], dict) and "created_at" in ai_cache[key] and time.time() - ai_cache[key]["created_at"] < CACHE_TTL:
-            rows = process_single_batch(batch_blocks)  # 不会调 AI
+            rows = process_single_batch(batch_blocks)
             if rows:
                 cached_rows.extend(rows)
         else:
@@ -1039,7 +1043,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
             try:
                 for future in as_completed(future_to_batch, timeout=AI_TIMEOUT_SECONDS - (time.time() - ai_start_time)):
                     try:
-                        rows = future.result(timeout=30)  # 单批次额外超时
+                        rows = future.result(timeout=30)
                         if rows is not None:
                             completed_rows.extend(rows)
                         else:
@@ -1054,7 +1058,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                 for future in future_to_batch:
                     future.cancel()
 
-    # 如果 AI 失败或部分失败，启用内置规则过滤作为补充
     if ai_failed or len(completed_rows) == 0:
         logger.warning("AI 分析不完整或为空，启用内置规则过滤后备")
         rule_rows = rule_based_filter(articles)
@@ -1064,7 +1067,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     if not completed_rows:
         return "无相关内容。\n", []
 
-    # 去重合并
+    # 去重合并（已包含 | 转义）
     unique_rows, events_in_report = deduplicate_and_mark_new(completed_rows, old_events)
 
     if unique_rows:
@@ -1158,10 +1161,11 @@ def deduplicate_and_mark_new(rows: List[str], old_events: List[str]) -> Tuple[Li
         first_event, first_src, first_link, first_risk, first_time, first_level, _, _ = best
         sources = sorted(set([item[1] for item in group]))
         source_display = "、".join(sources) if len(sources) <= 3 else f"{len(sources)}个信源"
-        event_text = first_event
+        # 转义事件简述中的 |
+        safe_event = first_event.replace("|", "｜")
         if len(sources) > 1:
-            event_text += f"（{len(sources)}个信源）"
-        new_row = f"| {event_text} | [查看]({first_link}) | {first_risk} | {source_display} | {first_time} | {first_level} |"
+            safe_event += f"（{len(sources)}个信源）"
+        new_row = f"| {safe_event} | [查看]({first_link}) | {first_risk} | {source_display} | {first_time} | {first_level} |"
         is_new = True
         for old in old_events:
             if is_similar(first_event, old):
@@ -1204,7 +1208,7 @@ def filter_by_repeat_count(rows: List[str], event_counts: Dict) -> Tuple[List[st
             new_counts[event] = record
     return new_rows, new_counts
 
-# ================= HTML 报告生成 =================
+# ================= HTML 报告生成（链接修复） =================
 def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
     lines = report_text.split("\n")
     html_table = ""
@@ -1226,10 +1230,12 @@ def generate_html_report(report_text: str, all_articles: List[Dict]) -> str:
                 continue
             html_table += "<tr>\n"
             for cell in cells:
-                link_match = re.search(r'\[(.*?)\]\((.*?)\)', cell)
-                if link_match:
-                    text, url = link_match.group(1), link_match.group(2)
-                    cell = f'<a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>'
+                # 使用更稳健的替换：匹配 [text](url)，其中 url 不包含 )
+                cell = re.sub(
+                    r'\[([^\]]*)\]\(([^\)]+)\)',
+                    r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>',
+                    cell
+                )
                 html_table += f"<td>{cell}</td>\n"
             html_table += "</tr>\n"
         else:
