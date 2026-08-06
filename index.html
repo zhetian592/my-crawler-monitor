@@ -7,24 +7,30 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>🛡️ 内容安全舆情监控系统</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">
+    </script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        /* ===== 全局重置 & 变量 ===== */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
         :root {
             --bg-body: #0b1121;
-            --bg-card: rgba(255,255,255,0.06);
-            --bg-card-solid: rgba(15,23,42,0.80);
+            --bg-card: rgba(255, 255, 255, 0.06);
+            --bg-card-solid: rgba(15, 23, 42, 0.80);
             --text-primary: #f1f5f9;
             --text-secondary: #cbd5e1;
-            --border-color: rgba(255,255,255,0.10);
-            --shadow: 0 8px 32px rgba(0,0,0,0.5);
-            --shadow-hover: 0 12px 48px rgba(56,189,248,0.15);
-            --glass-border: rgba(255,255,255,0.08);
-            --glass-bg: rgba(255,255,255,0.04);
-            --table-header-bg: rgba(255,255,255,0.05);
-            --table-hover-bg: rgba(255,255,255,0.03);
-            --table-bg: rgba(0,0,0,0.25);
+            --border-color: rgba(255, 255, 255, 0.10);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            --shadow-hover: 0 12px 48px rgba(56, 189, 248, 0.15);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-bg: rgba(255, 255, 255, 0.04);
+            --table-header-bg: rgba(255, 255, 255, 0.05);
+            --table-hover-bg: rgba(255, 255, 255, 0.03);
+            --table-bg: rgba(0, 0, 0, 0.25);
             --table-blur: blur(16px);
             --link-color: #a78bfa;
             --link-hover: #c4b5fd;
@@ -35,30 +41,30 @@
             --risk-high: #fca5a5;
             --risk-medium: #fcd34d;
             --risk-low: #7dd3fc;
-            --tooltip-bg: rgba(15,23,42,0.92);
+            --tooltip-bg: rgba(15, 23, 42, 0.92);
             --tooltip-text: #f8fafc;
-            --tooltip-border: rgba(255,255,255,0.08);
-            --accent-glow: rgba(192,132,252,0.08);
-            --accent-glow2: rgba(56,189,248,0.05);
+            --tooltip-border: rgba(255, 255, 255, 0.08);
+            --accent-glow: rgba(192, 132, 252, 0.08);
+            --accent-glow2: rgba(56, 189, 248, 0.05);
             --stat-number-bg: linear-gradient(135deg, #f472b6, #a78bfa);
-            --bg-overlay: linear-gradient(145deg, rgba(11,17,33,0.6), rgba(30,27,75,0.4));
+            --bg-overlay: linear-gradient(145deg, rgba(11, 17, 33, 0.6), rgba(30, 27, 75, 0.4));
         }
 
-        /* 晨曦 (dawn) */
+        /* ===== 晨曦 (dawn) ===== */
         [data-theme="dawn"] {
             --bg-body: #f8fafc;
-            --bg-card: rgba(255,255,255,0.65);
-            --bg-card-solid: rgba(255,255,255,0.85);
+            --bg-card: rgba(255, 255, 255, 0.65);
+            --bg-card-solid: rgba(255, 255, 255, 0.85);
             --text-primary: #1e293b;
             --text-secondary: #475569;
-            --border-color: rgba(0,0,0,0.08);
-            --shadow: 0 8px 24px rgba(0,0,0,0.06);
-            --shadow-hover: 0 12px 32px rgba(0,0,0,0.10);
-            --glass-border: rgba(255,255,255,0.3);
-            --glass-bg: rgba(255,255,255,0.15);
-            --table-header-bg: rgba(0,0,0,0.04);
-            --table-hover-bg: rgba(0,0,0,0.02);
-            --table-bg: rgba(255,255,255,0.40);
+            --border-color: rgba(0, 0, 0, 0.08);
+            --shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+            --shadow-hover: 0 12px 32px rgba(0, 0, 0, 0.10);
+            --glass-border: rgba(255, 255, 255, 0.3);
+            --glass-bg: rgba(255, 255, 255, 0.15);
+            --table-header-bg: rgba(0, 0, 0, 0.04);
+            --table-hover-bg: rgba(0, 0, 0, 0.02);
+            --table-bg: rgba(255, 255, 255, 0.40);
             --table-blur: blur(8px);
             --link-color: #d97706;
             --link-hover: #b45309;
@@ -69,30 +75,30 @@
             --risk-high: #dc2626;
             --risk-medium: #d97706;
             --risk-low: #059669;
-            --tooltip-bg: rgba(255,255,255,0.95);
+            --tooltip-bg: rgba(255, 255, 255, 0.95);
             --tooltip-text: #1e293b;
-            --tooltip-border: rgba(0,0,0,0.06);
-            --accent-glow: rgba(251,191,36,0.08);
-            --accent-glow2: rgba(251,191,36,0.04);
+            --tooltip-border: rgba(0, 0, 0, 0.06);
+            --accent-glow: rgba(251, 191, 36, 0.08);
+            --accent-glow2: rgba(251, 191, 36, 0.04);
             --stat-number-bg: linear-gradient(135deg, #1e293b, #475569);
-            --bg-overlay: linear-gradient(145deg, rgba(255,210,150,0.10), rgba(255,255,255,0.05));
+            --bg-overlay: linear-gradient(145deg, rgba(255, 210, 150, 0.10), rgba(255, 255, 255, 0.05));
         }
 
-        /* 暮光 (dusk) */
+        /* ===== 暮光 (dusk) ===== */
         [data-theme="dusk"] {
             --bg-body: #0a0615;
-            --bg-card: rgba(255,255,255,0.03);
-            --bg-card-solid: rgba(10,6,21,0.92);
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-solid: rgba(10, 6, 21, 0.92);
             --text-primary: #e2e8f0;
             --text-secondary: #94a3b8;
-            --border-color: rgba(255,255,255,0.06);
-            --shadow: 0 8px 32px rgba(0,0,0,0.7);
-            --shadow-hover: 0 12px 48px rgba(124,58,237,0.2);
-            --glass-border: rgba(255,255,255,0.04);
-            --glass-bg: rgba(255,255,255,0.02);
-            --table-header-bg: rgba(124,58,237,0.1);
-            --table-hover-bg: rgba(124,58,237,0.04);
-            --table-bg: rgba(0,0,0,0.4);
+            --border-color: rgba(255, 255, 255, 0.06);
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+            --shadow-hover: 0 12px 48px rgba(124, 58, 237, 0.2);
+            --glass-border: rgba(255, 255, 255, 0.04);
+            --glass-bg: rgba(255, 255, 255, 0.02);
+            --table-header-bg: rgba(124, 58, 237, 0.1);
+            --table-hover-bg: rgba(124, 58, 237, 0.04);
+            --table-bg: rgba(0, 0, 0, 0.4);
             --link-color: #8b5cf6;
             --link-hover: #a78bfa;
             --gradient-primary: linear-gradient(135deg, #7c3aed, #4f46e5);
@@ -102,30 +108,30 @@
             --risk-high: #ef4444;
             --risk-medium: #f59e0b;
             --risk-low: #22d3ee;
-            --tooltip-bg: rgba(10,6,21,0.96);
+            --tooltip-bg: rgba(10, 6, 21, 0.96);
             --tooltip-text: #f1f5f9;
-            --tooltip-border: rgba(255,255,255,0.06);
-            --accent-glow: rgba(124,58,237,0.08);
-            --accent-glow2: rgba(79,70,229,0.05);
+            --tooltip-border: rgba(255, 255, 255, 0.06);
+            --accent-glow: rgba(124, 58, 237, 0.08);
+            --accent-glow2: rgba(79, 70, 229, 0.05);
             --stat-number-bg: linear-gradient(135deg, #38bdf8, #a78bfa);
-            --bg-overlay: linear-gradient(145deg, rgba(10,6,21,0.70), rgba(30,27,75,0.50));
+            --bg-overlay: linear-gradient(145deg, rgba(10, 6, 21, 0.70), rgba(30, 27, 75, 0.50));
         }
 
-        /* 苏打柠檬 (mint) - 清新翠绿 */
+        /* ===== 苏打柠檬 (mint) ===== */
         [data-theme="mint"] {
             --bg-body: #f0fdf4;
-            --bg-card: rgba(240,253,244,0.75);
-            --bg-card-solid: rgba(240,253,244,0.92);
+            --bg-card: rgba(240, 253, 244, 0.75);
+            --bg-card-solid: rgba(240, 253, 244, 0.92);
             --text-primary: #1e3a2f;
             --text-secondary: #4a6b5b;
-            --border-color: rgba(110,200,140,0.18);
-            --shadow: 0 4px 20px rgba(0,0,0,0.05);
-            --shadow-hover: 0 8px 32px rgba(80,200,120,0.12);
-            --glass-border: rgba(110,200,140,0.15);
-            --glass-bg: rgba(200,250,220,0.60);
-            --table-header-bg: rgba(150,230,180,0.25);
-            --table-hover-bg: rgba(150,230,180,0.15);
-            --table-bg: rgba(240,253,244,0.65);
+            --border-color: rgba(110, 200, 140, 0.18);
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            --shadow-hover: 0 8px 32px rgba(80, 200, 120, 0.12);
+            --glass-border: rgba(110, 200, 140, 0.15);
+            --glass-bg: rgba(200, 250, 220, 0.60);
+            --table-header-bg: rgba(150, 230, 180, 0.25);
+            --table-hover-bg: rgba(150, 230, 180, 0.15);
+            --table-bg: rgba(240, 253, 244, 0.65);
             --table-blur: blur(10px);
             --link-color: #0d9488;
             --link-hover: #0f766e;
@@ -136,179 +142,616 @@
             --risk-high: #e11d48;
             --risk-medium: #d97706;
             --risk-low: #059669;
-            --tooltip-bg: rgba(240,255,245,0.97);
+            --tooltip-bg: rgba(240, 255, 245, 0.97);
             --tooltip-text: #1e3a2f;
-            --accent-glow: rgba(16,185,129,0.08);
-            --accent-glow2: rgba(6,182,212,0.05);
+            --accent-glow: rgba(16, 185, 129, 0.08);
+            --accent-glow2: rgba(6, 182, 212, 0.05);
             --stat-number-bg: linear-gradient(135deg, #10b981, #06b6d4);
-            --bg-overlay: linear-gradient(145deg, rgba(200,250,220,0.15), rgba(255,255,255,0.1));
+            --bg-overlay: linear-gradient(145deg, rgba(200, 250, 220, 0.15), rgba(255, 255, 255, 0.1));
         }
 
+        /* ===== 全局样式 ===== */
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
             color: var(--text-primary);
-            margin: 0; padding: 20px;
-            line-height: 1.6; min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            min-height: 100vh;
             position: relative;
             background-color: var(--bg-body);
-            text-shadow: 0 1px 8px rgba(0,0,0,0.1);
+            text-shadow: 0 1px 8px rgba(0, 0, 0, 0.1);
             transition: background-color 0.4s, color 0.4s;
         }
 
         .bg-layer {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: -2; overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            overflow: hidden;
         }
         .bg-layer img {
-            width: 100%; height: 100%; object-fit: cover;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
             transition: opacity 0.5s;
         }
         .bg-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: -1; background: var(--bg-overlay); pointer-events: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: var(--bg-overlay);
+            pointer-events: none;
             transition: background 0.4s;
         }
-        body::before, body::after {
-            content: ''; position: fixed; pointer-events: none; z-index: 0;
+        body::before,
+        body::after {
+            content: '';
+            position: fixed;
+            pointer-events: none;
+            z-index: 0;
         }
         body::before {
-            top: -30%; left: -20%; width: 70%; height: 70%;
+            top: -30%;
+            left: -20%;
+            width: 70%;
+            height: 70%;
             background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
         }
         body::after {
-            bottom: -30%; right: -20%; width: 70%; height: 70%;
+            bottom: -30%;
+            right: -20%;
+            width: 70%;
+            height: 70%;
             background: radial-gradient(circle, var(--accent-glow2) 0%, transparent 70%);
         }
 
-        .container { max-width: 1400px; margin: 0 auto; position: relative; z-index: 1; }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
 
         .card {
-            background: var(--bg-card); backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px); border: 1px solid var(--glass-border);
-            border-radius: 16px; box-shadow: var(--shadow); padding: 24px 28px;
-            margin-bottom: 24px; transition: all 0.3s ease;
+            background: var(--bg-card);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 24px 28px;
+            margin-bottom: 24px;
+            transition: all 0.3s ease;
         }
-        .card:hover { box-shadow: var(--shadow-hover); }
+        .card:hover {
+            box-shadow: var(--shadow-hover);
+        }
 
-        .navbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 12px 0 4px; }
+        .navbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            padding: 12px 0 4px;
+        }
         .navbar-brand {
-            display: flex; align-items: center; gap: 12px; font-size: 1.5rem; font-weight: 700;
-            background: var(--gradient-primary); -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent; background-clip: text; text-shadow: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: none;
         }
-        .navbar-brand .logo-icon { font-size: 2rem; -webkit-text-fill-color: initial; }
+        .navbar-brand .logo-icon {
+            font-size: 2rem;
+            -webkit-text-fill-color: initial;
+        }
         .status-badge {
-            display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem;
-            font-weight: 500; color: var(--text-secondary); background: var(--glass-bg);
-            padding: 4px 12px; border-radius: 30px; border: 1px solid var(--glass-border);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: var(--glass-bg);
+            padding: 4px 12px;
+            border-radius: 30px;
+            border: 1px solid var(--glass-border);
         }
-        .status-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block; animation: pulse-dot 2s infinite; }
-        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+        .status-badge .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #34d399;
+            display: inline-block;
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot {
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.5;
+                transform: scale(0.8);
+            }
+        }
 
-        .navbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .navbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
         .btn {
-            display: inline-flex; align-items: center; gap: 6px; background: var(--glass-bg);
-            backdrop-filter: blur(8px); border: 1px solid var(--glass-border); padding: 8px 18px;
-            border-radius: 40px; font-size: 0.85rem; font-weight: 500; color: var(--text-primary);
-            cursor: pointer; transition: all 0.25s; text-decoration: none; user-select: none; text-shadow: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--glass-border);
+            padding: 8px 18px;
+            border-radius: 40px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.25s;
+            text-decoration: none;
+            user-select: none;
+            text-shadow: none;
         }
-        .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); border-color: var(--link-color); }
-        .btn-primary { background: var(--gradient-primary); color: white; border: none; }
-        .btn-danger { background: var(--gradient-danger); color: white; border: none; }
-        .btn-success { background: var(--gradient-success); color: white; border: none; }
-        .btn-outline { background: transparent; border: 1px solid var(--border-color); }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none!important; box-shadow: none!important; }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+            border-color: var(--link-color);
+        }
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: white;
+            border: none;
+        }
+        .btn-danger {
+            background: var(--gradient-danger);
+            color: white;
+            border: none;
+        }
+        .btn-success {
+            background: var(--gradient-success);
+            color: white;
+            border: none;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border-color);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
 
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap: 16px; margin-bottom: 24px; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
         .stat-card {
-            background: var(--bg-card); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-            border-radius: 16px; padding: 16px 20px; border: 1px solid var(--glass-border);
-            box-shadow: var(--shadow); text-align: center; transition: all 0.3s;
+            background: var(--bg-card);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-radius: 16px;
+            padding: 16px 20px;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow);
+            text-align: center;
+            transition: all 0.3s;
         }
         .stat-number {
-            font-size: 2.2rem; font-weight: 700; background: var(--stat-number-bg);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text; line-height: 1.2;
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: var(--stat-number-bg);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.2;
         }
-        .stat-number.danger { background: var(--gradient-danger); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .stat-number.warning { background: var(--gradient-warning); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .stat-number.success { background: var(--gradient-success); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+        .stat-number.danger {
+            background: var(--gradient-danger);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-number.warning {
+            background: var(--gradient-warning);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-number.success {
+            background: var(--gradient-success);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
 
         .high-risk-summary {
-            background: var(--bg-card-solid); border-radius: 16px; padding: 16px 20px;
-            border-left: 4px solid var(--risk-high); margin-bottom: 24px;
+            background: var(--bg-card-solid);
+            border-radius: 16px;
+            padding: 16px 20px;
+            border-left: 4px solid var(--risk-high);
+            margin-bottom: 24px;
         }
-        .high-risk-summary h3 { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--text-secondary); margin-bottom: 8px; }
-        .high-risk-summary ul { list-style: none; padding: 0; margin: 0; }
-        .high-risk-summary li { padding: 6px 0; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; display: flex; justify-content: space-between; gap: 16px; }
-        .high-risk-summary li:last-child { border-bottom: none; }
-        .high-risk-summary .risk-link { color: var(--link-color); text-decoration: none; font-weight: 500; }
-        .high-risk-summary .risk-link:hover { color: var(--link-hover); }
-        .high-risk-summary .source-tag { font-size: 0.7rem; background: var(--glass-bg); padding: 2px 10px; border-radius: 20px; color: var(--text-secondary); white-space: nowrap; }
-        .high-risk-summary .new-badge { font-size: 0.6rem; background: rgba(56,189,248,0.2); color: var(--link-color); padding: 1px 8px; border-radius: 20px; margin-right: 6px; }
+        .high-risk-summary h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .high-risk-summary ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .high-risk-summary li {
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .high-risk-summary li:last-child {
+            border-bottom: none;
+        }
+        .high-risk-summary .risk-link {
+            color: var(--link-color);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .high-risk-summary .risk-link:hover {
+            color: var(--link-hover);
+        }
+        .high-risk-summary .source-tag {
+            font-size: 0.7rem;
+            background: var(--glass-bg);
+            padding: 2px 10px;
+            border-radius: 20px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .high-risk-summary .new-badge {
+            font-size: 0.6rem;
+            background: rgba(56, 189, 248, 0.2);
+            color: var(--link-color);
+            padding: 1px 8px;
+            border-radius: 20px;
+            margin-right: 6px;
+        }
 
-        .report-wrapper { overflow-x: auto; margin-top: 8px; background: var(--table-bg); backdrop-filter: var(--table-blur); -webkit-backdrop-filter: var(--table-blur); border-radius: 12px; padding: 4px 0; border: 1px solid var(--glass-border); box-shadow: var(--shadow); }
-        .report-wrapper table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-        .report-wrapper th { background: var(--table-header-bg); font-weight: 600; padding: 12px 14px; text-align: left; border-bottom: 2px solid var(--border-color); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
-        .report-wrapper td { padding: 10px 14px; border-bottom: 1px solid var(--border-color); vertical-align: top; }
-        .report-wrapper tbody tr:hover { background: var(--table-hover-bg); }
-        .report-wrapper a { color: var(--link-color); text-decoration: none; }
-        .report-wrapper a:hover { color: var(--link-hover); }
+        .report-wrapper {
+            overflow-x: auto;
+            margin-top: 8px;
+            background: var(--table-bg);
+            backdrop-filter: var(--table-blur);
+            -webkit-backdrop-filter: var(--table-blur);
+            border-radius: 12px;
+            padding: 4px 0;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow);
+        }
+        .report-wrapper table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .report-wrapper th {
+            background: var(--table-header-bg);
+            font-weight: 600;
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 2px solid var(--border-color);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-secondary);
+        }
+        .report-wrapper td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+        .report-wrapper tbody tr:hover {
+            background: var(--table-hover-bg);
+        }
+        .report-wrapper a {
+            color: var(--link-color);
+            text-decoration: none;
+        }
+        .report-wrapper a:hover {
+            color: var(--link-hover);
+        }
 
-        .risk-tag { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 2px 12px; border-radius: 30px; }
-        .risk-tag.high { background: rgba(220,38,38,0.15); color: var(--risk-high); }
-        .risk-tag.medium { background: rgba(217,119,6,0.15); color: var(--risk-medium); }
-        .risk-tag.low { background: rgba(5,150,105,0.15); color: var(--risk-low); }
+        .risk-tag {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 2px 12px;
+            border-radius: 30px;
+        }
+        .risk-tag.high {
+            background: rgba(220, 38, 38, 0.15);
+            color: var(--risk-high);
+        }
+        .risk-tag.medium {
+            background: rgba(217, 119, 6, 0.15);
+            color: var(--risk-medium);
+        }
+        .risk-tag.low {
+            background: rgba(5, 150, 105, 0.15);
+            color: var(--risk-low);
+        }
 
-        .risk-cell { position: relative; display: inline-block; max-width: 100%; cursor: pointer; }
-        .risk-cell .risk-text { display: inline; border-bottom: 1.5px dashed var(--border-color); }
-        .risk-cell:hover .risk-text { border-color: var(--link-color); }
-        .risk-cell .ellipsis { color: var(--text-secondary); font-weight: 600; }
-        .risk-cell .expand-btn { color: var(--link-color); cursor: pointer; font-size: 0.7rem; margin-left: 4px; background: none; border: none; padding: 0; font-family: inherit; }
+        .risk-cell {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            cursor: pointer;
+        }
+        .risk-cell .risk-text {
+            display: inline;
+            border-bottom: 1.5px dashed var(--border-color);
+        }
+        .risk-cell:hover .risk-text {
+            border-color: var(--link-color);
+        }
+        .risk-cell .ellipsis {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+        .risk-cell .expand-btn {
+            color: var(--link-color);
+            cursor: pointer;
+            font-size: 0.7rem;
+            margin-left: 4px;
+            background: none;
+            border: none;
+            padding: 0;
+            font-family: inherit;
+        }
 
-        .risk-tooltip { position: fixed; max-width: 460px; min-width: 220px; padding: 14px 18px; background: var(--tooltip-bg); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--tooltip-border); border-radius: 14px; box-shadow: var(--shadow); color: var(--tooltip-text); font-size: 0.85rem; line-height: 1.7; z-index: 9999; opacity: 0; visibility: hidden; transition: opacity 0.25s, transform 0.25s, visibility 0.25s; transform: translateY(-8px) scale(0.96); pointer-events: none; word-break: break-word; }
-        .risk-tooltip.visible { opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto; }
-        .risk-tooltip::after { content: ''; position: absolute; bottom: -8px; left: 24px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 8px solid var(--tooltip-bg); }
-        .risk-tooltip.arrow-top::after { bottom: auto; top: -8px; border-top: none; border-bottom: 8px solid var(--tooltip-bg); }
-        .risk-tooltip .tooltip-label { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px; }
-        .risk-tooltip .tooltip-risk-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; padding: 1px 10px; border-radius: 30px; margin-left: 8px; }
-        .risk-tooltip .tooltip-risk-badge.high { background: rgba(220,38,38,0.15); color: var(--risk-high); }
-        .risk-tooltip .tooltip-risk-badge.medium { background: rgba(217,119,6,0.15); color: var(--risk-medium); }
-        .risk-tooltip .tooltip-risk-badge.low { background: rgba(5,150,105,0.15); color: var(--risk-low); }
+        .risk-tooltip {
+            position: fixed;
+            max-width: 460px;
+            min-width: 220px;
+            padding: 14px 18px;
+            background: var(--tooltip-bg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--tooltip-border);
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            color: var(--tooltip-text);
+            font-size: 0.85rem;
+            line-height: 1.7;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.25s, transform 0.25s, visibility 0.25s;
+            transform: translateY(-8px) scale(0.96);
+            pointer-events: none;
+            word-break: break-word;
+        }
+        .risk-tooltip.visible {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+        .risk-tooltip::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 24px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 8px solid var(--tooltip-bg);
+        }
+        .risk-tooltip.arrow-top::after {
+            bottom: auto;
+            top: -8px;
+            border-top: none;
+            border-bottom: 8px solid var(--tooltip-bg);
+        }
+        .risk-tooltip .tooltip-label {
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .risk-tooltip .tooltip-risk-badge {
+            display: inline-block;
+            font-size: 0.6rem;
+            font-weight: 700;
+            padding: 1px 10px;
+            border-radius: 30px;
+            margin-left: 8px;
+        }
+        .risk-tooltip .tooltip-risk-badge.high {
+            background: rgba(220, 38, 38, 0.15);
+            color: var(--risk-high);
+        }
+        .risk-tooltip .tooltip-risk-badge.medium {
+            background: rgba(217, 119, 6, 0.15);
+            color: var(--risk-medium);
+        }
+        .risk-tooltip .tooltip-risk-badge.low {
+            background: rgba(5, 150, 105, 0.15);
+            color: var(--risk-low);
+        }
 
-        .footer-bar { margin-top: 30px; text-align: center; font-size: 0.8rem; color: var(--text-secondary); display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; padding: 16px 0; border-top: 1px solid var(--border-color); }
+        .footer-bar {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            padding: 16px 0;
+            border-top: 1px solid var(--border-color);
+        }
 
-        ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: var(--bg-body); } ::-webkit-scrollbar-thumb { background: var(--text-secondary); border-radius: 10px; }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-body);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--text-secondary);
+            border-radius: 10px;
+        }
 
-        .loader { border: 3px solid var(--border-color); border-top: 3px solid #38bdf8; border-radius: 50%; width: 36px; height: 36px; animation: spin 0.8s linear infinite; margin: 20px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loader {
+            border: 3px solid var(--border-color);
+            border-top: 3px solid #38bdf8;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            animation: spin 0.8s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
 
-        .login-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(11,17,33,0.7); backdrop-filter: blur(16px); display: flex; align-items: center; justify-content: center; z-index: 999; }
-        .login-card { background: var(--bg-card-solid); padding: 40px 36px; border-radius: 24px; box-shadow: 0 24px 80px rgba(0,0,0,0.3); text-align: center; max-width: 340px; width: 100%; border: 1px solid var(--border-color); }
-        .login-card h2 { margin-bottom: 8px; font-size: 1.6rem; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .login-card p { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 20px; }
-        .login-card input { width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 40px; background: var(--bg-body); color: var(--text-primary); font-size: 1rem; margin-bottom: 16px; outline: none; }
-        .login-card input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,0.2); }
-        .login-card .btn { width: 100%; justify-content: center; }
-        .error-msg { color: #f87171; margin-top: 12px; font-size: 0.85rem; }
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(11, 17, 33, 0.7);
+            backdrop-filter: blur(16px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+        .login-card {
+            background: var(--bg-card-solid);
+            padding: 40px 36px;
+            border-radius: 24px;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 340px;
+            width: 100%;
+            border: 1px solid var(--border-color);
+        }
+        .login-card h2 {
+            margin-bottom: 8px;
+            font-size: 1.6rem;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .login-card p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+        .login-card input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 40px;
+            background: var(--bg-body);
+            color: var(--text-primary);
+            font-size: 1rem;
+            margin-bottom: 16px;
+            outline: none;
+        }
+        .login-card input:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+        }
+        .login-card .btn {
+            width: 100%;
+            justify-content: center;
+        }
+        .error-msg {
+            color: #f87171;
+            margin-top: 12px;
+            font-size: 0.85rem;
+        }
 
         @media (max-width: 700px) {
-            body { padding: 12px; }
-            .card { padding: 16px; }
-            .navbar-brand { font-size: 1.2rem; }
-            .stats-grid { grid-template-columns: repeat(3,1fr); }
-            .stat-number { font-size: 1.6rem; }
-            .report-wrapper td, .report-wrapper th { font-size: 0.75rem; padding: 6px 8px; }
+            body {
+                padding: 12px;
+            }
+            .card {
+                padding: 16px;
+            }
+            .navbar-brand {
+                font-size: 1.2rem;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .stat-number {
+                font-size: 1.6rem;
+            }
+            .report-wrapper td,
+            .report-wrapper th {
+                font-size: 0.75rem;
+                padding: 6px 8px;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- 背景层 -->
     <div class="bg-layer">
         <img id="bg-img" src="" alt="背景" loading="lazy">
     </div>
     <div class="bg-overlay" id="bg-overlay"></div>
 
+    <!-- 登录遮罩 -->
     <div id="loginOverlay" class="login-overlay" style="display:none;">
         <div class="login-card">
             <h2>🔐 系统登录</h2>
@@ -319,6 +762,7 @@
         </div>
     </div>
 
+    <!-- 主应用 -->
     <div id="app" style="display:none;">
         <div class="container">
             <div class="card" style="padding: 16px 24px;">
@@ -354,22 +798,24 @@
     </div>
 
     <script>
-        // 全局版本号（修改此值强制刷新所有缓存）
+        // ===== 全局版本号 =====
         const APP_VERSION = '3.0.0';
 
         (function() {
             document.querySelectorAll('link[rel="stylesheet"]').forEach(el => {
                 let url = el.href;
-                if (url && !url.includes('?v=')) el.href = url + (url.includes('?')?'&':'?') + 'v=' + APP_VERSION;
+                if (url && !url.includes('?v=')) el.href = url + (url.includes('?') ? '&' : '?') + 'v=' + APP_VERSION;
             });
             document.querySelectorAll('script[src]').forEach(el => {
                 let url = el.src;
-                if (url && !url.includes('?v=')) el.src = url + (url.includes('?')?'&':'?') + 'v=' + APP_VERSION;
+                if (url && !url.includes('?v=')) el.src = url + (url.includes('?') ? '&' : '?') + 'v=' + APP_VERSION;
             });
         })();
 
-        // 登录
-        const PASSWORD = 'dzx12123', SESSION_KEY = 'logged_in';
+        // ===== 登录逻辑 =====
+        const PASSWORD = 'dzx12123',
+            SESSION_KEY = 'logged_in';
+
         function checkLogin() {
             if (sessionStorage.getItem(SESSION_KEY) === 'true') {
                 document.getElementById('app').style.display = 'block';
@@ -388,7 +834,8 @@
                         initApp();
                     } else {
                         errDiv.textContent = '密码错误，请重试。';
-                        input.value = ''; input.focus();
+                        input.value = '';
+                        input.focus();
                     }
                 };
                 btn.onclick = doLogin;
@@ -397,7 +844,7 @@
             }
         }
 
-        // 主题配置（仅保留三个，mint 为主）
+        // ===== 主题与背景图配置 =====
         const THEMES = ['mint', 'dawn', 'dusk'];
         const THEME_LABELS = {
             mint: '🌿 苏打柠檬',
@@ -406,21 +853,25 @@
         };
         let currentTheme = localStorage.getItem('theme') || 'mint';
 
-        // 三套背景图（苏打柠檬主题已为您替换为您上传的同款图）
+        // 背景图链接（已替换苏打柠檬为冰爽柠檬气泡水，您可在此换成自己的直链）
+        // 若想换成您选的 StockSnap 图片，请将下方 mint 的链接替换为您的直链（例如从 StockSnap 下载按钮复制）
         const BG_IMAGES = {
             dawn: {
-                mobile: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80',
+                mobile: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80',
                 desktop: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80'
             },
             dusk: {
-                mobile: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=400&q=80',
+                mobile: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1920&q=80',
                 desktop: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1920&q=80'
             },
             mint: {
-                // 这里已将主题背景替换为您指定的青柠苏打图
-                // 如果您有更好的图（比如更高清、色调更清新的），只需替换下方两个链接即可
-                mobile: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=80',
-                desktop: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=1920&q=80'
+                // ★ 这里用的是柠檬气泡水高清图，如果你想换成自己选的 StockSnap 图，
+                // 把下面两行链接换成你复制到的直链即可（移动端和桌面可相同）
+                mobile: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=1920&q=80',
+                desktop: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=1920&q=80'
+                // 你选的 StockSnap 图片直链示例（需自己获取）：
+                // mobile: 'https://cdn.stocksnap.io/img-thumbs/960w/图片名.jpg',
+                // desktop: 'https://cdn.stocksnap.io/img-thumbs/1920w/图片名.jpg'
             }
         };
 
@@ -436,10 +887,9 @@
             const img = document.getElementById('bg-img');
             const layer = document.querySelector('.bg-layer');
 
-            // 所有主题均使用图片背景
             let src = getBackgroundUrl(theme);
             if (src) {
-                src += (src.includes('?')?'&':'?') + 'v=' + APP_VERSION;
+                src += (src.includes('?') ? '&' : '?') + 'v=' + APP_VERSION;
                 img.src = src;
                 img.style.display = 'block';
                 layer.style.background = 'none';
@@ -468,13 +918,13 @@
                 const img = document.getElementById('bg-img');
                 let src = getBackgroundUrl(theme);
                 if (src) {
-                    src += (src.includes('?')?'&':'?') + 'v=' + APP_VERSION;
+                    src += (src.includes('?') ? '&' : '?') + 'v=' + APP_VERSION;
                     img.src = src;
                 }
             }, 200);
         });
 
-        // ---------- 仪表盘核心逻辑（与之前一致，略作精简）----------
+        // ===== 仪表盘核心逻辑（保持不变） =====
         let countdownInterval = null;
         let activeTooltip = null;
 
@@ -494,67 +944,81 @@
         }
 
         function convertUtcToBeijing(utc) {
-            const m = utc.replace(' UTC','').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+            const m = utc.replace(' UTC', '').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
             if (!m) return utc;
-            const d = new Date(Date.UTC(+m[1], m[2]-1, +m[3], +m[4], +m[5], +m[6]));
-            const bj = new Date(d.getTime() + 8*3600*1000);
-            return bj.getUTCFullYear()+'-'+String(bj.getUTCMonth()+1).padStart(2,'0')+'-'+String(bj.getUTCDate()).padStart(2,'0')+' '+String(bj.getUTCHours()).padStart(2,'0')+':'+String(bj.getUTCMinutes()).padStart(2,'0')+':'+String(bj.getUTCSeconds()).padStart(2,'0');
+            const d = new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]));
+            const bj = new Date(d.getTime() + 8 * 3600 * 1000);
+            return bj.getUTCFullYear() + '-' + String(bj.getUTCMonth() + 1).padStart(2, '0') + '-' + String(bj.getUTCDate())
+                .padStart(2, '0') + ' ' + String(bj.getUTCHours()).padStart(2, '0') + ':' + String(bj.getUTCMinutes())
+                .padStart(2, '0') + ':' + String(bj.getUTCSeconds()).padStart(2, '0');
         }
+
         function extractReportTime(t) {
             const p = [/生成时间[：:]\s*([^\n]+)/, /报告时间[：:]\s*([^\n]+)/, /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*UTC)/];
             for (let r of p) { const m = t.match(r); if (m) return m[1].trim(); }
             return null;
         }
+
         function extractFetchCount(t) { const m = t.match(/抓取数据[：:]\s*(\d+)\s*条/); return m ? +m[1] : 0; }
-        function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        function escapeHtml(s) { if (!s) return ''; const d = document.createElement('div');
+            d.textContent = s; return d.innerHTML; }
 
         function parseReportTableFromMarkdown(text) {
-            const rows = []; let inTable = false;
+            const rows = [];
+            let inTable = false;
             for (let line of text.split('\n')) {
                 if (line.startsWith('|') && line.includes('|')) {
                     if (!inTable) { inTable = true; continue; }
                     if (/^\|[\s\-:]+\|$/.test(line)) continue;
                     const cells = line.split('|').map(c => c.trim()).filter(c => c.length);
                     if (cells.length >= 6) {
-                        let ev = cells[0], link = '';
+                        let ev = cells[0],
+                            link = '';
                         const lm = cells[1].match(/\[([^\]]*)\]\(([^)]*)\)/);
                         if (lm) link = lm[2];
-                        let risk = cells[2], source = cells[3], timeAgo = cells[4];
+                        let risk = cells[2],
+                            source = cells[3],
+                            timeAgo = cells[4];
                         let level = cells[5];
-                        if (level.includes('高')) level='高';
-                        else if (level.includes('中')) level='中';
-                        else if (level.includes('低')) level='低';
-                        else level='未知';
+                        if (level.includes('高')) level = '高';
+                        else if (level.includes('中')) level = '中';
+                        else if (level.includes('低')) level = '低';
+                        else level = '未知';
                         rows.push({ eventText: ev, link, risk, source, timeAgo, riskLevel: level, isNew: ev.includes('🆕') });
                     }
                 } else if (inTable) break;
             }
             return rows;
         }
+
         function sortRows(rows) {
             const pri = r => {
                 const n = r.isNew;
-                if (n && r.riskLevel==='高') return 1;
-                if (n && r.riskLevel==='中') return 2;
-                if (n && r.riskLevel==='低') return 3;
-                if (!n && r.riskLevel==='高') return 4;
-                if (!n && r.riskLevel==='中') return 5;
-                if (!n && r.riskLevel==='低') return 6;
+                if (n && r.riskLevel === '高') return 1;
+                if (n && r.riskLevel === '中') return 2;
+                if (n && r.riskLevel === '低') return 3;
+                if (!n && r.riskLevel === '高') return 4;
+                if (!n && r.riskLevel === '中') return 5;
+                if (!n && r.riskLevel === '低') return 6;
                 return 7;
             };
-            return [...rows].sort((a,b)=>pri(a)-pri(b));
+            return [...rows].sort((a, b) => pri(a) - pri(b));
         }
+
         function updateStatsAndHighRisk(rows, fetchCount) {
             const statsGrid = document.getElementById('statsGrid');
             const sum = document.getElementById('highRiskSummary');
             const list = document.getElementById('highRiskList');
-            if (!rows.length) { statsGrid.style.display='none'; sum.style.display='none'; return; }
+            if (!rows.length) { statsGrid.style.display = 'none';
+                sum.style.display = 'none'; return; }
             const s = sortRows(rows);
-            const total = s.length, high = s.filter(r=>r.riskLevel==='高').length;
-            const med = s.filter(r=>r.riskLevel==='中').length;
-            const low = s.filter(r=>r.riskLevel==='低').length;
-            const nw = s.filter(r=>r.isNew).length;
-            statsGrid.style.display='grid';
+            const total = s.length,
+                high = s.filter(r => r.riskLevel === '高').length;
+            const med = s.filter(r => r.riskLevel === '中').length;
+            const low = s.filter(r => r.riskLevel === '低').length;
+            const nw = s.filter(r => r.isNew).length;
+            statsGrid.style.display = 'grid';
             statsGrid.innerHTML = `
                 <div class="stat-card"><div class="stat-number info">${fetchCount||0}</div><div class="stat-label">📥 抓取数据</div></div>
                 <div class="stat-card"><div class="stat-number">${total}</div><div class="stat-label">🎯 AI筛选总涉华事件</div></div>
@@ -563,55 +1027,74 @@
                 <div class="stat-card"><div class="stat-number success">${low}</div><div class="stat-label">🟢 低风险</div></div>
                 <div class="stat-card"><div class="stat-number">${nw}</div><div class="stat-label">🆕 新增</div></div>
             `;
-            const top5 = s.filter(r=>r.riskLevel==='高').slice(0,5);
+            const top5 = s.filter(r => r.riskLevel === '高').slice(0, 5);
             if (top5.length) {
-                sum.style.display='block';
-                list.innerHTML = top5.map(r=>{
-                    const txt = r.eventText.replace('🆕','').trim();
+                sum.style.display = 'block';
+                list.innerHTML = top5.map(r => {
+                    const txt = r.eventText.replace('🆕', '').trim();
                     const badge = r.isNew ? '<span class="new-badge">🆕</span>' : '';
                     return `<li>${r.link?`<a href="${r.link}" target="_blank" class="risk-link">${badge}${escapeHtml(txt)}</a>`:`<span>${badge}${escapeHtml(txt)}</span>`}<span class="source-tag">${escapeHtml(r.source)}</span></li>`;
                 }).join('');
-            } else sum.style.display='none';
+            } else sum.style.display = 'none';
         }
 
         // Tooltip 交互
         let tooltipInstance = null;
+
         function createTooltip() {
             if (tooltipInstance) return tooltipInstance;
-            const el = document.createElement('div'); el.className='risk-tooltip';
+            const el = document.createElement('div');
+            el.className = 'risk-tooltip';
             el.innerHTML = '<div class="tooltip-label">📌 风险分析</div><div class="tooltip-body"></div><button class="tooltip-close">收起</button>';
             document.body.appendChild(el);
             tooltipInstance = el;
-            el.querySelector('.tooltip-close').addEventListener('click', e=>{ e.stopPropagation(); hideTooltipImmediately(); });
+            el.querySelector('.tooltip-close').addEventListener('click', e => { e.stopPropagation();
+                hideTooltipImmediately(); });
             return el;
         }
+
         function showTooltip(src, text, level) {
             if (!text) return;
             const t = createTooltip();
-            const lc = level==='高'?'high':level==='中'?'medium':'low';
-            t.querySelector('.tooltip-body').innerHTML = `${escapeHtml(text)} <span class="tooltip-risk-badge ${lc}">${level}</span>`;
-            const r = src.getBoundingClientRect(), tw = Math.min(460, innerWidth-40);
-            let left = r.left + r.width/2 - tw/2, top = r.top - (t.offsetHeight||200) - 14;
-            if (left<20) left=20; if (left+tw>innerWidth-20) left=innerWidth-tw-20;
-            if (top<20) { top = r.bottom+14; t.classList.add('arrow-top'); } else t.classList.remove('arrow-top');
-            t.style.left=left+'px'; t.style.top=top+'px'; t.style.maxWidth=tw+'px';
-            t.classList.add('visible'); t._source=src; activeTooltip=t;
+            const lc = level === '高' ? 'high' : level === '中' ? 'medium' : 'low';
+            t.querySelector('.tooltip-body').innerHTML =
+                `${escapeHtml(text)} <span class="tooltip-risk-badge ${lc}">${level}</span>`;
+            const r = src.getBoundingClientRect(),
+                tw = Math.min(460, innerWidth - 40);
+            let left = r.left + r.width / 2 - tw / 2,
+                top = r.top - (t.offsetHeight || 200) - 14;
+            if (left < 20) left = 20;
+            if (left + tw > innerWidth - 20) left = innerWidth - tw - 20;
+            if (top < 20) { top = r.bottom + 14;
+                t.classList.add('arrow-top'); } else t.classList.remove('arrow-top');
+            t.style.left = left + 'px';
+            t.style.top = top + 'px';
+            t.style.maxWidth = tw + 'px';
+            t.classList.add('visible');
+            t._source = src;
+            activeTooltip = t;
         }
-        function hideTooltipImmediately() {
-            if (tooltipInstance) { tooltipInstance.classList.remove('visible'); tooltipInstance._source=null; activeTooltip=null; }
-        }
-        document.addEventListener('click', e=>{ if (activeTooltip && !e.target.closest('.risk-cell') && !e.target.closest('.risk-tooltip')) hideTooltipImmediately(); });
 
-        // 加载报告（带版本号和时间戳）
-        let lastReportHash = localStorage.getItem('lastReportHash')||'';
-        function simpleHash(s) { return s.slice(0,200)+s.length; }
+        function hideTooltipImmediately() {
+            if (tooltipInstance) { tooltipInstance.classList.remove('visible');
+                tooltipInstance._source = null;
+                activeTooltip = null; }
+        }
+        document.addEventListener('click', e => { if (activeTooltip && !e.target.closest('.risk-cell') && !e.target.closest(
+                    '.risk-tooltip')) hideTooltipImmediately(); });
+
+        // 加载报告
+        let lastReportHash = localStorage.getItem('lastReportHash') || '';
+
+        function simpleHash(s) { return s.slice(0, 200) + s.length; }
 
         async function loadReport(showAlert) {
             const div = document.getElementById('report-content');
             div.innerHTML = '<div class="loader"></div>';
             hideTooltipImmediately();
             try {
-                const url = `https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/report.md?v=${APP_VERSION}&_=${Date.now()}`;
+                const url =
+                    `https://raw.githubusercontent.com/zhetian592/my-crawler-monitor/main/report.md?v=${APP_VERSION}&_=${Date.now()}`;
                 const resp = await fetch(url, { cache: 'no-store' });
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const text = await resp.text();
@@ -646,7 +1129,8 @@
                         const td1 = document.createElement('td');
                         const txt = row.eventText.replace('🆕', '').trim();
                         const nw = row.isNew ? '🆕 ' : '';
-                        if (row.link) td1.innerHTML = `<a href="${escapeHtml(row.link)}" target="_blank">${nw}${escapeHtml(txt)}</a>`;
+                        if (row.link) td1.innerHTML =
+                            `<a href="${escapeHtml(row.link)}" target="_blank">${nw}${escapeHtml(txt)}</a>`;
                         else td1.textContent = nw + txt;
                         tr.appendChild(td1);
                         const td2 = document.createElement('td');
@@ -656,12 +1140,20 @@
                         const full = row.risk || '';
                         if (full.length > 10) {
                             const wrap = document.createElement('span');
-                            wrap.className = 'risk-cell'; wrap.dataset.fullText = full; wrap.dataset.riskLevel = row.riskLevel;
-                            const span = document.createElement('span'); span.className = 'risk-text'; span.textContent = full.substring(0, 10);
+                            wrap.className = 'risk-cell';
+                            wrap.dataset.fullText = full;
+                            wrap.dataset.riskLevel = row.riskLevel;
+                            const span = document.createElement('span');
+                            span.className = 'risk-text';
+                            span.textContent = full.substring(0, 10);
                             wrap.appendChild(span);
-                            const dots = document.createElement('span'); dots.className = 'ellipsis'; dots.textContent = '...';
+                            const dots = document.createElement('span');
+                            dots.className = 'ellipsis';
+                            dots.textContent = '...';
                             wrap.appendChild(dots);
-                            const btn = document.createElement('button'); btn.className = 'expand-btn'; btn.textContent = '展开';
+                            const btn = document.createElement('button');
+                            btn.className = 'expand-btn';
+                            btn.textContent = '展开';
                             btn.addEventListener('click', e => {
                                 e.stopPropagation();
                                 if (activeTooltip && activeTooltip._source === wrap) hideTooltipImmediately();
@@ -671,8 +1163,12 @@
                             td3.appendChild(wrap);
                         } else td3.textContent = full;
                         tr.appendChild(td3);
-                        const td4 = document.createElement('td'); td4.textContent = row.source || '-'; tr.appendChild(td4);
-                        const td5 = document.createElement('td'); td5.textContent = row.timeAgo || '-'; tr.appendChild(td5);
+                        const td4 = document.createElement('td');
+                        td4.textContent = row.source || '-';
+                        tr.appendChild(td4);
+                        const td5 = document.createElement('td');
+                        td5.textContent = row.timeAgo || '-';
+                        tr.appendChild(td5);
                         const td6 = document.createElement('td');
                         const lc = row.riskLevel === '高' ? 'high' : row.riskLevel === '中' ? 'medium' : 'low';
                         td6.innerHTML = `<span class="risk-tag ${lc}">${row.riskLevel}</span>`;
@@ -688,26 +1184,33 @@
                     lastReportHash = hash;
                 }
             } catch (e) {
-                div.innerHTML = `<div style="color:#f87171;background:rgba(244,67,54,0.08);padding:20px;border-radius:16px;"><strong>⚠️ 加载失败</strong><br>${escapeHtml(e.message)}<br><br><button class="btn btn-primary" onclick="loadReport(true)">🔄 重试</button></div>`;
+                div.innerHTML =
+                    `<div style="color:#f87171;background:rgba(244,67,54,0.08);padding:20px;border-radius:16px;"><strong>⚠️ 加载失败</strong><br>${escapeHtml(e.message)}<br><br><button class="btn btn-primary" onclick="loadReport(true)">🔄 重试</button></div>`;
                 if (showAlert) alert(`❌ 报告刷新失败：${e.message}`);
             }
         }
 
-        // 工作流触发
-        const REPO_OWNER='zhetian592', REPO_NAME='my-crawler-monitor', WORKFLOW_ID='crawler-tier1.yml', GITHUB_TOKEN_KEY='github_pat';
+        // ===== 工作流触发（与之前一致） =====
+        const REPO_OWNER = 'zhetian592',
+            REPO_NAME = 'my-crawler-monitor',
+            WORKFLOW_ID = 'crawler-tier1.yml',
+            GITHUB_TOKEN_KEY = 'github_pat';
+
         async function updateButtonState() {
             const btn = document.getElementById('trigger-action-btn');
             const info = document.getElementById('trigger-limit-info');
             const token = localStorage.getItem(GITHUB_TOKEN_KEY);
             const pollInterval = token ? 15000 : 60000;
             try {
-                const headers = {}; if (token) headers['Authorization'] = `Bearer ${token}`;
-                const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/runs?per_page=3`;
+                const headers = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                const url =
+                    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/runs?per_page=3`;
                 const resp = await fetch(url, { headers });
                 if (!resp.ok) throw new Error('无法获取状态');
                 const data = await resp.json();
                 const runs = data.workflow_runs || [];
-                const active = runs.find(r => r.status==='in_progress' || r.status==='queued');
+                const active = runs.find(r => r.status === 'in_progress' || r.status === 'queued');
                 if (active) {
                     btn.disabled = true;
                     btn.textContent = active.status === 'in_progress' ? '🔄 运行中...' : '⏳ 排队中...';
@@ -729,7 +1232,8 @@
                         countdownInterval = setInterval(() => {
                             const r = cooldownEnd - Date.now();
                             if (r <= 0) {
-                                btn.disabled = false; btn.textContent = '🚀 立即更新';
+                                btn.disabled = false;
+                                btn.textContent = '🚀 立即更新';
                                 if (info) info.textContent = '可以触发新的爬虫任务';
                                 clearInterval(countdownInterval);
                                 updateButtonState();
@@ -742,11 +1246,13 @@
                         return;
                     }
                 }
-                btn.disabled = false; btn.textContent = '🚀 立即更新';
+                btn.disabled = false;
+                btn.textContent = '🚀 立即更新';
                 if (info) info.textContent = '可以触发新的爬虫任务';
                 if (countdownInterval) clearInterval(countdownInterval);
             } catch {
-                btn.disabled = false; btn.textContent = '🚀 立即更新';
+                btn.disabled = false;
+                btn.textContent = '🚀 立即更新';
                 if (info) info.textContent = '状态检查失败，仍可尝试触发';
             }
         }
@@ -762,49 +1268,64 @@
                 localStorage.setItem(GITHUB_TOKEN_KEY, token);
             }
             const originalText = btn.innerText;
-            btn.innerText = '⏳ 触发中...'; btn.disabled = true;
+            btn.innerText = '⏳ 触发中...';
+            btn.disabled = true;
             try {
-                const resp = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/dispatches`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ref: 'main' })
-                });
+                const resp = await fetch(
+                    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/actions/workflows/${WORKFLOW_ID}/dispatches`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ref: 'main' })
+                    });
                 if (resp.ok) {
                     alert('✅ 已触发爬虫任务！稍等后刷新查看。');
-                    btn.disabled = true; btn.textContent = '🔄 触发成功，等待确认...';
+                    btn.disabled = true;
+                    btn.textContent = '🔄 触发成功，等待确认...';
                     let attempts = 0;
                     const checkInterval = setInterval(async () => {
-                        await updateButtonState(); attempts++;
-                        if (btn.disabled && btn.textContent !== '🔄 触发成功，等待确认...') clearInterval(checkInterval);
+                        await updateButtonState();
+                        attempts++;
+                        if (btn.disabled && btn.textContent !== '🔄 触发成功，等待确认...') clearInterval(
+                        checkInterval);
                         else if (attempts >= 6) {
-                            btn.disabled = true; btn.textContent = '⏳ 冷却 59分59秒';
+                            btn.disabled = true;
+                            btn.textContent = '⏳ 冷却 59分59秒';
                             if (countdownInterval) clearInterval(countdownInterval);
                             const cooldownEnd = Date.now() + 3600 * 1000;
                             countdownInterval = setInterval(() => {
                                 const r = cooldownEnd - Date.now();
-                                if (r <= 0) { btn.disabled = false; btn.textContent = '🚀 立即更新'; clearInterval(countdownInterval); updateButtonState(); }
-                                else { const mins = Math.floor(r/60000); const secs = Math.floor((r%60000)/1000); btn.textContent = `⏳ 冷却 ${mins}分${secs}秒`; }
+                                if (r <= 0) { btn.disabled = false;
+                                    btn.textContent = '🚀 立即更新';
+                                    clearInterval(countdownInterval);
+                                    updateButtonState(); } else { const mins = Math.floor(r / 60000);
+                                    const secs = Math.floor((r % 60000) / 1000);
+                                    btn.textContent = `⏳ 冷却 ${mins}分${secs}秒`; }
                             }, 1000);
                             clearInterval(checkInterval);
                         }
                     }, 5000);
                 } else {
                     const error = await resp.json();
-                    if (resp.status === 401 || resp.status === 403) { localStorage.removeItem(GITHUB_TOKEN_KEY); alert('令牌无效，请重新输入。'); }
-                    else alert(`❌ 触发失败 (${resp.status}): ${error.message || '未知错误'}`);
-                    btn.disabled = false; btn.innerText = originalText;
+                    if (resp.status === 401 || resp.status === 403) { localStorage.removeItem(GITHUB_TOKEN_KEY);
+                        alert('令牌无效，请重新输入。'); } else alert(`❌ 触发失败 (${resp.status}): ${error.message || '未知错误'}`);
+                    btn.disabled = false;
+                    btn.innerText = originalText;
                 }
             } catch (err) {
                 alert(`网络错误：${err.message}`);
-                btn.disabled = false; btn.innerText = originalText;
+                btn.disabled = false;
+                btn.innerText = originalText;
             }
         }
 
         function openHistory() {
             const btn = document.getElementById('history-btn');
-            btn.innerText = '⏳ 检查中...'; btn.disabled = true;
+            btn.innerText = '⏳ 检查中...';
+            btn.disabled = true;
             window.open('https://zhetian592.github.io/my-crawler-monitor/reports/index.html', '_blank');
-            btn.innerText = '📚 历史'; btn.disabled = false;
+            btn.innerText = '📚 历史';
+            btn.disabled = false;
         }
 
         function promptTokenIfNeeded() {
@@ -812,7 +1333,8 @@
                 setTimeout(() => {
                     if (!localStorage.getItem(GITHUB_TOKEN_KEY)) {
                         const t = prompt('为提高体验，请填写 GitHub Personal Access Token（只需一次）。\n生成地址：https://github.com/settings/tokens（需 repo 权限）');
-                        if (t) { localStorage.setItem(GITHUB_TOKEN_KEY, t); alert('✅ 令牌已保存。'); }
+                        if (t) { localStorage.setItem(GITHUB_TOKEN_KEY, t);
+                            alert('✅ 令牌已保存。'); }
                     }
                 }, 2000);
             }
