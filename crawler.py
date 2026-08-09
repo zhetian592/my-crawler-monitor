@@ -7,6 +7,7 @@ import random
 import hashlib
 import logging
 import sys
+import threading  # 新增导入
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -48,12 +49,10 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 # ================= 配置常量 =================
-# 使用 OPENAI_API_KEY（你在 GitHub Secrets 中已设置）
 API_KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("GH_MODELS_TOKEN_NEW") or os.environ.get("OPENAI_API_KEY")
 if not API_KEY:
     logger.warning("未设置 OPENAI_API_KEY，AI 功能不可用")
 
-# ChatAnywhere 免费接口地址
 AI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.chatanywhere.tech/v1")
 AI_MODEL = os.environ.get("AI_MODEL", "gpt-4o-mini")
 
@@ -259,43 +258,50 @@ class SourceHealth:
         self.cooldown = cooldown_minutes * 60
         self.fail_counts = {}
         self.disabled_until = {}
+        self.lock = threading.Lock()  # 新增锁
 
     def record_fail(self, source_key):
-        self.fail_counts[source_key] = self.fail_counts.get(source_key, 0) + 1
-        if self.fail_counts[source_key] >= self.max_fails:
-            self.disabled_until[source_key] = time.time() + self.cooldown
-            logger.warning(f"信源 {source_key} 连续失败{self.fail_counts[source_key]}次，已暂时禁用 {self.cooldown//60} 分钟")
+        with self.lock:
+            self.fail_counts[source_key] = self.fail_counts.get(source_key, 0) + 1
+            if self.fail_counts[source_key] >= self.max_fails:
+                self.disabled_until[source_key] = time.time() + self.cooldown
+                logger.warning(f"信源 {source_key} 连续失败{self.fail_counts[source_key]}次，已暂时禁用 {self.cooldown//60} 分钟")
 
     def record_success(self, source_key):
-        if source_key in self.disabled_until:
-            logger.info(f"信源 {source_key} 已恢复可用")
-            del self.disabled_until[source_key]
-        self.fail_counts[source_key] = 0
+        with self.lock:
+            if source_key in self.disabled_until:
+                logger.info(f"信源 {source_key} 已恢复可用")
+                del self.disabled_until[source_key]
+            self.fail_counts[source_key] = 0
 
     def is_disabled(self, source_key):
-        if source_key not in self.disabled_until:
-            return False
-        if time.time() > self.disabled_until[source_key]:
-            del self.disabled_until[source_key]
-            self.fail_counts[source_key] = 0
-            return False
-        return True
+        with self.lock:
+            if source_key not in self.disabled_until:
+                return False
+            if time.time() > self.disabled_until[source_key]:
+                del self.disabled_until[source_key]
+                self.fail_counts[source_key] = 0
+                return False
+            return True
 
 class MirrorPool:
     def __init__(self, urls):
         self.original = list(urls)
         self.available = list(urls)
+        self.lock = threading.Lock()  # 新增锁
 
     def get_next(self):
-        if not self.available:
-            logger.warning("所有镜像均已失败，重置池")
-            self.available = list(self.original)
-        url = self.available.pop(0)
-        return url
+        with self.lock:
+            if not self.available:
+                logger.warning("所有镜像均已失败，重置池")
+                self.available = list(self.original)
+            url = self.available.pop(0)
+            return url
 
     def report_failure(self, url):
-        if url in self.available:
-            self.available.remove(url)
+        with self.lock:
+            if url in self.available:
+                self.available.remove(url)
 
     def report_success(self, url):
         pass
@@ -340,6 +346,7 @@ class URLDedupCache:
         self.cache_file = cache_file
         self.url_set = set()
         self.bloom = None
+        self.lock = threading.Lock()  # 新增锁
         try:
             from bloom_filter import BloomFilter
             self.bloom = BloomFilter(max_elements=1_000_000, error_rate=0.001)
@@ -357,23 +364,26 @@ class URLDedupCache:
                 pass
 
     def seen(self, url: str) -> bool:
-        if self.bloom:
-            return url in self.bloom
-        return url in self.url_set
+        with self.lock:
+            if self.bloom:
+                return url in self.bloom
+            return url in self.url_set
 
     def add(self, url: str):
-        if self.bloom:
-            self.bloom.add(url)
-        else:
-            self.url_set.add(url)
+        with self.lock:
+            if self.bloom:
+                self.bloom.add(url)
+            else:
+                self.url_set.add(url)
 
     def save(self):
-        if self.bloom:
-            with open(self.cache_file, 'w') as f:
-                f.write(self.bloom.to_base64())
-        else:
-            with open(self.cache_file, 'w') as f:
-                json.dump(list(self.url_set), f)
+        with self.lock:
+            if self.bloom:
+                with open(self.cache_file, 'w') as f:
+                    f.write(self.bloom.to_base64())
+            else:
+                with open(self.cache_file, 'w') as f:
+                    json.dump(list(self.url_set), f)
 
 # ================ 失败信源管理 ================
 def load_disabled_sources() -> Dict[str, dict]:
@@ -773,48 +783,32 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
-    # ===== V9 版本：风险点3条简短分点 =====
-    prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
+    # ===== 最终优化版 prompt（事件简述完整，风险点只写一条） =====
+    prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。从以下内容中筛选涉华负面舆情，输出 Markdown 表格。
 
-**一、请严格遵守以下过滤规则（忽略极低价值内容）**：
-- 纯转发（RT/转发）且无新增实质性评论。
-- 仅包含链接，无任何文字说明或文字少于10个字符。
-- 仅含表情符号、无意义的感叹或口号（如"太可怕了""支持"等）。
-- 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
-- 与涉华负面舆情无关的个人生活、娱乐、广告等。
+**核心规则**：
+- 忽略：纯转发无评论、仅链接无文字、纯表情/口号、无关生活娱乐、明显重复。
+- 保留：任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控等带有负面或批评倾向的内容。不确定的优先保留。
 
-**二、必须保留的内容（不得忽略）**：
-- 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
-- 即使内容没有直接提及"中国"或"中共"，但事件发生在中国境内或涉及中国公民，也应保留。
-- 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
+**输出格式**：
+| 事件简述 | 原文链接 | 风险点 | 信息来源 | 发布多久前 | 风险等级 |
+- 链接格式：`[查看](URL)`
+- 风险等级：高/中/低（高=重大政治敏感且传播力强；中=较敏感社会议题；低=一般性批评）
+- 无内容时只输出一行"无"
+- 不要添加任何额外解释
 
-**三、输出格式要求**：
-- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |`
-- 每行一条负面内容，按风险等级（高>中>低）和来源优先级排序。
-- 原文链接列使用 `[查看](URL)` 格式。
-- "信息来源"列直接使用输入中提供的来源名称。
-- "发布多久前"列直接使用输入中的发布时间。
-- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性：
-  - **高**：涉及重大政治敏感议题，且传播力强、煽动性高。
-  - **中**：涉及较敏感社会议题，有一定传播空间。
-  - **低**：一般性批评或事实报道，传播范围有限。
-- 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
-- 不要添加任何额外解释、标题或总结。
+**事件简述撰写要求（最重要）**：
+- 必须完整概括事件的核心要素：**什么人/机构 + 做了什么/发生了什么事 + 在什么地点或背景下**。
+- 保留关键细节（如数字、地点、涉事主体等），**长度建议20-40字**，确保读者仅看事件简述就能理解事件全貌。
+- 示例（好）："广西桂林暴雨致部分村庄被淹，当地政府启动三级应急响应，灾民已转移至安置点"
+- 示例（差）："广西暴雨"（太短，信息不全）
 
-**四、风险点撰写要求（核心）**：
-"潜在风险点"用**3条简短分点**描述，格式如下：
-1. 涉及XX事件（简述事件）
-2. 可能引发XX影响（分析影响）
-3. 情绪化内容可能引发XX（分析传播性/煽动性）
+**风险点要求**：
+- 从该事件可能引发的舆情风险中，提炼**最重要、最核心的一条风险**，用一句话概括，**不超过15字**。
+- 不要分点，只写一条。
+- 示例："可能引发公众对执法公正性的质疑"
 
-每条不超过20字，总字数控制在50字以内。
-
-**格式示例**：
-"1. 涉及广西洪水灾害
-2. 可能引发公众对政府救援能力的质疑
-3. 情绪化内容引发共鸣，可能激起公众的不满情绪"
-
-以下是抓取到的部分内容：\n\n"""
+以下是抓取到的内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
     max_content_tokens = 10000
     for block in blocks:
@@ -831,8 +825,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
 
     all_table_rows = []
-    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
-    table_sep = "|----------|----------|------------|----------|------------|------------|"
+    table_header = "| 事件简述 | 原文链接 | 风险点 | 信息来源 | 发布多久前 | 风险等级 |"
+    table_sep = "|----------|----------|--------|----------|------------|------------|"
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
