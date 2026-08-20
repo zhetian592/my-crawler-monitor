@@ -1,21 +1,15 @@
-生成时间：2026-08-20 06:07:19 UTC
-抓取数据：147条
+生成时间：2026-08-20 07:28:37 UTC
+抓取数据：104条
 
 | 事件简述 | 原文链接 | 风险点 | 信息来源 | 发布多久前 | 风险等级 |
 |----------|----------|--------|----------|------------|------------|
-| ---（2个信源） | --- | --- | ---、-------- | --- | --- |
-| 中国称欧盟对京东收购案的调查构成“不当域外管辖” | [查看](https://www.dw.com/zh/中国称欧盟对京东收购案的调查构成-不当域外管辖/a-78432676?maca=chi-rss-chi-all-1127-rdf) | 可能引发国际贸易争端 | 德国之声 | 17小时前 | 中 |
-| 光州双年展“台湾馆”遭改名，艺术家批评“政治审查” | [查看](https://www.dw.com/zh/光州双年展-台湾馆-遭改名-艺术家批评-政治审查/a-78431171?maca=chi-rss-chi-all-1127-rdf) | 可能引发对言论自由的关注 | 德国之声 | 17小时前 | 中 |
-| 🆕 人民权利与权力约束机制缺失，专家批评朱镕基改革 | [查看](https://www.dw.com/zh/世间已无朱鎔基-论者称中国需要制约-权力-持续改革的制度/a-78429482?maca=chi-rss-chi-all-1127-rdf) | 可能引发对政治体制的质疑 | 德国之声 | 20小时前 | 中 |
-| 中国出入境新规实施前，民众担心出境自由受限 | [查看](https://www.bbc.com/zhongwen/articles/ce3q0yd25j9o/trad?at_medium=RSS&at_campaign=rss) | 可能引发对人权的关注 | BBC中文 | 2小时前 | 中 |
-| 🆕 中共改革开放已死？专家分析路线变化 | [查看](https://www.epochtimes.com/gb/26/8/19/n14833066.htm) | 可能引发对中共政策的批评 | 大纪元 | 32分钟前 | 中 |
-| 🆕 《牛来》动画电影因粗糙制作走红，观众反应热烈 | [查看](https://www.bbc.com/zhongwen/articles/cq56nzxq39qo/trad?at_medium=RSS&at_campaign=rss) | 可能引发对文化产品质量的讨论 | BBC中文 | 19小时前 | 低 |
-| 中非共和国金矿坍塌，造成数十人遇难 | [查看](https://www.rfi.fr/cn/%E9%9D%9E%E6%B4%B2/20260819-%E4%B8%AD%E9%9D%9E%E5%85%B1%E5%92%8C%E5%9B%BD%E4%B8%80%E5%BA%A7%E9%87%91%E7%9F%BF%E5%9D%8D%E5%A1%8C-%E6%88%96%E4%B8%8A%E7%99%BE%E4%BA%BA%E9%81%87%E9%9A%BE) | 可能引发对安全监管的质疑 | 法国国际广播电台 | 17小时前 | 中 |
-| 🆕 中国恒大创始人许家印因集资诈骗等罪被判无期徒刑，案件涉及多名高官 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125689.html) | 可能引发对中共高层腐败的关注 | www.ntdtv.com | 1小时前 | 高 |
-| 河北秦皇岛市一处底商发生火灾，造成8人死亡，3人受伤，官方通报引发质疑 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125655.html) | 可能引发公众对安全监管的质疑 | www.ntdtv.com | 2小时前 | 中 |
-| 🆕 中国知名运动品牌安踏前CEO徐阳全家移民美国，引发网友热议 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125656.html) | 可能引发对中国经济前景的担忧 | www.ntdtv.com | 1小时前 | 中 |
-| 🆕 一名中国女网红在马来西亚机场大闹，引发舆论关注 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125657.html) | 可能引发对中国公民行为的负面印象 | www.ntdtv.com | 1小时前 | 中 |
-| 🆕 中国失业率达到17.9%，北大教授称“灵活就业是福利”引发争议 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125686.html) | 可能引发对中国经济形势的质疑 | www.ntdtv.com | 20分钟前 | 高 |
-| 郭德纲因即兴改编红歌歌词遭举报，正在接受官方调查，反映中国言论空间收窄。 | [查看](https://cn.nytimes.com/china/20260820/guo-degang-china-comic-investigated/?utm_source=RSS) | 可能引发对言论自由的担忧 | 纽约时报中文网 | 刚刚 | 高 |
-| 前福奇顾问承认隐瞒与中国新冠病毒起源相关记录，指控福奇掩盖证据。 | [查看](https://cn.nytimes.com/usa/20260820/david-morens-covid-fauci/?utm_source=RSS) | 可能引发对疫情起源的质疑 | 纽约时报中文网 | 刚刚 | 中 |
-| 朱镕基葬礼在北京举行，当局谨慎应对公众情绪，避免对比现政权。 | [查看](https://cn.nytimes.com/china/20260819/zhu-rongji-funeral-china/?utm_source=RSS) | 可能引发对现政权的不满 | 纽约时报中文网 | 21小时前 | 中 |
+| --------（2个信源） | -------- | -------- | --------、---------- | -------- | -------- |
+| 🆕 深圳法院判处恒大创办人许家印无期徒刑，集团被罚款158.2亿元人民币 | [查看](https://www.bbc.com/zhongwen/articles/cvgjdjnynvlo/trad?at_medium=RSS&at_campaign=rss) | 可能引发公众对司法公正性的质疑 | BBC中文 | 41分钟前 | 高 |
+| 中国出入境新规实施前，民众担心出境自由受限，已有多人被限制出境 | [查看](https://www.bbc.com/zhongwen/articles/ce3q0yd25j9o/trad?at_medium=RSS&at_campaign=rss) | 可能引发对言论自由的担忧 | BBC中文 | 7小时前 | 中 |
+| 郭德纲因改编红歌歌词遭举报，接受官方调查，言论空间收窄 | [查看](https://cn.nytimes.com/china/20260820/guo-degang-china-comic-investigated/?utm_source=RSS) | 可能引发对言论自由的广泛关注 | 纽约时报中文网 | 刚刚 | 高 |
+| 朱镕基葬礼在北京举行，当局谨慎应对公众情绪，避免对比现状 | [查看](https://cn.nytimes.com/china/20260819/zhu-rongji-funeral-china/?utm_source=RSS) | 可能引发对政治现状的反思 | 纽约时报中文网 | 22小时前 | 中 |
+| 中非共和国金矿坍塌，造成数十人甚至上百人遇难 | [查看](https://www.rfi.fr/cn/%E9%9D%9E%E6%B4%B2/20260819-%E4%B8%AD%E9%9D%9E%E5%85%B1%E5%92%8C%E5%9B%BD%E4%B8%80%E5%BA%A7%E9%87%91%E7%9F%BF%E5%9D%8D%E5%A1%8C-%E6%88%96%E4%B8%8A%E7%99%BE%E4%BA%BA%E9%81%87%E9%9A%BE) | 可能引发对矿业安全的质疑 | 法国国际广播电台 | 19小时前 | 中 |
+| 🆕 中国农民工文学引发共鸣，反映严酷生活现实与公众焦虑 | [查看](https://cn.nytimes.com/china/20260820/china-working-class-writers-books/?utm_source=RSS) | 可能引发对社会不平等的关注 | 纽约时报中文网 | 5小时前 | 中 |
+| 🆕 中国足协3官员接受韩国性贿赂，引发网民嘲讽 | [查看](https://www.ntdtv.com/gb/2026/08/19/a104125594.html) | 可能引发对体育腐败的广泛讨论 | www.ntdtv.com | 刚刚 | 中 |
+| 🆕 中共严控公务员私生活，恋爱也有风险 | [查看](https://www.ntdtv.com/gb/2026/08/19/a104125596.html) | 可能引发对个人自由的质疑 | www.ntdtv.com | 刚刚 | 中 |
+| 🆕 中央中国洪水导致多处堤坝决口，农田和房屋受损 | [查看](https://www.theepochtimes.com/china/flooding-leaves-farms-homes-damaged-after-3-dike-breaches-in-central-china-6077017) | 可能引发对政府应急响应能力的质疑 | 大纪元 | 11小时前 | 中 |
