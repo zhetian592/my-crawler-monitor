@@ -7,7 +7,7 @@ import random
 import hashlib
 import logging
 import sys
-import threading  # 新增导入
+import threading
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -99,6 +99,51 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
 ]
+
+# ================= 新增：本地 RSS 代理配置（可环境变量覆盖） =================
+LOCAL_RSS_PROXY = os.environ.get("LOCAL_RSS_PROXY", "http://localhost:1200")
+
+# ================= 新增：URL 到本地代理路由的配置化映射表 =================
+PROXY_ROUTE_MAP = {
+    # ---- 新闻媒体 ----
+    "bbc.com/zhongwen/simp": "/bbc",
+    "dw.com/zh": "/dw",
+    "rfi.fr/cn": "/rfi",
+    "cn.nytimes.com": "/nytimes",
+    "ntdtv.com": "/ntdtv/instant-news",
+    "epochtimes.com": "/epochtimes",          # 注意：rss_proxy 现在会通过 RSS_DIRECT 抓取，不会 302
+    "zaobao.com/realtime": "/zaobao/realtime",
+    "zaobao.com/news/china": "/zaobao/znews",
+    
+    # ---- 智库 / 政府 / 非政府组织 ----
+    "brookings.edu": "/brookings",
+    "freedomhouse.org": "/freedomhouse",
+    "aspistrategist.org.au": "/aspistrategist",
+    "hrw.org": "/hrw",
+    "amnesty.org": "/amnesty",
+    "fdd.org": "/fdd",
+    "chinapower.csis.org": "/chinapower",
+    "carnegieendowment.org": "/carnegieendowment",
+    
+    # ---- X / Twitter（统一走本地代理的 Twitter 接口） ----
+    "x.com/zaobaosg": "/twitter/user/zaobaosg",
+    "x.com/whyyoutouzhele": "/twitter/user/whyyoutouzhele",
+    "x.com/wangzhian8848": "/twitter/user/wangzhian8848",
+    "x.com/newszg_official": "/twitter/user/newszg_official",
+    "x.com/wangdan1989": "/twitter/user/wangdan1989",
+    "x.com/fangshimin": "/twitter/user/fangshimin",
+    "x.com/badiucao": "/twitter/user/badiucao",
+    "x.com/FDD": "/twitter/user/FDD",
+    "x.com/NTDChinese": "/twitter/user/NTDChinese",
+    "x.com/dajiyuan": "/twitter/user/dajiyuan",
+}
+
+def get_proxy_route(original_url: str) -> Optional[str]:
+    """根据原始 URL 匹配本地代理路由"""
+    for pattern, route in PROXY_ROUTE_MAP.items():
+        if pattern in original_url:
+            return route
+    return None
 
 # ================= 辅助函数 =================
 def clean_html(text: Optional[str]) -> str:
@@ -258,7 +303,7 @@ class SourceHealth:
         self.cooldown = cooldown_minutes * 60
         self.fail_counts = {}
         self.disabled_until = {}
-        self.lock = threading.Lock()  # 新增锁
+        self.lock = threading.Lock()
 
     def record_fail(self, source_key):
         with self.lock:
@@ -288,7 +333,7 @@ class MirrorPool:
     def __init__(self, urls):
         self.original = list(urls)
         self.available = list(urls)
-        self.lock = threading.Lock()  # 新增锁
+        self.lock = threading.Lock()
 
     def get_next(self):
         with self.lock:
@@ -346,7 +391,7 @@ class URLDedupCache:
         self.cache_file = cache_file
         self.url_set = set()
         self.bloom = None
-        self.lock = threading.Lock()  # 新增锁
+        self.lock = threading.Lock()
         try:
             from bloom_filter import BloomFilter
             self.bloom = BloomFilter(max_elements=1_000_000, error_rate=0.001)
@@ -462,6 +507,7 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
 
 # ================= 抓取核心 =================
 def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
+    """仅用于降级逻辑（理论上改造后不再使用），保留以防万一"""
     rsshub = random.choice(rsshub_instances)
     if "voachinese.com" in url:
         return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
@@ -570,68 +616,37 @@ def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url
         logger.error(f"抓取异常 {original_url} (RSS: {rss_url}): {e}")
         return []
 
+# ================= 重写的 fetch_with_retry（完全走本地代理，无降级） =================
 def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
+    """
+    完全重写：优先查找 PROXY_ROUTE_MAP，如果找到则通过本地 RSS 代理抓取。
+    如果没有映射或代理失败，直接返回空（不再降级直连，避免触发 IP 封禁）。
+    """
     if is_source_disabled(original_url):
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
 
-    if "x.com/" in original_url:
-        username = original_url.split("/")[-1]
-        nitter_pool = MirrorPool(get_nitter_instances())
-        while True:
-            try:
-                instance = nitter_pool.get_next() if nitter_pool.available else None
-                if not instance:
-                    break
-                test_url = f"{instance}/{username}/rss"
-                logger.debug(f"尝试 X {username} 使用 {instance}")
-                items = fetch_single_rss(test_url, original_url, processed_hashes, url_cache, time_window_hours)
-                if items:
-                    logger.debug(f"X {username} 成功 via {instance} (条数: {len(items)})")
-                    update_nitter_health(instance, True)
-                    return items
-                else:
-                    logger.debug(f"X {username} 失败 via {instance}")
-                    update_nitter_health(instance, False)
-                    nitter_pool.report_failure(instance)
-            except Exception:
-                break
-            time.sleep(0.5)
-        logger.debug(f"X {username} 所有实例均失败")
+    # 1. 查找代理路由
+    proxy_route = get_proxy_route(original_url)
+    if not proxy_route:
+        logger.warning(f"未找到代理路由映射: {original_url}，跳过抓取（请更新 PROXY_ROUTE_MAP）")
         return []
 
-    rsshub_instances = get_rsshub_instances()
-    rss_candidates = url_to_rss(original_url, rsshub_instances)
-    if not rss_candidates:
-        logger.debug(f"无法生成 RSS 地址: {original_url}")
-        return []
-    if isinstance(rss_candidates, str):
-        rss_candidates = [rss_candidates]
+    proxy_url = f"{LOCAL_RSS_PROXY}{proxy_route}"
+    logger.debug(f"通过本地代理抓取: {original_url} -> {proxy_url}")
 
-    for rss_url in rss_candidates:
-        instance_used = None
-        for inst in rsshub_instances:
-            if inst in rss_url:
-                instance_used = inst
-                break
-        try:
-            items = fetch_single_rss(rss_url, original_url, processed_hashes, url_cache, time_window_hours)
-            if items:
-                logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {rss_url}")
-                if instance_used:
-                    update_rsshub_health(instance_used, True)
-                return items
-            else:
-                logger.debug(f"{original_url} 失败 via {rss_url}")
-                if instance_used:
-                    update_rsshub_health(instance_used, False)
-        except Exception as e:
-            logger.debug(f"{original_url} 异常 via {rss_url}: {e}")
-            if instance_used:
-                update_rsshub_health(instance_used, False)
-        time.sleep(0.5)
-    logger.debug(f"{original_url} 所有 RSS 地址均失败")
-    return []
+    # 2. 尝试通过代理获取
+    try:
+        items = fetch_single_rss(proxy_url, original_url, processed_hashes, url_cache, time_window_hours)
+        if items:
+            logger.info(f"✅ 代理抓取成功: {original_url} (条数: {len(items)})")
+            return items
+        else:
+            logger.warning(f"⚠️ 代理返回 0 条: {original_url}")
+            return []
+    except Exception as e:
+        logger.error(f"❌ 代理抓取异常 {original_url}: {e}")
+        return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
     logger.info(f"开始抓取 {len(RAW_SOURCES)} 个信源（时间窗口各异）")
@@ -783,7 +798,6 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
-    # ===== 最终优化版 prompt（事件简述完整，风险点只写一条） =====
     prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。从以下内容中筛选涉华负面舆情，输出 Markdown 表格。
 
 **核心规则**：
