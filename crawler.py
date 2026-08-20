@@ -1,4 +1,4 @@
-# crawler.py - 稳定版（仅增加本地代理支持，不改动原逻辑）
+# crawler.py - 稳定版（保留最近2天数据/报告）+ 信源抓取优化
 import os
 import json
 import re
@@ -7,7 +7,7 @@ import random
 import hashlib
 import logging
 import sys
-import threading
+import threading  # 新增导入
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Tuple, Optional, Union
@@ -78,9 +78,6 @@ HEALTHY_RSSHUB_FILE = "healthy_rsshub.json"
 FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 URL_DEDUP_FILE = "url_dedup.json"
-
-# ====== 新增：本地 RSS 代理地址 ======
-PROXY_BASE = os.environ.get("RSS_PROXY_BASE", "http://localhost:1200")
 
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net",
@@ -261,7 +258,7 @@ class SourceHealth:
         self.cooldown = cooldown_minutes * 60
         self.fail_counts = {}
         self.disabled_until = {}
-        self.lock = threading.Lock()
+        self.lock = threading.Lock()  # 新增锁
 
     def record_fail(self, source_key):
         with self.lock:
@@ -291,7 +288,7 @@ class MirrorPool:
     def __init__(self, urls):
         self.original = list(urls)
         self.available = list(urls)
-        self.lock = threading.Lock()
+        self.lock = threading.Lock()  # 新增锁
 
     def get_next(self):
         with self.lock:
@@ -349,7 +346,7 @@ class URLDedupCache:
         self.cache_file = cache_file
         self.url_set = set()
         self.bloom = None
-        self.lock = threading.Lock()
+        self.lock = threading.Lock()  # 新增锁
         try:
             from bloom_filter import BloomFilter
             self.bloom = BloomFilter(max_elements=1_000_000, error_rate=0.001)
@@ -522,54 +519,6 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return "https://www.chathamhouse.org/rss-feeds"
     return url
 
-# ====== 新增：代理映射函数 ======
-def _proxy_url_to_rss(url: str) -> Union[str, List[str], None]:
-    """将原始 URL 映射到本地代理路由，仅用于代理优先尝试"""
-    if "x.com/" in url or "twitter.com/" in url:
-        parts = url.split("/")
-        username = parts[-1] if parts[-1] else parts[-2]
-        return f"{PROXY_BASE}/twitter/user/{username}"
-    if "bbc.com/zhongwen/simp" in url:
-        return f"{PROXY_BASE}/bbc"
-    if "dw.com/zh" in url:
-        return f"{PROXY_BASE}/dw"
-    if "rfi.fr/cn" in url:
-        return f"{PROXY_BASE}/rfi"
-    if "cn.nytimes.com" in url:
-        return f"{PROXY_BASE}/nytimes"
-    if "ntdtv.com" in url:
-        return f"{PROXY_BASE}/ntdtv/instant-news"
-    if "epochtimes.com" in url:
-        return f"{PROXY_BASE}/epochtimes"
-    if "zaobao.com" in url:
-        if "realtime" in url:
-            return f"{PROXY_BASE}/zaobao/realtime"
-        else:
-            return f"{PROXY_BASE}/zaobao/znews"
-    if "hrw.org" in url:
-        return f"{PROXY_BASE}/hrw"
-    if "amnesty.org" in url:
-        return f"{PROXY_BASE}/amnesty"
-    if "fdd.org" in url:
-        return f"{PROXY_BASE}/fdd"
-    if "brookings.edu" in url:
-        return f"{PROXY_BASE}/brookings"
-    if "freedomhouse.org" in url:
-        return f"{PROXY_BASE}/freedomhouse"
-    if "aspistrategist.org.au" in url:
-        return f"{PROXY_BASE}/aspistrategist"
-    if "chinapower.csis.org" in url:
-        return f"{PROXY_BASE}/chinapower"
-    if "carnegieendowment.org" in url:
-        return f"{PROXY_BASE}/carnegieendowment"
-    if "uscc.gov" in url:
-        return f"{PROXY_BASE}/uscc"
-    if "merics.org" in url:
-        return f"{PROXY_BASE}/merics"
-    if "rsf.org" in url:
-        return f"{PROXY_BASE}/rsf"
-    return None
-
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
     try:
         resp = fetch_url(rss_url, timeout=25)
@@ -626,20 +575,6 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
 
-    # ----- 优先尝试本地代理（新增） -----
-    proxy_url = _proxy_url_to_rss(original_url)
-    if proxy_url:
-        if isinstance(proxy_url, list):
-            proxy_url = proxy_url[0]
-        logger.debug(f"尝试通过代理 {proxy_url} 抓取 {original_url}")
-        items = fetch_single_rss(proxy_url, original_url, processed_hashes, url_cache, time_window_hours)
-        if items:
-            logger.debug(f"代理成功 {original_url} -> {len(items)} 条")
-            return items
-        else:
-            logger.debug(f"代理失败 {original_url}，回退到原有逻辑")
-
-    # ----- 原有逻辑（完全不变） -----
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         nitter_pool = MirrorPool(get_nitter_instances())
@@ -848,6 +783,7 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
+    # ===== 最终优化版 prompt（事件简述完整，风险点只写一条） =====
     prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。从以下内容中筛选涉华负面舆情，输出 Markdown 表格。
 
 **核心规则**：
