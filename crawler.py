@@ -1,4 +1,4 @@
-# crawler.py - 集成本地 RSS 代理版（最小改动）
+# crawler.py - 稳定版（仅增加本地代理支持，不改动原逻辑）
 import os
 import json
 import re
@@ -65,10 +65,10 @@ KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 3                      # 降低并发
+MAX_WORKERS = 6
 AI_REQUEST_DELAY = 2
-DISABLE_FAILED_THRESHOLD = 5         # 提高阈值
-DISABLE_COOLDOWN_MINUTES = 60        # 延长冷却
+DISABLE_FAILED_THRESHOLD = 3
+DISABLE_COOLDOWN_MINUTES = 60 * 12
 DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
 
@@ -200,7 +200,6 @@ def load_sources_config() -> List[Dict]:
         {"url": "https://www.ntdtv.com/gb/instant-news.html", "time_window_hours": 24},
         {"url": "https://www.epochtimes.com/gb/instant-news.htm", "time_window_hours": 24},
         {"url": "https://x.com/whyyoutouzhele", "time_window_hours": 24},
-        # 以下为新增，但默认源只包含上面，如需更多请自行在 sources.json 添加
     ]
     if not os.path.exists(sources_file):
         logger.warning(f"{sources_file} 不存在，使用默认信源")
@@ -461,29 +460,75 @@ def retry_on_exception(max_retries=3, delay=1, backoff=2):
 def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> requests.Response:
     headers = headers or {"User-Agent": random.choice(USER_AGENTS)}
     resp = requests.get(url, headers=headers, timeout=timeout, proxies=PROXIES)
-    # 对 429 特殊处理
-    if resp.status_code == 429:
-        wait = 60 + random.randint(0, 30)
-        logger.warning(f"收到 429，等待 {wait}s 后重试")
-        time.sleep(wait)
-        # 递归重试一次（避免无限递归）
-        return fetch_url(url, timeout, headers)
     resp.raise_for_status()
     return resp
 
-# ================= 抓取核心（修改 url_to_rss） =================
-def url_to_rss(url: str) -> Union[str, List[str], None]:
-    """
-    将原始信源 URL 映射到本地 RSS 代理服务的路由。
-    若未映射则返回 None，让后续逻辑处理。
-    """
-    # 针对 X/Twitter
+# ================= 抓取核心 =================
+def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], None]:
+    rsshub = random.choice(rsshub_instances)
+    if "voachinese.com" in url:
+        return [f"{rsshub}/voachinese/china", "http://feeds.feedburner.com/voacn"]
+    if "bbc.com/zhongwen/simp" in url:
+        return "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"
+    if "dw.com/zh" in url:
+        return "https://rss.dw.com/rdf/rss-chi-all"
+    if "rfi.fr/cn" in url:
+        return "https://www.rfi.fr/cn/general/rss"
+    if "cn.nytimes.com" in url:
+        return "https://cn.nytimes.com/rss/news.xml"
+    if "ntdtv.com" in url:
+        return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
+    if "epochtimes.com" in url:
+        return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
+    if "x.com/" in url:
+        return None
+    if "reuters.com/world/china" in url:
+        return f"{rsshub}/reuters/world/china"
+    if "wsj.com/news/china" in url:
+        return f"{rsshub}/wsj/china"
+    if "ft.com/china" in url:
+        return f"{rsshub}/ft/china"
+    if "apnews.com/hub/china" in url:
+        return f"{rsshub}/apnews/topics/china"
+    if "asia.nikkei.com" in url:
+        return "https://asia.nikkei.com/rss.xml"
+    if "brookings.edu/topics/china" in url:
+        return "https://www.brookings.edu/feed/?topic=china"
+    if "csis.org/regions/asia/china" in url:
+        return f"{rsshub}/csis/asia/china"
+    if "pewresearch.org/topic/international-affairs/global-image-of-countries/china-global-image" in url:
+        return "https://www.pewresearch.org/feed/?post_type=publication&topic=china"
+    if "merics.org" in url:
+        return "https://merics.org/en/rss.xml"
+    if "asiasociety.org/policy-institute/center-china-analysis" in url:
+        return f"{rsshub}/asiasociety/center-china-analysis"
+    if "rsf.org/en/country/china" in url:
+        return "https://rsf.org/en/rss.xml"
+    if "uscc.gov" in url:
+        return "https://www.uscc.gov/rss.xml"
+    if "hrw.org" in url:
+        return "https://www.hrw.org/rss/news"
+    if "freedomhouse.org" in url:
+        return "https://freedomhouse.org/rss.xml"
+    if "aspistrategist.org.au" in url:
+        return "https://www.aspistrategist.org.au/feed/"
+    if "amnesty.org" in url:
+        return "https://www.amnesty.org/en/feed/"
+    if "chinapower.csis.org" in url:
+        return "https://chinapower.csis.org/feed/"
+    if "carnegieendowment.org" in url:
+        return "https://carnegieendowment.org/rss"
+    if "chathamhouse.org" in url:
+        return "https://www.chathamhouse.org/rss-feeds"
+    return url
+
+# ====== 新增：代理映射函数 ======
+def _proxy_url_to_rss(url: str) -> Union[str, List[str], None]:
+    """将原始 URL 映射到本地代理路由，仅用于代理优先尝试"""
     if "x.com/" in url or "twitter.com/" in url:
         parts = url.split("/")
         username = parts[-1] if parts[-1] else parts[-2]
         return f"{PROXY_BASE}/twitter/user/{username}"
-
-    # 新闻站点
     if "bbc.com/zhongwen/simp" in url:
         return f"{PROXY_BASE}/bbc"
     if "dw.com/zh" in url:
@@ -501,8 +546,6 @@ def url_to_rss(url: str) -> Union[str, List[str], None]:
             return f"{PROXY_BASE}/zaobao/realtime"
         else:
             return f"{PROXY_BASE}/zaobao/znews"
-
-    # 智库/人权
     if "hrw.org" in url:
         return f"{PROXY_BASE}/hrw"
     if "amnesty.org" in url:
@@ -525,13 +568,9 @@ def url_to_rss(url: str) -> Union[str, List[str], None]:
         return f"{PROXY_BASE}/merics"
     if "rsf.org" in url:
         return f"{PROXY_BASE}/rsf"
-
-    # 未映射则返回 None，后续会尝试 RSSHub 或直接 RSS
     return None
 
 def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int) -> List[Dict]:
-    # 增加随机延迟，避免突发
-    time.sleep(random.uniform(0.5, 1.5))
     try:
         resp = fetch_url(rss_url, timeout=25)
         feed = feedparser.parse(resp.content)
@@ -587,10 +626,9 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
         logger.debug(f"信源 {original_url} 已被禁用，跳过")
         return []
 
-    # ----- 优先尝试本地代理 -----
-    proxy_url = url_to_rss(original_url)
+    # ----- 优先尝试本地代理（新增） -----
+    proxy_url = _proxy_url_to_rss(original_url)
     if proxy_url:
-        # 若返回列表则取第一个（这里返回字符串）
         if isinstance(proxy_url, list):
             proxy_url = proxy_url[0]
         logger.debug(f"尝试通过代理 {proxy_url} 抓取 {original_url}")
@@ -599,9 +637,9 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
             logger.debug(f"代理成功 {original_url} -> {len(items)} 条")
             return items
         else:
-            logger.debug(f"代理失败 {original_url}，尝试备用方式")
+            logger.debug(f"代理失败 {original_url}，回退到原有逻辑")
 
-    # ----- 原逻辑（Nitter / RSSHub / 直接 RSS）-----
+    # ----- 原有逻辑（完全不变） -----
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         nitter_pool = MirrorPool(get_nitter_instances())
@@ -628,25 +666,36 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
         return []
 
     rsshub_instances = get_rsshub_instances()
-    # 注意：原来的 url_to_rss 需要 rsshub_instances 参数，我们已重写，所以这里需要调用新的函数？但原逻辑是使用旧的 url_to_rss，我们现在已经改了函数名，但为了兼容，我们保留原逻辑调用旧函数？由于我们重写了 url_to_rss，不再需要 rsshub_instances，所以这里直接使用新的 url_to_rss（但已经尝试过了）。为避免重复，我们此处直接使用原函数中生成候选 RSS 的代码（但为了不破坏兼容，我们保留原样，但我们的 url_to_rss 已新，所以下面调用会报错？）
-    # 实际上我们重写了 url_to_rss，但原代码中 url_to_rss 接受 rsshub_instances 参数，我们改为不接受，所以下面调用会出错。我们需要调整：要么保留原函数名并修改，要么新建一个函数。为了最小改动，我们保留原函数名，但修改其参数，但会导致其他调用出错。更稳妥：我们保留原 url_to_rss 函数，但新增一个函数用于代理，或者直接修改原函数使其兼容。
-    # 简单方案：在原代码基础上，将 url_to_rss 重命名，然后新建一个专门用于代理的，但为了简化，我们直接在这个函数里写替代逻辑。
-    # 由于我们已经尝试过代理，若失败则使用原逻辑，原逻辑中依赖旧的 url_to_rss，但我们已经修改了该函数，所以需要保留原逻辑中的代码。
-    # 这里我们复制原 url_to_rss 的内容（基于 rsshub_instances）到此处，或者重新实现。
-    # 更好的方案：将原 url_to_rss 改名为 _legacy_url_to_rss，然后在这里调用它。但为了保持代码简洁，我们直接在 fetch_with_retry 中实现备用逻辑（针对非 Twitter 站点）。
-    # 我们假设大部分站点我们已经通过代理覆盖，若代理失败，则尝试直接 RSS 或 RSSHub。
-    # 以下是原逻辑的简化版：直接尝试一些已知的 RSS 地址。
-    # 为减少复杂度，我们直接返回空，让上层处理。但为了保持原功能，我们还是实现一个简化的后备。
+    rss_candidates = url_to_rss(original_url, rsshub_instances)
+    if not rss_candidates:
+        logger.debug(f"无法生成 RSS 地址: {original_url}")
+        return []
+    if isinstance(rss_candidates, str):
+        rss_candidates = [rss_candidates]
 
-    # 后备：针对未在代理中覆盖的站点，尝试原始 RSS 或 RSSHub（使用公共实例）。
-    # 我们复用之前的代码：从原始 url 中提取可能的 RSS 地址。
-    # 但为了代码简洁，我们直接使用原 url_to_rss 的旧逻辑，但我们已把它改了。我们可以恢复原函数，但改为不同名。
-    # 简单做法：把原 url_to_rss 改名为 _legacy_url_to_rss，保留原代码。然后在 fetch_with_retry 中调用它。
-    # 由于时间关系，我在此处给出调整后的完整代码。
-
-    # 由于篇幅，下面继续原逻辑的补全，但需要恢复原 url_to_rss 函数。为了给您完整可运行的代码，我们将在最终答案中提供完整代码，包括保留原 url_to_rss 函数并重命名为 _legacy_url_to_rss。
-
-    # 下面为占位，实际代码在最终提供。
+    for rss_url in rss_candidates:
+        instance_used = None
+        for inst in rsshub_instances:
+            if inst in rss_url:
+                instance_used = inst
+                break
+        try:
+            items = fetch_single_rss(rss_url, original_url, processed_hashes, url_cache, time_window_hours)
+            if items:
+                logger.debug(f"{original_url} 成功 (条数: {len(items)}) via {rss_url}")
+                if instance_used:
+                    update_rsshub_health(instance_used, True)
+                return items
+            else:
+                logger.debug(f"{original_url} 失败 via {rss_url}")
+                if instance_used:
+                    update_rsshub_health(instance_used, False)
+        except Exception as e:
+            logger.debug(f"{original_url} 异常 via {rss_url}: {e}")
+            if instance_used:
+                update_rsshub_health(instance_used, False)
+        time.sleep(0.5)
+    logger.debug(f"{original_url} 所有 RSS 地址均失败")
     return []
 
 def fetch_all_sources() -> Tuple[List[Dict], List[Tuple[str, str]]]:
