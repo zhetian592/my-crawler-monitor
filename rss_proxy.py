@@ -16,7 +16,7 @@ import threading
 import os
 from collections import OrderedDict
 from datetime import datetime, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 from xml.sax.saxutils import escape as xml_escape
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
@@ -35,6 +35,7 @@ DEFAULT_TIMEOUT = 25
 DEFAULT_MAX_ATTEMPTS = 3
 CACHE_TTL = 900          # 缓存 15 分钟
 CACHE_MAX_SIZE = 200
+TWITTER_RACE_TIMEOUT = 20  # Twitter 竞赛最长等待（crawler 读超时 25s，留缓冲）
 
 UA_LIST = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -389,18 +390,26 @@ def proxy_twitter(username):
                 fut = executor.submit(_try_rsshub_instance, target, uname)
             futures[fut] = (kind, target)
 
-        # 等待第一个成功的结果，最长等 45 秒（给慢实例足够时间）
-        done, _ = wait(futures, timeout=45, return_when=FIRST_COMPLETED)
-
-        for future in done:
-            result = future.result()
-            if result:
-                kind, target = futures[future]
-                logger.info(
-                    f"[Twitter] @{username} 通过 {kind}:{target} 获取成功"
-                )
-                cache_set(cache_key, result)
-                return result, 200
+        # 持续等待直到出现成功结果或全部完成（最多 TWITTER_RACE_TIMEOUT 秒）
+        # 注意：不能用 FIRST_COMPLETED 只等第一个完成——最快的实例往往是
+        # 死实例（连接拒绝最快），必须继续等慢但能用的实例
+        pending = set(futures)
+        deadline = time.time() + TWITTER_RACE_TIMEOUT
+        while pending and time.time() < deadline:
+            done, pending = wait(
+                pending,
+                timeout=max(0.1, deadline - time.time()),
+                return_when=FIRST_COMPLETED,
+            )
+            for future in done:
+                result = future.result()
+                if result:
+                    kind, target = futures[future]
+                    logger.info(
+                        f"[Twitter] @{username} 通过 {kind}:{target} 获取成功"
+                    )
+                    cache_set(cache_key, result)
+                    return result, 200
 
     logger.error(f"[Twitter] @{username} 所有实例均失败")
     return "Twitter 上游不可用（所有 Nitter/RSSHub 实例均失败）", 502
@@ -539,7 +548,8 @@ def main():
     parser.add_argument("--host", default="0.0.0.0")
     args = parser.parse_args()
 
-    server = HTTPServer((args.host, args.port), RSSProxyHandler)
+    # 必须用 ThreadingHTTPServer：单线程 HTTPServer 会让一个慢请求阻塞所有请求
+    server = ThreadingHTTPServer((args.host, args.port), RSSProxyHandler)
     logger.info(f"🚀 RSS 代理已启动: http://{args.host}:{args.port}")
     logger.info(f"  直接 RSS: {len(RSS_DIRECT)} 个源")
     logger.info(f"  Nitter 实例: {len(NITTER_POOL)} 个")
