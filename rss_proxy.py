@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # rss_proxy.py - 自建 RSS 代理（最终稳定版）
 # 启动: python rss_proxy.py --port 1200
-# 可选: HTTP_PROXY=http://your-proxy:port 设置上游代理
+# 可选环境变量:
+#   HTTP_PROXY / HTTPS_PROXY      - 上游代理（解决 IP 被封）
+#   RSSHUB_URLS                   - 逗号分隔的自定义 RSSHub 后端（覆盖内置列表）
+#   RSSHUB_TIMEOUT                - Twitter 后端并发等待超时（秒，默认 5）
 
 import argparse
 import json
@@ -26,7 +29,7 @@ logger = logging.getLogger('rss-proxy')
 
 DEFAULT_TIMEOUT = 20
 DEFAULT_MAX_ATTEMPTS = 3
-CACHE_TTL = 900
+CACHE_TTL = 900               # 15 分钟缓存，降低请求频率
 CACHE_MAX_SIZE = 200
 
 UA_LIST = [
@@ -35,22 +38,38 @@ UA_LIST = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/132.0.0.0 Safari/537.36",
 ]
 
-# ========== 新增：上游代理支持（解决 IP 被封的根本方案） ==========
+# ========== 上游代理支持（解决 IP 被封） ==========
 PROXY = os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
 PROXIES = {"http": PROXY, "https": PROXY} if PROXY else None
 if PROXY:
     logger.info(f"[Proxy] 已配置上游代理: {PROXY}")
 
-# RSSHub 后端（支持环境变量指定本地）
-LOCAL_RSSHUB = os.environ.get("RSSHUB_URL", "").strip()
-RSSHUB_BACKENDS = [
-    "https://rsshub.ktachibana.party",
-]
-if LOCAL_RSSHUB:
-    RSSHUB_BACKENDS.insert(0, LOCAL_RSSHUB)
-    logger.info(f"[Twitter] 已添加本地 RSSHub: {LOCAL_RSSHUB}")
+# ========== RSSHub 后端配置（支持环境变量覆盖） ==========
+ENV_RSSHUB_URLS = os.environ.get("RSSHUB_URLS", "").strip()
+if ENV_RSSHUB_URLS:
+    RSSHUB_BACKENDS = [url.strip() for url in ENV_RSSHUB_URLS.split(",") if url.strip()]
+    logger.info(f"[Twitter] 使用自定义 RSSHub 后端: {RSSHUB_BACKENDS}")
+else:
+    # 内置备选池（按稳定性排序）
+    # 注意：rsshub.app 官方实例对 Twitter 有限流，但配合 15 分钟缓存通常够用
+    RSSHUB_BACKENDS = [
+        "https://rsshub.app",
+        "https://rsshub.ktachibana.party",
+        "https://hub.0w0.one",           # 社区实例，需自行验证可用性
+        # "https://rsshub.feedio.net",   # 未经验证，如需使用请先 curl 测试
+    ]
+    logger.info(f"[Twitter] 使用内置 RSSHub 后端: {RSSHUB_BACKENDS}")
 
-NITTER_POOL_FAST = ["https://nitter.net", "https://xcancel.com"]
+# Twitter 并发等待超时（环境变量可调）
+RSSHUB_TIMEOUT = int(os.environ.get("RSSHUB_TIMEOUT", "5"))
+
+# Nitter 降级池（若 RSSHub 全部失效）
+NITTER_POOL_FAST = [
+    "https://nitter.net",
+    "https://xcancel.com",
+    "https://nitter.poast.org",
+    "https://nitter.privacyredirect.com",
+]
 
 # ============ 线程安全缓存 ============
 _cache = OrderedDict()
@@ -71,8 +90,12 @@ def cache_set(key, content):
         if len(_cache) > CACHE_MAX_SIZE:
             _cache.popitem(last=False)
 
-# ============ HTTP 工具（已增加代理支持） ============
+# ============ HTTP 工具（统一出口，支持代理） ============
 def fetch(url, timeout=DEFAULT_TIMEOUT, max_attempts=DEFAULT_MAX_ATTEMPTS):
+    """
+    所有外部请求统一通过此函数发出。
+    如需升级到 curl_cffi（应对 Cloudflare 五秒盾），只需修改此函数。
+    """
     headers = {"User-Agent": random.choice(UA_LIST)}
     for attempt in range(max_attempts):
         try:
@@ -115,7 +138,7 @@ RSS_DIRECT = {
     "fdd":        "https://www.fdd.org/feed/",
     "chinapower": "https://chinapower.csis.org/feed/",
     "carnegieendowment": "https://carnegieendowment.org/rss",
-    "epochtimes": "https://feed.theepochtimes.com/china/feed",   # 已修复：不再 302，直接抓取
+    "epochtimes": "https://feed.theepochtimes.com/china/feed",
 }
 
 def proxy_direct_rss(name):
@@ -217,7 +240,7 @@ def scrape_zaobao(path):
         logger.error(f"[Zaobao/{path}] 抓取失败: {e}")
         return f"抓取失败: {e}", 502
 
-# ============ Twitter 代理 ============
+# ============ Twitter 代理（多后端 + 并发超时控制） ============
 def _try_fetch_twitter_from_backend(backend, username):
     url = f"{backend}/twitter/user/{username}"
     try:
@@ -237,7 +260,8 @@ def proxy_twitter(username):
     backends = RSSHUB_BACKENDS
     with ThreadPoolExecutor(max_workers=len(backends)) as executor:
         futures = {executor.submit(_try_fetch_twitter_from_backend, backend, username): backend for backend in backends}
-        done, _ = wait(futures, timeout=5, return_when=FIRST_COMPLETED)
+        # 超时使用环境变量 RSSHUB_TIMEOUT（默认 5 秒）
+        done, _ = wait(futures, timeout=RSSHUB_TIMEOUT, return_when=FIRST_COMPLETED)
         for future in done:
             result = future.result()
             if result:
@@ -335,7 +359,7 @@ class RSSProxyHandler(BaseHTTPRequestHandler):
             self._send(code, body)
             return
 
-        # 注意：已移除 Epochtimes 的 302 重定向，交由下方 RSS_DIRECT 统一处理（修复直连问题）
+        # 注意：epochtimes 已由 RSS_DIRECT 统一处理，不再单独 302
 
         # Zaobao
         if path.startswith("/zaobao/realtime"):
