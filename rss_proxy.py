@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # rss_proxy.py - 自建 RSS 代理（最终稳定版）
 # 启动: python rss_proxy.py --port 1200
-# 可选: RSSHUB_URL=http://localhost:1201 指定本地 RSSHub 后端
+# 可选: HTTP_PROXY=http://your-proxy:port 设置上游代理
 
 import argparse
 import json
@@ -35,6 +35,12 @@ UA_LIST = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/132.0.0.0 Safari/537.36",
 ]
 
+# ========== 新增：上游代理支持（解决 IP 被封的根本方案） ==========
+PROXY = os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
+PROXIES = {"http": PROXY, "https": PROXY} if PROXY else None
+if PROXY:
+    logger.info(f"[Proxy] 已配置上游代理: {PROXY}")
+
 # RSSHub 后端（支持环境变量指定本地）
 LOCAL_RSSHUB = os.environ.get("RSSHUB_URL", "").strip()
 RSSHUB_BACKENDS = [
@@ -65,12 +71,12 @@ def cache_set(key, content):
         if len(_cache) > CACHE_MAX_SIZE:
             _cache.popitem(last=False)
 
-# ============ HTTP 工具 ============
+# ============ HTTP 工具（已增加代理支持） ============
 def fetch(url, timeout=DEFAULT_TIMEOUT, max_attempts=DEFAULT_MAX_ATTEMPTS):
     headers = {"User-Agent": random.choice(UA_LIST)}
     for attempt in range(max_attempts):
         try:
-            resp = requests.get(url, headers=headers, timeout=timeout)
+            resp = requests.get(url, headers=headers, timeout=timeout, proxies=PROXIES)
             resp.raise_for_status()
             return resp
         except Exception as e:
@@ -95,7 +101,7 @@ def build_rss(title, link, desc, items):
     xml += '</channel>\n</rss>'
     return xml
 
-# ============ 直接 RSS 代理（键名已对齐） ============
+# ============ 直接 RSS 代理 ============
 RSS_DIRECT = {
     "bbc":        "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml",
     "dw":         "https://rss.dw.com/rdf/rss-chi-all",
@@ -103,13 +109,13 @@ RSS_DIRECT = {
     "nytimes":    "https://cn.nytimes.com/rss/news.xml",
     "brookings":  "https://www.brookings.edu/feed/?topic=china",
     "freedomhouse": "https://freedomhouse.org/rss.xml",
-    "aspistrategist": "https://www.aspistrategist.org.au/feed/",   # 已对齐
+    "aspistrategist": "https://www.aspistrategist.org.au/feed/",
     "hrw":        "https://www.hrw.org/rss/news",
     "amnesty":    "https://www.amnesty.org/en/feed/",
     "fdd":        "https://www.fdd.org/feed/",
     "chinapower": "https://chinapower.csis.org/feed/",
-    "carnegieendowment": "https://carnegieendowment.org/rss",       # 已对齐
-    "epochtimes": "https://feed.theepochtimes.com/china/feed",
+    "carnegieendowment": "https://carnegieendowment.org/rss",
+    "epochtimes": "https://feed.theepochtimes.com/china/feed",   # 已修复：不再 302，直接抓取
 }
 
 def proxy_direct_rss(name):
@@ -130,7 +136,7 @@ def proxy_direct_rss(name):
         logger.error(f"[{name}] 代理失败: {e}")
         return f"上游 RSS 不可用: {e}", 502
 
-# ============ HTML 抓取 ============
+# ============ HTML 抓取（NTD / 早报） ============
 def _extract_articles_from_elements(elements, base_url, max_items=30):
     items = []
     for el in elements[:max_items]:
@@ -238,15 +244,16 @@ def proxy_twitter(username):
                 cache_set(cache_key, result)
                 return result, 200
 
-    try:
-        inst = NITTER_POOL_FAST[0]
-        url = f"{inst}/{username}/rss"
-        resp = requests.get(url, headers={"User-Agent": random.choice(UA_LIST)}, timeout=4)
-        if resp.status_code == 200 and is_valid_rss_content(resp.text):
-            cache_set(cache_key, resp.text)
-            return resp.text, 200
-    except Exception:
-        pass
+    # 降级到 Nitter 公共池
+    for inst in NITTER_POOL_FAST:
+        try:
+            url = f"{inst}/{username}/rss"
+            resp = requests.get(url, headers={"User-Agent": random.choice(UA_LIST)}, timeout=4, proxies=PROXIES)
+            if resp.status_code == 200 and is_valid_rss_content(resp.text):
+                cache_set(cache_key, resp.text)
+                return resp.text, 200
+        except Exception:
+            pass
 
     return "Twitter 上游不可用", 502
 
@@ -286,7 +293,7 @@ class RSSProxyHandler(BaseHTTPRequestHandler):
         if path == "/health/upstream":
             results = {"direct_rss": {}, "nitter": []}
             with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = {executor.submit(requests.head, url, timeout=3, allow_redirects=True): name for name, url in RSS_DIRECT.items()}
+                futures = {executor.submit(requests.head, url, timeout=3, allow_redirects=True, proxies=PROXIES): name for name, url in RSS_DIRECT.items()}
                 done, _ = wait(futures, timeout=4)
                 for future in done:
                     name = futures[future]
@@ -300,7 +307,7 @@ class RSSProxyHandler(BaseHTTPRequestHandler):
                     results["direct_rss"][name] = {"status": "timeout", "ok": False}
 
             with ThreadPoolExecutor(max_workers=4) as executor:
-                futures = {executor.submit(requests.get, inst, timeout=3): inst for inst in NITTER_POOL_FAST}
+                futures = {executor.submit(requests.get, inst, timeout=3, proxies=PROXIES): inst for inst in NITTER_POOL_FAST}
                 done, _ = wait(futures, timeout=4)
                 for future in done:
                     inst = futures[future]
@@ -328,12 +335,7 @@ class RSSProxyHandler(BaseHTTPRequestHandler):
             self._send(code, body)
             return
 
-        # Epochtimes 重定向到原始 RSS
-        if path.startswith("/epochtimes/gb") or path == "/epochtimes":
-            self.send_response(302)
-            self.send_header("Location", "https://feed.theepochtimes.com/china/feed")
-            self.end_headers()
-            return
+        # 注意：已移除 Epochtimes 的 302 重定向，交由下方 RSS_DIRECT 统一处理（修复直连问题）
 
         # Zaobao
         if path.startswith("/zaobao/realtime"):
@@ -367,18 +369,16 @@ class RSSProxyHandler(BaseHTTPRequestHandler):
                 return
 
         # ---- 泛化 RSSHub 转发（兜底） ----
-        # 对于不在 RSS_DIRECT 中的路由，尝试转发给公共 RSSHub
         if parts and RSSHUB_BACKENDS:
             backend = RSSHUB_BACKENDS[0]
             proxy_url = backend + path
             try:
-                # 使用缓存的响应
                 cache_key = f"rsshub:{path}"
                 cached = cache_get(cache_key)
                 if cached:
                     self._send(200, cached)
                     return
-                resp = requests.get(proxy_url, headers={"User-Agent": random.choice(UA_LIST)}, timeout=15)
+                resp = requests.get(proxy_url, headers={"User-Agent": random.choice(UA_LIST)}, timeout=15, proxies=PROXIES)
                 if resp.status_code == 200 and is_valid_rss_content(resp.text):
                     cache_set(cache_key, resp.text)
                     self._send(200, resp.text)
@@ -399,7 +399,11 @@ def main():
     server = HTTPServer((args.host, args.port), RSSProxyHandler)
     logger.info(f"🚀 RSS 代理已启动: http://{args.host}:{args.port}")
     logger.info(f"   直接 RSS: {len(RSS_DIRECT)} 个源")
-    logger.info(f"   Twitter RSSHub 后端: {len(RSSHUB_BACKENDS)} 个 (本地: {LOCAL_RSSHUB or '无'})")
+    logger.info(f"   Twitter RSSHub 后端: {len(RSSHUB_BACKENDS)} 个")
+    if PROXY:
+        logger.info(f"   🔒 已启用上游代理: {PROXY}")
+    else:
+        logger.warning("   ⚠️ 未配置上游代理 (HTTP_PROXY)，若出口IP被封，抓取将失败")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
