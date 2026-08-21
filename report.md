@@ -1,23 +1,23 @@
-生成时间：2026-08-20 09:55:30 UTC
-抓取数据：113条
+生成时间：2026-08-21 02:21:10 UTC
+抓取数据：163条
 
 | 事件简述 | 原文链接 | 风险点 | 信息来源 | 发布多久前 | 风险等级 |
 |----------|----------|--------|----------|------------|------------|
-| ---（2个信源） | --- | --- | ---、-------- | --- | --- |
-| 中国深圳法院判处恒大创始人许家印无期徒刑，罚款158.2亿元人民币，反映房地产危机对经济的影响。 | [查看](https://www.bbc.com/zhongwen/articles/cvgjdjnynvlo/trad?at_medium=RSS&at_campaign=rss) | 可能引发对中国经济稳定性的担忧 | BBC中文 | 1小时前 | 高 |
-| 🆕 台湾为鞭刑入法公投引发争议，民众支持与人权团体批评形成对立。 | [查看](https://www.bbc.com/zhongwen/articles/cn0n418jnj9o/trad?at_medium=RSS&at_campaign=rss) | 可能引发对人权状况的广泛讨论 | BBC中文 | 1小时前 | 中 |
-| 中国出入境新规实施前，民众担心出境自由受限，已有多人被限制出境。 | [查看](https://www.bbc.com/zhongwen/articles/ce3q0yd25j9o/trad?at_medium=RSS&at_campaign=rss) | 可能引发对言论自由的质疑 | BBC中文 | 1小时前 | 中 |
-| 🆕 郭德纲因改编红歌被调查，反映中国言论空间日益收窄。 | [查看](https://cn.nytimes.com/china/20260820/guo-degang-china-comic-investigated/?utm_source=RSS) | 可能引发对言论自由的广泛关注 | 纽约时报中文网 | 刚刚 | 高 |
-| 中国称欧盟对京东收购案的调查构成“不当域外管辖”，引发国际贸易争议。 | [查看](https://www.dw.com/zh/中国称欧盟对京东收购案的调查构成-不当域外管辖/a-78432676?maca=chi-rss-chi-all-1127-rdf) | 可能引发中欧贸易关系紧张 | 德国之声 | 19小时前 | 中 |
-| 光州双年展“台湾馆”遭改名，艺术家批评此举为“政治审查”。 | [查看](https://www.dw.com/zh/光州双年展-台湾馆-遭改名-艺术家批评-政治审查/a-78431171?maca=chi-rss-chi-all-1127-rdf) | 可能引发对文化审查的讨论 | 德国之声 | 20小时前 | 中 |
-| 🆕 中非共和国金矿坍塌，造成数十人甚至上百人遇难，反映当地安全隐患。 | [查看](https://www.rfi.fr/cn/%E9%9D%9E%E6%B4%B2/20260819-%E4%B8%AD%E9%9D%9E%E5%85%B1%E5%92%8C%E5%9B%BD%E4%B8%80%E5%BA%A7%E9%87%91%E7%9F%BF%E5%9D%8D%E5%A1%8C-%E6%88%96%E4%B8%8A%E7%99%BE%E4%BA%BA%E9%81%87%E9%9A%BE) | 可能引发对矿业安全的关注 | 法国国际广播电台 | 21小时前 | 中 |
-| 🆕 美国制裁国际刑事法院院长，反映国际法治面临挑战。 | [查看](https://www.dw.com/zh/美国制裁国际刑事法院院长及资深律师/a-78429482?maca=chi-rss-chi-all-1127-rdf) | 可能引发对国际法治的质疑 | 德国之声 | 22小时前 | 中 |
-| 🆕 中国小伙在旅游期间被迫回国，限制出境 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125702.html) | 可能引发公众对出境政策的质疑 | www.ntdtv.com | 刚刚 | 中 |
-| 🆕 大陆对剩菜喂猪最高罚款百万，可能面临牢狱之灾引发争议 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125699.html) | 可能引发对食品安全政策的质疑 | www.ntdtv.com | 刚刚 | 中 |
-| 中国恒大创办人许家印被判无期，涉及多名高官 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125689.html) | 可能引发对高官腐败的关注 | www.ntdtv.com | 刚刚 | 高 |
-| 🆕 河北秦皇岛突发火灾造成8死3伤，官方通报引发疑虑 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125655.html) | 可能引发对官方信息透明度的质疑 | www.ntdtv.com | 刚刚 | 中 |
-| 🆕 中国富豪安踏前CEO全家移民美国，反映社会现象 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125656.html) | 可能引发对社会流动性的讨论 | www.ntdtv.com | 刚刚 | 中 |
-| 🆕 中国百万女网红在马来西亚机场闹事，视频引发关注 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125657.html) | 可能引发对国民形象的担忧 | www.ntdtv.com | 刚刚 | 中 |
-| 🆕 中国军方高层被清洗，反映内部权力斗争 | [查看](https://www.theepochtimes.com/china/china-purges-senior-military-systems-engineer-amid-expanding-crackdown-within-military-6077251) | 可能引发对军方稳定性的担忧 | 大纪元 | 9小时前 | 高 |
-| 🆕 中共改革开放被批评为“死亡”，引发历史反思 | [查看](https://www.ntdtv.com/gb/2026/08/19/a104125613.html) | 可能引发对中共政策的广泛讨论 | www.ntdtv.com | 1天前 | 中 |
-| 🆕 中华人民共和国在中央中国发生洪水，造成农田和房屋损毁 | [查看](https://www.theepochtimes.com/china/flooding-leaves-farms-homes-damaged-after-3-dike-breaches-in-central-china-6077017) | 可能引发对自然灾害应对措施的质疑 | 大纪元 | 13小时前 | 中 |
+| --------（2个信源） | -------- | -------- | --------、----------- | -------- | -------- |
+| 🆕 恒大创始人许家印因多项金融犯罪在深圳被判无期徒刑，没收个人财产，标志恒大危机的加剧 | [查看](https://www.rfi.fr/cn/%E4%B8%AD%E5%9B%BD/20260820-%E6%81%92%E5%A4%A7%E5%88%9B%E5%A7%8B%E4%BA%BA%E8%AE%B8%E5%AE%B6%E5%8D%B0%E8%A2%AB%E5%88%A4%E7%BB%88%E8%BA%AB%E7%9B%91%E7%A6%81) | 影响公众对中国经济管理的信心 | 法国国际广播电台 | 3小时前 | 高 |
+| 🆕 香港支联会的李卓人等因涉嫌煽动颠覆国家政权被法院判有罪，可能面临最高10年监禁 | [查看](https://www.bbc.com/zhongwen/articles/cvgvrpy7pjro/trad?at_medium=RSS&at_campaign=rss) | 可能引发对香港政治自由的担忧 | BBC中文 | 3分钟前 | 高 |
+| 🆕 上海限制地下偶像现场演唱日语歌，引发对言论自由的担忧 | [查看](https://www.rfi.fr/cn/%E4%B8%AD%E5%9B%BD/20260820-%E4%B8%8A%E6%B5%B7%E9%99%90%E5%88%B6%E5%9C%B0%E4%B8%8B%E5%81%B6%E5%83%8F%E6%BC%94%E5%94%B1%E6%97%A5%E8%AF%AD%E6%AD%8C-%E8%A2%AB%E6%8C%87%E6%88%96%E6%8F%A3%E5%BA%A6%E4%B8%AD%E5%A4%AE%E6%84%8F%E5%9B%BE) | 可能引起对文化审查的讨论 | 法国国际广播电台 | 10小时前 | 中 |
+| 🆕 美国指责中国任意拘留美国公民，呼吁释放被拘留者 | [查看](https://www.rfi.fr/cn/%E4%B8%AD%E5%9B%BD/20260820-%E5%8D%8E%E7%9B%9B%E9%A1%BF%E6%8C%87%E8%B4%A3%E5%8C%97%E4%BA%AC%E4%BB%BB%E6%84%8F%E6%8B%98%E7%95%99%E7%AC%AC%E4%BA%8C%E4%BD%8D%E7%BE%8E%E5%9B%BD%E5%85%AC%E6%B0%91) | 引发国际舆论对中美关系的关注 | 法国国际广播电台 | 5小时前 | 中 |
+| 🆕 一名中国公民因向澳洲公职人员行贿被判缓刑，并将面临驱逐出境 | [查看](https://www.rfi.fr/cn/%E5%9B%BD%E9%99%85/20260820-%E4%B8%80%E5%90%8D%E4%B8%AD%E5%9B%BD%E5%85%AC%E6%B0%91%E6%89%BF%E8%AE%A4%E5%B0%862%E4%B8%87%E6%BE%B3%E5%85%83%E8%97%8F%E8%8C%B6%E5%8F%B6%E9%87%8C%E8%A1%8C%E8%B4%BF%E6%BE%B3%E6%B4%B2%E5%85%AC%E8%81%8C%E4%BA%BA%E5%91%98%E8%8E%B7%E7%BC%93%E5%88%911%E5%B9%B4%E5%8D%B3%E5%B0%86%E8%A2%AB%E9%A9%B1%E9%80%90) | 可能加剧公众对腐败问题的讨论 | 法国国际广播电台 | 13小时前 | 中 |
+| 🆕 法轮功学员养老金遭停发，多地案例揭示经济迫害 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125883.html) | 可能引发对政府政策的质疑 | www.ntdtv.com | 刚刚 | 中 |
+| 🆕 更新中国护照必须回国？中介称是针对特定族群 | [查看](https://www.ntdtv.com/gb/2026/08/20/a104125872.html) | 引发对护照政策的不满 | www.ntdtv.com | 刚刚 | 中 |
+| 🆕 许家印被判无期，分析称其事件揭示中共内斗与经济问题 | [查看](https://www.dw.com/zh/从中国首富到无期徒刑：许家印与恒大的崩塌/a-78442968?maca=chi-rss-chi-all-1127-rdf) | 反映中国经济与政治斗争的复杂性 | 德国之声 | 14小时前 | 中 |
+| 🆕 跨境镇压法律实施引发国际舆论担忧 | [查看](https://www.dw.com/zh/流亡德国受到威胁？德国宪法保卫局推出求助热线/a-78446664?maca=chi-rss-chi-all-1127-rdf) | 讨论人权与政府行为的关系 | 德国之声 | 11小时前 | 中 |
+| 🆕 中国农民工文学引发共鸣，唤起对其生活境遇的关注 | [查看](https://cn.nytimes.com/china/20260820/china-working-class-writers-books/?utm_source=RSS) | 引发对农民工权益的关注 | 纽约时报中文网 | 23小时前 | 中 |
+| 郭德纲因改编红歌歌词遭调查，反映言论管控问题 | [查看](https://cn.nytimes.com/china/20260820/guo-degang-china-comic-investigated/?utm_source=RSS) | 反映中国对言论的严格控制 | 纽约时报中文网 | 15小时前 | 高 |
+| 🆕 中国奢侈品销售大幅下滑，反映经济压力 | [查看](https://www.epochtimes.com/gb/26/8/20/n14833632.htm) | 经济形势可能引发公众担忧 | 大纪元 | 2小时前 | 中 |
+| 🆕 德国财长批评中国不按规则行事，呼吁加强合作 | [查看](https://www.epochtimes.com/gb/26/8/20/n14833767.htm) | 可能影响中德关系 | 大纪元 | 2小时前 | 中 |
+| 🆕 富达国际拟退出中国基金业务，因规模低于盈利最低要求 | [查看](https://www.epochtimes.com/gb/26/8/20/n14833698.htm) | 可能引发外资对中国市场信心下降 | 大纪元 | 4小时前 | 中 |
+| 🆕 加拿大咖啡品牌Tims在中国亏损超过33亿 | [查看](https://www.epochtimes.com/gb/26/8/20/n14833702.htm) | 反映中国市场对外资品牌的接纳度问题 | 大纪元 | 5小时前 | 中 |
+| 🆕 欧盟关税生效后，中国小包裹涌入立陶宛数量骤减 | [查看](https://www.epochtimes.com/gb/26/8/20/n14833663.htm) | 影响中国电商出口，造成负面舆情 | 大纪元 | 5小时前 | 中 |
+| 🆕 大陆AI短剧大量涌入台湾，专家警告可能洗脑 | [查看](https://www.epochtimes.com/gb/26/8/20/n14833587.htm) | 可能引发对中共宣传干预的担忧 | 大纪元 | 7小时前 | 高 |
