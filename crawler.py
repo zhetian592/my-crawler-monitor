@@ -627,7 +627,16 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
         
-        # 方案A：Nitter 实例（优先，RSSHub twitter 路由需要 API 密钥，公共实例多不支持）
+        # 方案A：本地 Twitter Bridge（最优先，使用 X Token 认证）
+        for local_bridge in ["http://localhost:1200", "http://localhost:3000"]:
+            rss_url = f"{local_bridge}/twitter/user/{username}"
+            logger.debug(f"尝试 X {username} 使用本地桥接 {local_bridge}")
+            items = fetch_single_rss(rss_url, original_url, processed_hashes, url_cache, time_window_hours, hash_lock)
+            if items:
+                logger.info(f"X {username} 成功 via 本地桥接 (条数: {len(items)})")
+                return items
+        
+        # 方案B：Nitter 实例（备选）
         nitter_pool = MirrorPool(get_nitter_instances())
         nitter_attempts = 0
         max_nitter_attempts = len(nitter_pool.original) if nitter_pool.original else 0
@@ -649,7 +658,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
             nitter_attempts += 1
             time.sleep(0.5)
         
-        # 方案B：RSSHub twitter 路由（需要实例配置 Twitter API 密钥，公共实例通常不支持）
+        # 方案C：RSSHub twitter 路由（兜底，公共实例通常不支持）
         rsshub_instances = get_rsshub_instances()
         for inst in rsshub_instances:
             rss_url = f"{inst}/twitter/user/{username}"
@@ -664,7 +673,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
                 update_rsshub_health(inst, False)
             time.sleep(0.5)
         
-        logger.warning(f"X {username} 所有方案均失败（Nitter 和 RSSHub 均不可用，可能需要自建 RSSHub 并配置 Twitter API 密钥）")
+        logger.warning(f"X {username} 所有方案均失败（本地桥接、Nitter 和 RSSHub 均不可用）")
         return []
 
     rsshub_instances = get_rsshub_instances()
