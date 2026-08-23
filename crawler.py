@@ -79,11 +79,6 @@ FAILED_SOURCES_LOG = "failed_sources.json"
 DISABLED_SOURCES_FILE = "disabled_sources.json"
 URL_DEDUP_FILE = "url_dedup.json"
 
-# ====== 本地 RSS 代理地址（与 rss_proxy.py 端口一致） ======
-# 工作流会先启动 rss_proxy.py --port 1200，crawler 优先走本地代理。
-# 本地代理内置 Nitter 多实例竞赛 + 直接 RSS + HTML 抓取，比 crawler 直连更稳。
-PROXY_BASE = os.environ.get("RSS_PROXY_BASE", "http://localhost:1200")
-
 FALLBACK_NITTER_INSTANCES = [
     "https://nitter.net",
     "https://nitter.poast.org",
@@ -94,13 +89,9 @@ FALLBACK_NITTER_INSTANCES = [
     "https://nitter.catsarch.com",
     "https://xcancel.com"
 ]
-# 注意：公共 rsshub.app 已要求 access key（403），不要再用。
-# 本地代理 localhost:1200 优先，其余为公共实例兜底。
 FALLBACK_RSSHUB_INSTANCES = [
-    "http://localhost:1200",
-    "https://rsshub.ktachibana.party",
-    "https://rsshub.rssforever.com",
-    "https://rsshub.feedio.net",
+    "https://rsshub.app",
+    "https://rsshub.ktachibana.party"
 ]
 
 USER_AGENTS = [
@@ -586,18 +577,6 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
 
     if "x.com/" in original_url:
         username = original_url.split("/")[-1]
-
-        # 方案A（优先）：本地 rss_proxy 的 /twitter/user/ 路由。
-        # 本地代理内置 Nitter 多实例竞赛（等待慢但可用的实例），
-        # 并支持通过 NITTER_URLS 环境变量注入可用实例，比 crawler 直连可靠。
-        proxy_url = f"{PROXY_BASE}/twitter/user/{username}"
-        items = fetch_single_rss(proxy_url, original_url, processed_hashes, url_cache, time_window_hours)
-        if items:
-            logger.debug(f"X {username} 成功 via 本地代理 {proxy_url} (条数: {len(items)})")
-            return items
-        logger.debug(f"X {username} 本地代理失败，回退直连 Nitter")
-
-        # 方案B：直连 Nitter 实例（兜底）
         nitter_pool = MirrorPool(get_nitter_instances())
         while True:
             try:
