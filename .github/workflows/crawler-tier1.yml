@@ -1,4 +1,5 @@
 name: Tier1 - Manual
+
 on:
   workflow_dispatch:
 
@@ -26,6 +27,14 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Start Twitter Bridge
+        env:
+          TWITTER_AUTH_TOKEN: ${{ secrets.TWITTER_AUTH_TOKEN }}
+        run: |
+          python twitter_bridge.py --port 3000 &
+          sleep 3
+          curl -s http://localhost:3000/health
+
       - name: Start RSS proxy
         run: |
           python rss_proxy.py --port 1200 &
@@ -34,9 +43,7 @@ jobs:
 
       - name: Run crawler
         env:
-          # 使用 ChatAnywhere 的 API Key（GitHub Secret 中已设置）
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # 以下两项可选，代码中已有默认值，但显式指定更清晰
           OPENAI_BASE_URL: "https://api.chatanywhere.tech/v1"
           AI_MODEL: "gpt-4o-mini"
         run: python crawler.py
