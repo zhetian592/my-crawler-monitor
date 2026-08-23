@@ -64,12 +64,15 @@ KEEP_DAYS = 2
 SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
-MAX_WORKERS = 6
+MAX_WORKERS = 12
 AI_REQUEST_DELAY = 2
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 30
 DISABLE_AUTO_RECOVER_DAYS = 7
 EVENT_EXPIRE_DAYS = 60
+NITTER_MAX_ATTEMPTS = 3
+NITTER_TIMEOUT = 6
+NITTER_PRE_CHECK = True
 
 EVENT_COUNTS_FILE = "event_counts.json"
 HEALTHY_NITTER_FILE = "healthy_nitter.json"
@@ -79,17 +82,11 @@ DISABLED_SOURCES_FILE = "disabled_sources.json"
 URL_DEDUP_FILE = "url_dedup.json"
 
 FALLBACK_NITTER_INSTANCES = [
-    "https://nitter.net",
-    "https://nitter.poast.org",
-    "https://nitter.privacyredirect.com",
-    "https://lightbrd.com",
-    "https://nitter.space",
+    "https://xcancel.com",
     "https://nitter.tiekoetter.com",
     "https://nitter.catsarch.com",
-    "https://xcancel.com",
-    "https://nitter.1d4.us",
-    "https://nitter.privacydev.net",
-    "https://nitter.moomoo.me",
+    "https://nitter.kareem.one",
+    "https://nitter.net",
 ]
 FALLBACK_RSSHUB_INSTANCES = [
     "http://localhost:1200",
@@ -372,6 +369,37 @@ def precheck_rsshub_instances():
         logger.warning("RSSHub 预检完成: 0 个实例可用！将使用默认列表")
     return available
 
+def precheck_nitter_instances():
+    """启动时预检 Nitter 实例可用性，快速剔除死实例"""
+    instances = get_nitter_instances()
+    available = []
+    logger.info(f"预检 {len(instances)} 个 Nitter 实例...")
+    for inst in instances:
+        try:
+            resp = requests.get(
+                f"{inst}/jack/with_replies",
+                headers={"User-Agent": random.choice(USER_AGENTS)},
+                timeout=5
+            )
+            # 200 或 403（反爬但可达）说明实例存活
+            if resp.status_code in (200, 403):
+                available.append(inst)
+                logger.info(f"  ✓ Nitter 实例可达: {inst} (status={resp.status_code})")
+            else:
+                logger.warning(f"  ✗ Nitter 实例不可用 ({resp.status_code}): {inst}")
+                update_nitter_health(inst, False)
+        except Exception as e:
+            logger.warning(f"  ✗ Nitter 实例不可达: {inst} - {type(e).__name__}")
+            update_nitter_health(inst, False)
+
+    if available:
+        with open(HEALTHY_NITTER_FILE, 'w', encoding='utf-8') as f:
+            json.dump(available, f, ensure_ascii=False)
+        logger.info(f"Nitter 预检完成: {len(available)}/{len(instances)} 可用")
+    else:
+        logger.warning("Nitter 预检完成: 0 个实例可用！将使用默认列表")
+    return available
+
 # ================ URL去重缓存 ================
 class URLDedupCache:
     def __init__(self, cache_file=URL_DEDUP_FILE):
@@ -485,8 +513,8 @@ def retry_on_exception(max_retries=3, delay=1, backoff=2):
         return wrapper
     return decorator
 
-@retry_on_exception(max_retries=3, delay=2, backoff=2)
-def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> requests.Response:
+@retry_on_exception(max_retries=2, delay=1, backoff=2)
+def fetch_url(url: str, timeout: int = 15, headers: Optional[Dict] = None) -> requests.Response:
     if headers is None:
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
@@ -495,12 +523,20 @@ def fetch_url(url: str, timeout: int = 25, headers: Optional[Dict] = None) -> re
             "Accept-Encoding": "gzip, deflate",
             "Cache-Control": "no-cache",
             "Pragma": "no-cache",
+            "Referer": "https://www.google.com/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "cross-site",
         }
     else:
         headers.setdefault("User-Agent", random.choice(USER_AGENTS))
         headers.setdefault("Accept", "application/rss+xml, application/xml, text/xml, */*;q=0.8")
     resp = requests.get(url, headers=headers, timeout=timeout, proxies=PROXIES)
-    resp.raise_for_status()
+    # 5xx 触发重试，4xx 不重试（客户端错误重试无意义）
+    if resp.status_code >= 500:
+        resp.raise_for_status()
+    elif resp.status_code >= 400:
+        logger.debug(f"4xx 响应 {url}: {resp.status_code}，不重试")
     return resp
 
 # ================= 抓取核心 =================
@@ -515,11 +551,11 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     if "rfi.fr/cn" in url:
         return ["https://www.rfi.fr/cn/general/rss", f"{rsshub}/rfi/chinese"]
     if "cn.nytimes.com" in url:
-        return ["https://cn.nytimes.com/rss/news.xml", f"{rsshub}/nytimes/zh"]
+        return ["https://cn.nytimes.com/rss/", "https://cn.nytimes.com/rss/news.xml", f"{rsshub}/nytimes"]
     if "ntdtv.com" in url:
-        return [f"{rsshub}/ntdtv/instant-news", "https://www.ntdtv.com/gb/feed"]
+        return [f"{rsshub}/ntdtv/gb/instant-news.html", "https://www.ntdtv.com/gb/feed"]
     if "epochtimes.com" in url:
-        return [f"{rsshub}/epochtimes/gb", "https://www.epochtimes.com/gb/feed"]
+        return ["https://www.epochtimes.com/gb/feed", "https://feed.theepochtimes.com/china/feed"]
     if "x.com/" in url:
         return None
     if "reuters.com/world/china" in url:
@@ -547,7 +583,7 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
     if "uscc.gov" in url:
         return [f"{rsshub}/uscc/news", "https://www.uscc.gov/rss.xml"]
     if "hrw.org" in url:
-        return "https://www.hrw.org/rss/news"
+        return ["https://www.hrw.org/rss/news", "https://www.hrw.org/zh-hans/rss/news", f"{rsshub}/hrw/news"]
     if "freedomhouse.org" in url:
         return "https://freedomhouse.org/rss.xml"
     if "aspistrategist.org.au" in url:
@@ -562,9 +598,9 @@ def url_to_rss(url: str, rsshub_instances: List[str]) -> Union[str, List[str], N
         return [f"{rsshub}/chathamhouse/latest", "https://www.chathamhouse.org/rss-feeds"]
     return url
 
-def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int, hash_lock: threading.Lock = None) -> List[Dict]:
+def fetch_single_rss(rss_url: str, original_url: str, processed_hashes: set, url_cache: URLDedupCache, time_window_hours: int, hash_lock: threading.Lock = None, timeout: int = 25) -> List[Dict]:
     try:
-        resp = fetch_url(rss_url, timeout=25)
+        resp = fetch_url(rss_url, timeout=timeout)
         feed = feedparser.parse(resp.content)
         if feed.bozo:
             logger.debug(f"RSS 解析警告 {rss_url}: {feed.bozo_exception}")
@@ -638,42 +674,48 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
                 logger.info(f"X {username} 成功 via 本地桥接 (条数: {len(items)})")
                 return items
         
-        # 方案B：Nitter 实例（备选）
-        nitter_pool = MirrorPool(get_nitter_instances())
-        nitter_attempts = 0
-        max_nitter_attempts = len(nitter_pool.original) if nitter_pool.original else 0
-        while nitter_attempts < max_nitter_attempts:
-            instance = nitter_pool.get_next()
-            if not instance:
-                break
-            test_url = f"{instance}/{username}/rss"
-            logger.debug(f"尝试 X {username} 使用 Nitter {instance}")
-            items = fetch_single_rss(test_url, original_url, processed_hashes, url_cache, time_window_hours, hash_lock)
-            if items:
-                logger.debug(f"X {username} 成功 via Nitter {instance} (条数: {len(items)})")
-                update_nitter_health(instance, True)
-                return items
-            else:
-                logger.debug(f"X {username} Nitter {instance} 返回空")
-                update_nitter_health(instance, False)
-                nitter_pool.report_failure(instance)
-            nitter_attempts += 1
-            time.sleep(0.5)
-        
-        # 方案C：RSSHub twitter 路由（兜底，公共实例通常不支持）
+        # 方案B：Nitter + RSSHub 并行竞速（谁先返回用谁）
+        nitter_instances = get_nitter_instances()[:NITTER_MAX_ATTEMPTS]
         rsshub_instances = get_rsshub_instances()
+        
+        # 构建所有候选 URL
+        candidates = []
+        for inst in nitter_instances:
+            candidates.append((f"{inst}/{username}/rss", inst, "Nitter", NITTER_TIMEOUT))
         for inst in rsshub_instances:
-            rss_url = f"{inst}/twitter/user/{username}"
-            logger.debug(f"尝试 X {username} 使用 RSSHub {inst}")
-            items = fetch_single_rss(rss_url, original_url, processed_hashes, url_cache, time_window_hours, hash_lock)
-            if items:
-                logger.debug(f"X {username} 成功 via RSSHub {inst} (条数: {len(items)})")
-                update_rsshub_health(inst, True)
-                return items
-            else:
-                logger.debug(f"X {username} RSSHub {inst} 返回空")
-                update_rsshub_health(inst, False)
-            time.sleep(0.5)
+            candidates.append((f"{inst}/twitter/user/{username}", inst, "RSSHub", 25))
+        
+        if not candidates:
+            logger.warning(f"X {username} 无可用 Nitter/RSSHub 实例")
+            return []
+        
+        # 并行尝试所有候选，取第一个成功的结果
+        
+        def _try_candidate(rss_url, instance, kind, timeout_val):
+            return fetch_single_rss(rss_url, original_url, processed_hashes, url_cache, time_window_hours, hash_lock, timeout=timeout_val), instance, kind
+        
+        with ThreadPoolExecutor(max_workers=len(candidates)) as inner_executor:
+            futures = {inner_executor.submit(_try_candidate, *c): c for c in candidates}
+            for future in as_completed(futures):
+                try:
+                    items, instance, kind = future.result()
+                    if items:
+                        logger.debug(f"X {username} 成功 via {kind} {instance} (条数: {len(items)})")
+                        if kind == "Nitter":
+                            update_nitter_health(instance, True)
+                        else:
+                            update_rsshub_health(instance, True)
+                        # 拿到结果后取消其他进行中的任务
+                        for f in futures:
+                            f.cancel()
+                        return items
+                    else:
+                        if kind == "Nitter":
+                            update_nitter_health(instance, False)
+                        else:
+                            update_rsshub_health(instance, False)
+                except Exception:
+                    pass
         
         logger.warning(f"X {username} 所有方案均失败（本地桥接、Nitter 和 RSSHub 均不可用）")
         return []
@@ -702,7 +744,7 @@ def fetch_with_retry(original_url: str, processed_hashes: set, url_cache: URLDed
             logger.debug(f"{original_url} 失败 via {rss_url}")
             if instance_used:
                 update_rsshub_health(instance_used, False)
-        time.sleep(1.0)  # 不同 RSS 地址之间延迟，避免触发反爬
+        time.sleep(0.2)  # 不同 RSS 地址之间延迟，避免触发反爬
     logger.debug(f"{original_url} 所有 RSS 地址均失败")
     return []
 
@@ -904,13 +946,16 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     all_table_rows = []
     table_header = "| 事件简述 | 原文链接 | 风险点 | 信息来源 | 发布多久前 | 风险等级 |"
     table_sep = "|----------|----------|--------|----------|------------|------------|"
-    for batch_idx, batch in enumerate(batches, 1):
+    
+    # 并行调用 AI 分析多个批次
+    def _analyze_batch(batch_idx, batch):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
         content = call_ai_with_retry(prompt)
         if content is None:
             logger.error(f"AI 分析批次 {batch_idx} 重试失败，跳过")
-            continue
+            return None
+        rows = []
         lines = content.split("\n")
         in_table = False
         for line in lines:
@@ -923,8 +968,23 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
                     continue
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 if len(cells) == 6:
-                    all_table_rows.append(line)
-        time.sleep(AI_REQUEST_DELAY)
+                    rows.append(line)
+        return rows
+    
+    if len(batches) <= 1:
+        result = _analyze_batch(1, batches[0])
+        if result:
+            all_table_rows.extend(result)
+    else:
+        with ThreadPoolExecutor(max_workers=min(len(batches), 4)) as ai_executor:
+            future_to_batch = {
+                ai_executor.submit(_analyze_batch, idx, batch): idx
+                for idx, batch in enumerate(batches, 1)
+            }
+            for future in as_completed(future_to_batch):
+                result = future.result()
+                if result:
+                    all_table_rows.extend(result)
 
     if not all_table_rows:
         return "无相关内容。\n", []
@@ -1228,6 +1288,9 @@ def main():
     start = time.time()
     logger.info("=== 预检 RSSHub 实例 ===")
     precheck_rsshub_instances()
+    if NITTER_PRE_CHECK:
+        logger.info("=== 预检 Nitter 实例 ===")
+        precheck_nitter_instances()
     logger.info("=== 开始抓取信源（过去24小时） ===")
     all_articles, failed_sources = fetch_all_sources()
     logger.info(f"抓取完成，共 {len(all_articles)} 条有效文章，耗时 {time.time()-start:.1f} 秒")
