@@ -50,9 +50,11 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 # ================= 配置常量 =================
-GH_TOKEN = os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
-AI_BASE_URL = "https://models.inference.ai.azure.com"
-AI_MODEL = "gpt-4o-mini"
+API_KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("GH_MODELS_TOKEN_NEW")
+if not API_KEY:
+    logger.warning("未设置 OPENAI_API_KEY，AI 功能不可用")
+AI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.chatanywhere.tech/v1")
+AI_MODEL = os.environ.get("AI_MODEL", "gpt-4o-mini")
 REPORT_PASSWORD = os.environ.get("REPORT_PASSWORD", "yangge233")
 PROXIES = None
 if os.environ.get("HTTP_PROXY"):
@@ -63,7 +65,7 @@ SIMILARITY_THRESHOLD = 0.6
 MAX_REPEAT_COUNT = 3
 COOLDOWN_DAYS = 7
 MAX_WORKERS = 6
-AI_REQUEST_DELAY = 8
+AI_REQUEST_DELAY = 2
 DISABLE_FAILED_THRESHOLD = 3
 DISABLE_COOLDOWN_MINUTES = 30
 DISABLE_AUTO_RECOVER_DAYS = 7
@@ -827,10 +829,10 @@ def estimate_tokens(text: str) -> int:
     else:
         return int(len(text) / 1.5)
 
-def call_ai_with_retry(prompt: str, max_retries: int = 4) -> Optional[str]:
+def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
     for attempt in range(max_retries):
         try:
-            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=GH_TOKEN)
+            client = openai.OpenAI(base_url=AI_BASE_URL, api_key=API_KEY)
             response = client.chat.completions.create(
                 model=AI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
@@ -841,15 +843,9 @@ def call_ai_with_retry(prompt: str, max_retries: int = 4) -> Optional[str]:
             if content is not None:
                 return content
         except Exception as e:
-            err_str = str(e)
-            if "429" in err_str:
-                wait = min(30 * (2 ** attempt), 120)
-                logger.warning(f"AI 限流 (429)，等待 {wait} 秒后重试 (尝试 {attempt+1}/{max_retries})")
-                time.sleep(wait)
-            else:
-                logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
+            logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
     return None
 
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
@@ -865,56 +861,33 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     batches = []
     current_batch = []
     current_tokens = 0
-    prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。你的任务是从以下抓取内容中筛选出**具有潜在舆情风险的内容**，并输出风险分析报告。
+    prompt_prefix = """你是一名专业的舆情风险分析师，专注于涉华负面信息研判。从以下内容中筛选涉华负面舆情，输出 Markdown 表格。
 
-**一、   严格遵守以下过滤规则（忽略极低价值内容）**：
-- 纯转发（RT/转发）且无新增实质性评论。
-- 仅包含链接，无任何文字说明或文字少于10个字符。
-- 仅含表情符号、无意义的感叹或口号（如"太可怕了""支持"等）。
-- 明显重复的内容（同一事件在不同批次中出现，只保留一次）。
-- 与涉华负面舆情无关的个人生活、娱乐、广告等。
+核心规则：
+- 忽略：纯转发无评论、仅链接无文字、纯表情/口号、无关生活娱乐、明显重复。
+- 保留：任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控等带有负面或批评倾向的内容。不确定的优先保留。
 
-**二、必须保留的内容（不得忽略）**：
-- 任何涉及中国境内的社会事件、政策批评、执法争议、文化冲突、教育问题、言论管控、隐私侵犯等，只要带有负面或批评倾向，都应视为涉华负面舆情。
-- 即使内容没有直接提及"中国"或"中共"，但事件发生在中国境内或涉及中国公民，也应保留。
-- 对于不确定是否涉华的内容，请优先保留，不要轻易过滤。
+输出格式：
+| 事件简述 | 原文链接 | 风险点 | 信息来源 | 发布多久前 | 风险等级 |
+- 链接格式：[查看](URL)
+- 风险等级：高/中/低（高=重大政治敏感且传播力强；中=较敏感社会议题；低=一般性批评）
+- 无内容时只输出一行"无"
+- 不要添加任何额外解释
 
-**三、输出格式要求**：
-- 使用 Markdown 表格，表头为：`| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 |    布多久前 | 风险等级 |`
--    行一条负面内容，按风险等级（高>中>低）和来源优先级排序。
-- 原文链接列使用 `[查看](URL)` 格式。
-- "信息来源"列直接使用输入中提供的来源名称。
-- "发布多久前"列直接使用输入中的发布时间。
-- "风险等级"列填写 **高/中/低**，综合评估传播潜力与敏感性（高风险需同时具备高敏感性和较强传播力）：
-  - **高**：涉及重大政治敏感议题，且传播力强、煽动性高，极易引发舆   风暴或境外炒作。
-  - **中**：涉及较敏感社会议题，有一定传播空间，可能引发局部讨论。
-  - **低**：一般性批评或事实报道，传播范围有限，风险可控。
-- 如果没有任何符合要求的涉华负面内容，只输出一行"无"。
-- 不要添加任何额外解释、标题或总结。
+事件简述撰写要求（最重要）：
+- 必须完整概括事件的核心要素：什么人/机构 + 做了什么/发生了什么事 + 在什么地点或背景下。
+- 保留关键细节（如数字、地点、涉事主体等），长度建议20-40字，确保读者仅看事件简述就能理解事件全貌。
+- 示例（好）："广西桂林暴雨致部分村庄被淹，当地政府启动三级应急响应，灾民已转移至安置点"
+- 示例（差）："广西暴雨"（太短，信息不全）
 
-**四、风险点撰写要求（核心）**：
-请按以下结构撰写"潜在风险   "（一段文字，但需清晰包含两部分）：
+风险点要求：
+- 从该事件可能引发的舆情风险中，提炼最重要、最核心的一条风险，用一句话概括，不超过15字。
+- 不要分点，只写一条。
+- 示例："可能引发公众对执法公正性的质疑"
 
-**第一部分（简述具体风险）**：用一句话概括该内容的主要风险性质（如涉及哪类事件、主要危害）。
-
-**第二部分（综合分析五个维度）**：紧接着用自然连贯的语言，从以下五个维度进行综合研判，**不要使用"传播性：""敏感性："等标签**，而是将所有维度融合成一段通顺的分析文字：
-- 传播潜力（账号影响力、平台热度、转发趋势）
-- 议题敏感性（政治、社会、外交、民族等敏感程度）
-- 语言煽动性（是否情绪化、对立化、号召性）
-- 可被利用性（是否容易被境内外势力放大或歪曲）
-- 历史关联性（是否与当前热点或历史敏感事件相关，是否存在叠加效应）
-
-**格式示例1（中敏感+社会议题）**：
-"该内容涉及×地执法争议，可能削弱公众对基层治理的信任。发布账号粉丝量较大且已被境外多家媒体引用，语言情绪化明显，极易激发共鸣；事件触及维稳议题属中高敏感，存在被恶意包装为'人权危机'的空间，且与近期类似事件形成叠加，需警惕舆论共振风险。"
-
-**格式示例2（高敏感+政治议题）**：
-"该内容由境外反华账号发布，直接攻击中国政治制度，基调极其负面。该账号在境外平台影响力大，原文已被大量转发，扩散趋势明显；语言极具煽动性和对抗性，极易被国内自媒体二次传播放大，并与当前外交摩擦形成联动，属于典型的认知战内容，需高度警惕并准备应对预案。"
-
-请确保每个风险点的描述总字数控制在 **80~120字**，既有总体概括，又有分维度细节，语言流畅无标签堆砌。
-
-以下是抓取到的部分内容：\n\n"""
+以下是抓取到的内容：\n\n"""
     prompt_tokens = estimate_tokens(prompt_prefix)
-    max_content_tokens = 30000
+    max_content_tokens = 10000
     for block in blocks:
         block_tokens = estimate_tokens(block)
         if current_tokens + block_tokens + prompt_tokens > max_content_tokens and current_batch:
@@ -928,15 +901,9 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
 
     logger.info(f"共 {len(articles)} 条内容，分为 {len(batches)} 批进行 AI 分析")
 
-    # GitHub Models 免费层限制：每天约 150 次请求，保守设为 50 批上限
-    MAX_BATCHES_PER_RUN = 50
-    if len(batches) > MAX_BATCHES_PER_RUN:
-        logger.warning(f"批次过多 ({len(batches)})，截断为 {MAX_BATCHES_PER_RUN} 批以避免超出 API 配额")
-        batches = batches[:MAX_BATCHES_PER_RUN]
-
     all_table_rows = []
-    table_header = "| 事件简述 | 原文链接 | 潜在风险点 | 信息来源 | 发布多久前 | 风险等级 |"
-    table_sep = "|----------|----------|------------|----------|------------|------------|"
+    table_header = "| 事件简述 | 原文链接 | 风险点 | 信息来源 | 发布多久前 | 风险等级 |"
+    table_sep = "|----------|----------|--------|----------|------------|------------|"
     for batch_idx, batch in enumerate(batches, 1):
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
