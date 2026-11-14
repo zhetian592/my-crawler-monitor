@@ -874,6 +874,10 @@ def estimate_tokens(text: str) -> int:
 def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
     for attempt in range(max_retries):
         try:
+            # 【修改点1】首次请求前随机等待，打散并发
+            if attempt == 0:
+                time.sleep(random.uniform(0.5, 1.5))
+            
             client = openai.OpenAI(base_url=AI_BASE_URL, api_key=API_KEY)
             response = client.chat.completions.create(
                 model=AI_MODEL,
@@ -887,7 +891,9 @@ def call_ai_with_retry(prompt: str, max_retries: int = 3) -> Optional[str]:
         except Exception as e:
             logger.warning(f"AI 调用尝试 {attempt+1}/{max_retries} 失败: {e}")
             if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
+                # 【修改点2】如果是 401 报错（风控），等待时间加倍，给服务端冷却时间
+                wait_time = (3 ** attempt) + random.uniform(1, 3) 
+                time.sleep(wait_time)
     return None
 
 def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, List[str]]:
@@ -949,6 +955,9 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
     
     # 并行调用 AI 分析多个批次
     def _analyze_batch(batch_idx, batch):
+        # 【修改点3】加上随机延时，错开多线程的发起时间，防止触发风控
+        time.sleep(random.uniform(1.0, 2.0))
+        
         combined = "\n".join(batch)
         prompt = prompt_prefix + combined
         content = call_ai_with_retry(prompt)
@@ -976,7 +985,8 @@ def call_ai_unified(articles: List[Dict], old_events: List[str]) -> Tuple[str, L
         if result:
             all_table_rows.extend(result)
     else:
-        with ThreadPoolExecutor(max_workers=min(len(batches), 4)) as ai_executor:
+        # 【修改点4】限制最大并发为 2，避免瞬间并发触发 ChatAnywhere 的 401 风控
+        with ThreadPoolExecutor(max_workers=2) as ai_executor:
             future_to_batch = {
                 ai_executor.submit(_analyze_batch, idx, batch): idx
                 for idx, batch in enumerate(batches, 1)
